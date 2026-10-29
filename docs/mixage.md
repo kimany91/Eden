@@ -15,21 +15,42 @@ est marqué :
 ## Les morceaux du mix
 
 - **Chaque voix seule**, rendue par FL avec toute sa chaîne (inserts, bus, envois).
-- **Chaque voix sèche** : si sa chaîne FL contient une reverb ou un delay, FL la rend aussi
-  avec ces effets coupés. Un retour d'effet est reconnu par la topologie du Mixer (un insert
-  autre que celui de la voix, qui porte une reverb ou un delay, et dont la voix n'a pas besoin
-  pour atteindre le Master) : il est coupé en entier, limiteur ou EQ compris. Sur le chemin
+- **Chaque voix sèche** : si sa chaîne FL contient une reverb ou un delay que FL joue
+  vraiment (slot actif avec un dry/wet qui n'est pas à 0, insert et ses effets actifs, insert
+  qui atteint le Master : un retour coupé ou routé nulle part ne compte pas), FL la rend aussi
+  avec ces effets coupés. Un plugin qu'Eden n'identifie pas compte comme reverb ou delay
+  quand il est sur un autre insert que celui de la voix et que le nom de cet insert contient
+  « verb », « delay », « echo », « écho » ou « space » (choix d'Eden) ; Eden le signale.
+  Un retour d'effet est reconnu par la topologie du Mixer (un insert autre que celui de la
+  voix, qui porte une reverb ou un delay, et dont la voix n'a pas besoin pour atteindre le
+  Master) : il est coupé en entier, limiteur ou EQ compris. Quand la voix peut se passer de
+  chacun de ces inserts mais pas de tous à la fois (un bus voix avec un delay en ligne à côté
+  d'un retour de reverb), leur numéro ne compte pas : ceux dont le premier effet (EQ,
+  utilitaires et plugins non identifiés mis à part) est la reverb ou le delay sont les
+  retours, les autres sont le chemin de la voix, car un bus commence par sa dynamique (choix
+  d'Eden) ; si ça ne tranche pas, pas de voix sèche, et Eden dit pourquoi. Sur le chemin
   propre de la voix, les slots de reverb et de delay sont désactivés un par un.
   *Voix complète − voix sèche* = exactement ce que tes effets ajoutent. Eden traite la voix
   sèche, comme un mixeur qui reçoit des pistes sèches et met les effets en envoi, puis remet
   tes effets **tels quels** par-dessus.
-- **Contrôle de la voix sèche** : pendant le chant, elle doit être calée sur la voix complète
-  (un plugin contourné peut changer la compensation de latence de FL) ; la part des effets
-  ne doit contenir ni la voix elle-même (un retour qui laisse passer l'envoi sec, un plugin
-  dont le bouton dry/wet baisse aussi la voix), ni être plus forte que la voix. Sinon la voix
-  sèche est écartée et Eden le dit.
+- **Contrôle de la voix sèche** : elle ne doit pas être muette, et FL doit en avoir retiré
+  quelque chose : pendant le chant, la part des effets doit dépasser −60 dB sous la voix
+  (choix d'Eden), sinon les effets coupés n'ont pas été respectés ou ne s'entendaient pas.
+  Elle doit aussi être calée sur la voix complète à 2 échantillons près (un plugin contourné
+  peut changer la compensation de latence de FL) : le décalage est cherché jusqu'à 100 ms de
+  chaque côté (choix d'Eden) ; si le meilleur décalage trouvé dépasse 100 ms, ou s'il
+  dépasse 2 échantillons et que la voix sèche n'y est qu'à moins de la moitié du niveau du
+  plus faible des deux rendus (choix d'Eden), Eden la dit « décalée de plus de 100 ms ».
+  La part des effets ne doit contenir ni la voix elle-même (un retour qui laisse passer
+  l'envoi sec, un plugin dont le bouton dry/wet baisse aussi la voix), ni être plus forte
+  que la voix. Sinon la voix sèche est écartée et Eden le dit. En amont, `eden fl-probe`
+  vérifie sur ton PC que FL respecte un slot d'effet désactivé (écart au-dessus de −60 dB
+  entre les rendus avec et sans l'effet, choix d'Eden), quand une piste de la playlist du
+  projet testé passe par une reverb ou un delay dont FL a enregistré l'état ; sinon ce
+  point est noté « non vérifié sur ce projet ».
 - **Voix « prudente »** : quand la séparation est impossible (état d'un slot non enregistré
-  par FL) ou écartée, la réduction est limitée à 3 dB par compresseur, sans compression
+  par FL, retours d'effet impossibles à distinguer, plugin non identifié sur le chemin de la
+  voix) ou écartée, la réduction est limitée à 3 dB par compresseur, sans compression
   parallèle. Dans une phrase, le gain ne remonte jamais au-dessus de la réduction **moyenne**
   de la phrase jusque-là (moyenne pondérée par la puissance, comme le volume, du gain qu'aurait
   le compresseur sans ce plancher) ; dans les silences entre phrases (au moins une double

@@ -12,6 +12,7 @@ Pipeline (each step reports real progress through ``on_step``):
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from pathlib import Path
@@ -40,6 +41,11 @@ StepCallback = Callable[[int, int, str], None]
 # Generators that do not produce audio themselves.
 NON_AUDIO_GENERATORS = {"MIDI Out", "Fruity Keyboard Controller"}
 
+# Effects that put a voice in a space: FL renders the voices without them.
+SPACE_CATEGORIES = {"reverb", "delay"}
+# Insert names of an effect return ("Reverb", "Verb", "Delay vox", "Écho", "Space"…).
+SPACE_INSERT_NAME = re.compile(r"verb|delay|[eé]cho|space", re.IGNORECASE)
+
 
 class InspectionError(RuntimeError):
     def __init__(self, step: str, message: str) -> None:
@@ -55,7 +61,7 @@ class ExistingEffect:
     slot: int
     plugin: str
     category: str
-    active: bool  # slot enabled and insert effects enabled
+    active: bool  # heard: slot on, dry/wet not at 0, insert and its effects on, insert reaching the Master
 
 
 @dataclass
@@ -74,6 +80,16 @@ class SourceAnalysis:
     last_seconds: float | None
     sample: SourceFile | None = None
     plugin: str | None = None
+
+    @property
+    def space_effects(self) -> list[ExistingEffect]:
+        """Its active reverbs and delays. An unidentified plugin counts too when it sits on an
+        insert other than the source's own whose name says reverb, delay, echo or space: the
+        user named that insert after the effect it holds."""
+        return [e for e in self.existing_effects if e.active and (
+            e.category in SPACE_CATEGORIES
+            or (e.category == "unknown" and e.insert != self.insert
+                and SPACE_INSERT_NAME.search(e.insert_label) is not None))]
 
 
 @dataclass
@@ -136,15 +152,20 @@ def _signal_path(project: FlpProject, start: int) -> tuple[list[int], bool]:
 
 
 def _effects_on(project: FlpProject, inserts: list[int]) -> list[ExistingEffect]:
+    """The effects of ``inserts``. One is active only when FL plays it: its slot is on with its
+    dry/wet not at 0 (when stored), its insert and the insert's effects are on, and the insert's
+    output reaches the Master (a muted return, or one routed nowhere, is not heard)."""
     out = []
     for idx in inserts:
         ins = project.insert(idx)
         if ins is None:
             continue
+        heard = ins.enabled is not False and ins.effects_enabled is not False and (
+            idx == MASTER_INSERT or _signal_path(project, idx)[1])
         for slot in ins.slots:
             category = categorize(slot.plugin)
             slot.plugin.category = category
-            active = slot.enabled is not False and ins.effects_enabled is not False
+            active = heard and slot.enabled is not False and slot.mix_raw != 0
             out.append(ExistingEffect(idx, ins.label, slot.index, slot.plugin.label, category, active))
     return out
 

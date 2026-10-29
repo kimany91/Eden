@@ -16,9 +16,10 @@ muted. Three kinds of jobs:
   effect returns (inserts holding a reverb or delay that the voice does not
   need to reach the Master) are muted and the reverb or delay slots on its
   own way to the Master are bypassed. Only planned when every such effect
-  can be removed. Auto-Tune and every other effect stay. ``vocal`` minus
-  ``vocal_dry`` is what those effects add, so Eden can process the dry voice
-  like a mix engineer does and put the user's effects back untouched.
+  can be removed; otherwise a note says why. Auto-Tune and every other
+  effect stay. ``vocal`` minus ``vocal_dry`` is what those effects add, so
+  Eden can process the dry voice like a mix engineer does and put the
+  user's effects back untouched.
 """
 
 from __future__ import annotations
@@ -26,11 +27,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from eden.project.inspector import InspectionReport, SourceAnalysis
+from eden.project.inspector import SPACE_CATEGORIES, ExistingEffect, InspectionReport, SourceAnalysis
 from eden.project.model import MASTER_INSERT, FlpProject
 
 MAX_VOCAL_JOBS = 16
-SPACE_CATEGORIES = {"reverb", "delay"}
+# Effects found on vocal buses and on effect returns alike: they tell neither from the other.
+NEUTRAL_CATEGORIES = {"eq", "utility", "unknown"}
 
 
 @dataclass
@@ -88,36 +90,61 @@ def _reaches_master(project: FlpProject, start: int, excluded: set[int]) -> bool
     return False
 
 
-def _dry_edits(project: FlpProject, s: SourceAnalysis) -> tuple[list[int], list[tuple[int, int]], bool]:
+def _return_like(space: list[ExistingEffect], effects: list[ExistingEffect], idx: int) -> bool:
+    """Whether the first active effect of insert ``idx`` that tells a return from a bus is its
+    reverb or delay. A vocal bus starts with its dynamics (compressor, de-esser, saturation…)."""
+    for e in sorted((e for e in effects if e.insert == idx and e.active), key=lambda e: e.slot):
+        if e in space:
+            return True
+        if e.category not in NEUTRAL_CATEGORIES:
+            return False
+    return False
+
+
+def _dry_edits(project: FlpProject, s: SourceAnalysis) -> tuple[list[int], list[tuple[int, int]], str | None]:
     """Effect returns to mute and slots to bypass to hear ``s`` without its reverbs and delays,
-    and whether that removes all of them.
+    and why that would leave some of them in (None when it removes them all).
 
     A return is told by the mixer's topology, not by what it holds: an insert
     other than the voice's own, with a reverb or delay on it, that the voice
     does not need to reach the Master. Whatever else is on it (a limiter
     ducking the reverb, an EQ…) only shapes the effect, so the whole insert
-    is muted. On the voice's own way to the Master, reverb and delay slots
-    are bypassed one by one — when FL stored their state.
+    is muted. When the voice can do without each of these inserts but not
+    without all of them (a vocal bus with an in-line delay next to a reverb
+    return), the ones whose first effect is the reverb or delay are the
+    returns and the others are the voice's way, whatever their numbers; when
+    that does not settle it, nothing is planned. On the voice's own way to
+    the Master, reverb and delay slots are bypassed one by one — when FL
+    stored their state.
     """
-    if s.insert in (None, MASTER_INSERT):
-        return [], [], False
-    active = [e for e in s.existing_effects if e.active and e.insert != MASTER_INSERT]
-    holders = sorted({e.insert for e in active if e.category in SPACE_CATEGORIES})
-    returns: set[int] = set()
-    for idx in holders:
-        if idx != s.insert and _reaches_master(project, s.insert, returns | {idx}):
-            returns.add(idx)
+    space = s.space_effects
+    if not space:
+        return [], [], None
+    holders = {e.insert for e in space if e.insert != s.insert}
+    returns = {h for h in holders if _reaches_master(project, s.insert, {h})}
+    if not _reaches_master(project, s.insert, returns):  # they are alternative ways to the Master
+        branches = returns
+        returns = {h for h in branches if _return_like(space, s.existing_effects, h)}
+        if not returns or not _reaches_master(project, s.insert, returns):
+            names = ", ".join(f"« {project.insert(h).label} »" for h in sorted(branches))
+            return [], [], (f"elle atteint le Master par plusieurs inserts avec reverb ou delay ({names}) "
+                            "sans qu'Eden puisse dire lesquels sont des retours d'effet")
     slots = []
-    complete = True
-    for e in active:
-        if e.category in SPACE_CATEGORIES and e.insert not in returns:
-            ins = project.insert(e.insert)
-            slot = next((sl for sl in ins.slots if sl.index == e.slot), None) if ins else None
-            if slot is not None and slot.enabled is not None:  # FL stored its state: it can be bypassed
-                slots.append((e.insert, e.slot))
-            else:
-                complete = False
-    return sorted(returns), slots, complete
+    left_in = None
+    for e in space:
+        if e.insert in returns:
+            continue
+        ins = project.insert(e.insert)
+        slot = next((sl for sl in ins.slots if sl.index == e.slot), None) if ins else None
+        if e.category not in SPACE_CATEGORIES:
+            left_in = left_in or (f"« {e.plugin} » (insert « {e.insert_label} »), non identifié, "
+                                  "est sur son chemin vers le Master")
+        elif slot is not None and slot.enabled is not None:  # FL stored its state: it can be bypassed
+            slots.append((e.insert, e.slot))
+        else:
+            left_in = left_in or (f"FL n'a pas enregistré l'état activé/désactivé de « {e.plugin} » "
+                                  f"(insert « {e.insert_label} »)")
+    return sorted(returns), slots, left_in
 
 
 def plan_renders(report: InspectionReport) -> RenderPlan:
@@ -188,6 +215,7 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
         notes.append(f"{len(vocals)} voix détectées : rendu individuel limité aux "
                      f"{MAX_VOCAL_JOBS} premières")
         vocals = vocals[:MAX_VOCAL_JOBS]
+    guessed: set[tuple[int, int]] = set()  # (insert, slot) of unidentified plugins taken for space effects
     for s in vocals:
         others = [c for c in source_channels if c != s.channel]
         jobs.append(RenderJob(
@@ -198,8 +226,16 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
             bypass_master_effects=True,
             channels=[s.channel],
         ))
-        returns, slots, complete = _dry_edits(project, s)
-        if (returns or slots) and complete:  # a half-dry render would pass for dry
+        for e in s.space_effects:
+            if e.category not in SPACE_CATEGORIES and (e.insert, e.slot) not in guessed:
+                guessed.add((e.insert, e.slot))
+                notes.append(f"« {e.plugin} » (insert « {e.insert_label} ») : plugin non identifié, "
+                             "compté comme reverb ou delay d'après le nom de l'insert")
+        returns, slots, left_in = _dry_edits(project, s)
+        if left_in:  # a half-dry render would pass for dry
+            notes.append(f"« {s.label} » : pas de voix sèche, {left_in} ; ses reverbs et delays FL "
+                         "seront traités avec prudence au mixage")
+        elif returns or slots:
             jobs.append(RenderJob(
                 name=f"dry-ch{s.channel:03d}-{_slug(s.label)}",
                 kind="vocal_dry",

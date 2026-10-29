@@ -93,7 +93,12 @@ bus). Deux modes :
   rapportée par des utilisateurs) et récupère le WAV produit.
 - Comme cette syntaxe n'est pas documentée de façon fiable, rien n'est supposé :
   `eden fl-probe` la teste sur ton PC et vérifie aussi que les coupures de pistes sont
-  bien respectées par FL Studio, avant d'activer le rendu automatique.
+  bien respectées par FL Studio (canaux, inserts, envois vers le Master) et qu'un slot
+  d'effet désactivé l'est vraiment (une piste rendue seule avec et sans sa reverb ou son
+  delay : l'écart entre les deux rendus doit dépasser −60 dB), avant d'activer le rendu
+  automatique. Ce dernier test demande, dans le projet testé, une piste de la playlist qui
+  passe par une reverb ou un delay actif dont FL a enregistré l'état activé/désactivé ; sans
+  elle, il est noté « non vérifié sur ce projet ».
 - Plan B si la ligne de commande ne marche pas sur ta version : export guidé
   (« Split mixer tracks ») surveillé par Eden.
 
@@ -135,10 +140,13 @@ Règles :
   masterise lui-même (graves, bus, clip doux, limiteur true-peak, volume cible rap
   commercial). Les effets de ton Master FL servent à ton écoute dans FL Studio, pas au
   fichier final. La réinjection du mix dans le Master FL (première version) a été retirée.
-- **Voix sèche** : pour une voix dont la chaîne contient une reverb ou un delay, une copie
-  est rendue avec ces effets contournés (slot désactivé dans les paramètres du Mixer,
-  retours d'effets coupés). La différence voix complète − voix sèche est exactement ce que
-  tes effets ajoutent : Eden traite la voix sèche et remet tes effets par-dessus.
+- **Voix sèche** : pour une voix dont la chaîne contient une reverb ou un delay que FL joue
+  vraiment (slot et insert actifs, insert qui atteint le Master), une copie est rendue avec
+  ces effets contournés (slot désactivé dans les paramètres du Mixer, retours d'effets
+  coupés). La différence voix complète − voix sèche est exactement ce que tes effets
+  ajoutent : Eden traite la voix sèche et remet tes effets par-dessus. Avant de s'en servir,
+  Eden vérifie que FL en a bien retiré quelque chose et qu'elle est calée sur la voix
+  complète ; sinon la voix est traitée avec prudence (détails dans `docs/mixage.md`).
 
 ---
 
