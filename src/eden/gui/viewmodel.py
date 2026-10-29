@@ -142,6 +142,7 @@ FL_SPACE_FR = {
     "tracked": "Reverb / delay FL Studio gardés tels quels (rendus à part)",
     "untracked": "Reverb / delay FL Studio dans la voix : compression prudente, rien ajouté",
 }
+MIX_ROLE_LABELS_FR = {**ROLE_LABELS_FR, "residual": "Reste du mix"}  # listed when Eden carved it
 
 
 def _song_lines(song: dict) -> list[str]:
@@ -178,7 +179,7 @@ def mix_view(version: dict) -> dict:
         after = p["loudness_after"]
         parts.append({
             "label": p["label"],
-            "role": ROLE_LABELS_FR.get(p["role"], p["role"]),
+            "role": MIX_ROLE_LABELS_FR.get(p["role"], p["role"]),
             "roleKey": p["role"],
             "treatments": [{"label": t["label"], "reason": t["reason"]} for t in p["treatments"]],
             "notes": notes,

@@ -47,7 +47,9 @@ def test_mix_view_and_versions(tmp_path):
     lead = next(p for p in view["parts"] if p["label"] == "Lead")
     assert lead["role"] == "Voix principale" and all(t["reason"] for t in lead["treatments"])
     assert any("gardés tels quels" in n for n in lead["notes"])  # FL reverb rendered apart
-    assert view["parts"][-1]["roleKey"] in ("beat", "bass")
+    # the 808 is also sent to the vocal bus: that part of the beat sits in the rest of the mix, carved too
+    assert [p["roleKey"] for p in view["parts"][2:]] == ["bass", "beat", "residual"]
+    assert view["parts"][-1]["role"] == "Reste du mix" and view["parts"][-1]["treatments"]
     assert any(line.startswith("Tempo : 120") for line in view["song"])
     assert view["master"] and view["platforms"][0]["heard"].endswith("LUFS") and len(view["checks"]) == 3
     versions = viewmodel.versions_view(list_versions(project))

@@ -8,9 +8,10 @@ every note would leak into the semitone below). It is correlated with the
 music: Krumhansl & Kessler (1982), Shaath (KeyFinder) and Faraldo's EDM
 profile (Essentia "edma") — the Temperley–Kostka–Payne profile is not used,
 it tends to name the relative major of minor loops. Relative major and
-minor keys share the same seven notes: the 808 settles which one is the
-tonic whenever it plays one of the two tonics clearly more. For mixing
-decisions only the scale matters, and relative keys share the same scale.
+minor keys share the same seven notes: when the profiles score both about
+as well, the 808 settles which one is the tonic if it really plays one of
+the two tonics, and clearly more than the other. For mixing decisions only
+the scale matters, and relative keys share the same scale.
 """
 
 from __future__ import annotations
@@ -33,7 +34,8 @@ SHAATH_MINOR = [6.5, 2.7, 3.5, 5.4, 2.6, 3.5, 2.5, 5.2, 4.0, 2.7, 4.3, 3.2]
 EDMA_MAJOR = [1.00, 0.29, 0.50, 0.40, 0.60, 0.56, 0.32, 0.80, 0.31, 0.45, 0.42, 0.39]
 EDMA_MINOR = [1.00, 0.31, 0.44, 0.58, 0.33, 0.49, 0.29, 0.78, 0.43, 0.29, 0.53, 0.32]
 PROFILES = ((KK_MAJOR, KK_MINOR), (SHAATH_MAJOR, SHAATH_MINOR), (EDMA_MAJOR, EDMA_MINOR))
-BASS_DECIDES = 1.5  # the 808 settles relative keys when one tonic gets this much more of its time
+BASS_DECIDES = 1.5  # the 808 settles relative keys when one tonic gets this much more of its low energy...
+BASS_TONIC_SHARE = 0.1  # ...and at least this share of it (less is leakage, not a note it plays)
 
 
 @dataclass
@@ -76,11 +78,15 @@ def _peaks(x: np.ndarray, fs: float, fmin: float, fmax: float) -> tuple[np.ndarr
     """(MIDI pitch of each STFT bin, peak salience per bin and frame) between ``fmin`` and ``fmax``.
 
     Long windows (~1.5 s, ~0.7 Hz resolution) resolve the semitones of the low
-    octaves (2.6 Hz apart around 45 Hz). Only spectral peaks count (leakage
-    between partials would blur the profile), with linear magnitude.
+    octaves (2.6 Hz apart around 45 Hz); a song shorter than that is read in
+    the longest power-of-two window it holds. Only spectral peaks count
+    (leakage between partials would blur the profile), with linear magnitude.
     """
-    nper = 1 << int(math.ceil(math.log2(fs * 1.4)))
-    freqs, _, z = stft(_mono(x), fs=fs, nperseg=nper, noverlap=nper // 2, boundary=None)
+    mono = _mono(x)
+    if mono.size < 2:
+        return np.zeros(0), np.zeros((0, 0))
+    nper = min(1 << int(math.ceil(math.log2(fs * 1.4))), 1 << int(math.log2(mono.size)))
+    freqs, _, z = stft(mono, fs=fs, nperseg=nper, noverlap=nper // 2, boundary=None)
     sel = (freqs >= fmin) & (freqs <= fmax)
     mag = np.abs(z[sel])
     if mag.size == 0 or mag.max() <= 0:
@@ -92,8 +98,9 @@ def _peaks(x: np.ndarray, fs: float, fmin: float, fmax: float) -> tuple[np.ndarr
 
 def tuning(x: np.ndarray, fs: float, fmin: float = 150.0, fmax: float = 2000.0) -> float:
     """Tuning of ``x`` in cents from A = 440 Hz: the most common deviation of its spectral
-    peaks from the nearest semitone (1-cent histogram weighted by peak magnitude, mode
-    wrapped to −35…+65 cents like Essentia's TuningFrequency)."""
+    peaks from the nearest semitone (1-cent histogram weighted by peak magnitude, as in
+    Essentia's TuningFrequency), −50…+50 cents: notes are named on the nearest semitone,
+    so a beat at A = 430 Hz is a flat A, not a sharp A♭."""
     midi, salience = _peaks(x, fs, fmin, fmax)
     if midi.size == 0:
         return 0.0
@@ -104,8 +111,7 @@ def tuning(x: np.ndarray, fs: float, fmin: float = 150.0, fmax: float = 2000.0) 
     hist = np.zeros(101)
     np.add.at(hist, cents + 50, weight)
     hist = hist[:-1] + np.r_[hist[-1], np.zeros(99)]  # +50 and −50 are the same deviation
-    mode = int(np.argmax(np.convolve(np.r_[hist[-2:], hist, hist[:2]], np.ones(5) / 5, mode="valid"))) - 50
-    return float(mode + 100 if mode < -35 else mode)
+    return float(np.argmax(np.convolve(np.r_[hist[-2:], hist, hist[:2]], np.ones(5) / 5, mode="valid")) - 50)
 
 
 def chroma(x: np.ndarray, fs: float, fmin: float = 55.0, fmax: float = 2000.0, tuning_cents: float = 0.0
@@ -140,8 +146,9 @@ RELATIVE_CLOSE = 0.1  # score gap under which relative major/minor are considere
 
 def detect_key(x: np.ndarray, fs: float, bass: np.ndarray | None = None, fmin: float = 55.0,
                tuning_cents: float | None = None) -> Key | None:
-    """Most likely key of the harmony ``x``; ``bass`` (low-end chroma of the 808) settles which
-    of two relative keys is the tonic. ``fmin`` 200 Hz keeps kick and 808 out of a full beat."""
+    """Most likely key of the harmony ``x``; when the profiles find the relative key almost as
+    likely, ``bass`` (low-end chroma of the 808) settles which of the two is the tonic.
+    ``fmin`` 200 Hz keeps kick and 808 out of a full beat."""
     cents = tuning(x, fs) if tuning_cents is None else tuning_cents
     c = chroma(x, fs, fmin=fmin, tuning_cents=cents)
     if not c.any():
@@ -157,12 +164,12 @@ def detect_key(x: np.ndarray, fs: float, bass: np.ndarray | None = None, fmin: f
     rel = (tonic + 3) % 12 if minor else 12 + (tonic + 9) % 12
     relative_close = scores[best] - scores[rel] < RELATIVE_CLOSE
     decided = False
-    if bass is not None and bass.any():
-        mine, theirs = bass[tonic], bass[rel % 12]
-        if theirs >= BASS_DECIDES * mine:
+    if bass is not None and relative_close:
+        mine, theirs = float(bass[tonic]), float(bass[rel % 12])
+        decided = max(mine, theirs) >= BASS_TONIC_SHARE and max(mine, theirs) >= BASS_DECIDES * min(mine, theirs)
+        if decided and theirs > mine:
             best, rel = rel, best
             tonic, minor = best % 12, best >= 12
-        decided = max(mine, theirs) >= BASS_DECIDES * min(mine, theirs)
     others = [scores[i] for i in range(24) if i not in (best, rel)]
     margin = float(scores[best] - max(others))  # lead over keys with a different scale
     corr = float(scores[best])
