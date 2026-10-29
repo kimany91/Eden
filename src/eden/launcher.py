@@ -87,7 +87,21 @@ def _audio_check() -> str:
     lufs = integrated_loudness(tone, 48000)
     if abs(lufs + 3.01) > 0.05:
         raise RuntimeError(f"mesure de volume incorrecte ({lufs:.2f} LUFS)")
-    return f"audio : libsndfile {sf.__libsndfile_version__}, mesure de volume {lufs:.2f} LUFS"
+    # the whole mastering chain (filters, oversampling, soft clip, limiter) on a short signal
+    # whose clicks need limiting
+    from eden.mix.master import master
+
+    clicks = np.zeros(tone.size)
+    clicks[::12000] = 0.5
+    signal = 0.1 * tone + clicks
+    result = master(np.stack([signal, signal], axis=1), 48000, 1.0, 120.0)
+    if result.limiter_db <= 0 and result.clip_db <= 0:
+        raise RuntimeError("mastering : ni écrêtage ni limiteur sur des clics")
+    ceiling = result.treatments[-1].measured["ceiling_dbtp"]
+    if result.checks.true_peak_dbtp > ceiling + 0.05:
+        raise RuntimeError(f"mastering incorrect (crête {result.checks.true_peak_dbtp:.2f} dBTP)")
+    return (f"audio : libsndfile {sf.__libsndfile_version__}, mesure de volume {lufs:.2f} LUFS, "
+            f"mastering {result.checks.integrated_lufs:.1f} LUFS / {result.checks.true_peak_dbtp:.1f} dBTP")
 
 
 def main() -> int:
