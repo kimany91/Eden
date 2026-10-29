@@ -100,10 +100,11 @@ bus). Deux modes :
   passe par une reverb ou un delay actif dont FL a enregistré l'état activé/désactivé ; sans
   elle, il est noté « non vérifié sur ce projet ». Un slot peut ne rien changer pour une
   raison qui lui est propre (plugin réglé pour laisser passer le son, fader du retour en
-  bas) : Eden essaie alors jusqu'à deux autres slots, de préférence sur un autre insert,
-  puis avec une autre piste (3 essais au plus, choix d'Eden), note chaque essai dans le
-  compte rendu, et ne conclut que FL ne respecte pas un slot désactivé que si aucun essai ne
-  change le rendu.
+  bas) : Eden essaie alors jusqu'à deux autres slots, de préférence sur un autre insert, et
+  avec une autre piste quand il y en a une (le même slot n'est repris avec une autre piste
+  que s'il n'en reste aucun autre ; 3 essais au plus, choix d'Eden), note chaque essai dans
+  le compte rendu, et ne conclut que FL ne respecte pas un slot désactivé que si aucun essai
+  ne change le rendu.
 - Plan B si la ligne de commande ne marche pas sur ta version : export guidé
   (« Split mixer tracks ») surveillé par Eden.
 

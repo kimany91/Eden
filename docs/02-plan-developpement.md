@@ -54,9 +54,10 @@ Fait :
   ses delays (dont FL a enregistré l'état activé/désactivé), l'écart entre les deux rendus
   doit dépasser −60 dB. Un slot peut ne rien changer pour une raison qui lui est propre
   (plugin réglé pour laisser passer le son, fader du retour en bas) : jusqu'à deux autres
-  slots sont alors essayés, de préférence sur un autre insert, puis avec une autre piste
-  (3 essais au plus, choix d'Eden), chaque essai noté dans le compte rendu, et le test
-  n'échoue que si aucun ne change le rendu ; sans reverb ni delay de ce genre dans le
+  slots sont alors essayés, de préférence sur un autre insert, et avec une autre piste quand
+  il y en a une (le même slot n'est repris avec une autre piste que s'il n'en reste aucun
+  autre ; 3 essais au plus, choix d'Eden), chaque essai noté dans le compte rendu, et le
+  test n'échoue que si aucun ne change le rendu ; sans reverb ni delay de ce genre dans le
   projet, ou si tous les rendus essayés sont muets, il est noté « non vérifié ». La syntaxe
   qui marche n'est enregistrée que si tout ce qui a pu être vérifié passe ;
 - `eden render` et bouton « Récupérer le son depuis FL Studio » ;

@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
+from eden.flp.edit import FlpEditor
 from eden.gui import viewmodel
 from eden.project.classify import RoleGuess
 from eden.project.inspector import SourceAnalysis, _effects_on, _signal_path, inspect_project
@@ -227,12 +228,12 @@ def test_the_check_fails_only_when_no_slot_tried_changes_the_render(tmp_path, mo
         Insert(name="Instru", routes=(0,))], [("Lead", 1), ("Back", 2), ("Adlib", 3)])
     res, settings = _probe(project, tmp_path)
     lines = _slot_lines(res)
-    # 5 candidates; a new insert, then a new source, comes first; 3 tries at most
+    # 5 candidates; a new insert, then a new slot, with a new source if there is one; 3 tries at most
     assert SLOT_CHECK_TRIES == 3 and len(lines) == 4
     assert [line.split(" : ")[1].split(")")[0] for line in lines[:3]] == [
         "« Fruity Reeverb 2 » sur « Lead », Lead seule",
         "« Fruity Reeverb 2 » sur « Back », Back seule",
-        "« Fruity Reeverb 2 » sur « Lead », Adlib seule"]
+        "« Fruity Delay 3 » sur « Lead », Adlib seule"]
     assert all(line.endswith("le rendu ne change pas (écart sous -60 dB) ✘") for line in lines[:3])
     assert lines[3] == ("Test d'isolation (slot d'effet contourné) : aucun des 3 essais ne montre que "
                         "FL Studio contourne un slot désactivé ✘")
@@ -241,6 +242,32 @@ def test_the_check_fails_only_when_no_slot_tried_changes_the_render(tmp_path, mo
     assert [r for r in renders if r.startswith("isolation-slot")] == [
         "isolation-slot-1-actif", "isolation-slot-1-contourne", "isolation-slot-2-actif",
         "isolation-slot-2-contourne", "isolation-slot-3-actif", "isolation-slot-3-contourne"]
+
+
+def test_a_slot_already_tried_waits_until_no_other_slot_is_left(tmp_path, monkeypatch):
+    # Every voice plays through a vocal bus holding a reverb then a delay. The reverb lets the
+    # sound through (bypassing it changes nothing, emulated here); the delay is bypassed as asked.
+    # Trying the reverb again with the other voices would end in a false failure.
+    bypass = FlpEditor.set_slot_enabled
+
+    def reverb_passes_through(self, insert, slot, enabled):
+        if (insert, slot) != (4, 0):
+            bypass(self, insert, slot, enabled)
+
+    monkeypatch.setattr(FlpEditor, "set_slot_enabled", reverb_passes_through)
+    project = make_project(tmp_path / "Projet", [
+        Insert(routes=()), Insert(name="Lead", routes=(4,)), Insert(name="Adlib", routes=(4,)),
+        Insert(name="Back", routes=(4,)),
+        Insert(name="Bus voix", routes=(0,), slots={0: Slot("Fruity Reeverb 2"), 1: Slot("Fruity Delay 3")}),
+        Insert(name="Instru", routes=(0,))], [("Lead", 1), ("Adlib", 2), ("Back", 3)])
+    res, settings = _probe(project, tmp_path)
+    lines = _slot_lines(res)
+    assert len(lines) == 2
+    assert lines[0] == ("Test d'isolation (slot d'effet contourné, essai 1 sur 3 : « Fruity Reeverb 2 » sur "
+                        "« Bus voix », Lead seule) : le rendu ne change pas (écart sous -60 dB) ✘")
+    assert lines[1].startswith("Test d'isolation (slot d'effet contourné, essai 2 sur 3 : « Fruity Delay 3 » "
+                               "sur « Bus voix », Adlib seule) : le rendu change (écart de ")
+    assert res.isolation_slots_ok is True and res.ok and settings.render_args
 
 
 def test_a_source_is_rendered_alone_once_for_all_its_slots(tmp_path, monkeypatch, renders):

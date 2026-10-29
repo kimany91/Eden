@@ -67,9 +67,10 @@ class ProbeResult:
 def _space_slots(project: FlpProject, sources: list[SourceAnalysis]) -> list[tuple[SourceAnalysis, ExistingEffect]]:
     """Up to SLOT_CHECK_TRIES pairs of a source played in the playlist and one of its active
     reverbs or delays whose on/off state FL stored (the record a dry-voice render rewrites), in
-    the order to try them. Each next pair is, in project order, the first one on an insert and
-    with a source not picked yet, else the first on a new insert, else the first with a new
-    source, else the first left."""
+    the order to try them. Each next pair is, in project order, the first one on an insert not
+    picked yet, else on a slot not picked yet, and among those the first with a source not
+    picked yet; a slot already picked comes back, with another source, only when no other slot
+    is left."""
     pairs = []
     for s in sources:
         if not s.clip_count:
@@ -83,6 +84,7 @@ def _space_slots(project: FlpProject, sources: list[SourceAnalysis]) -> list[tup
     while pairs and len(picked) < SLOT_CHECK_TRIES:
         best = max(range(len(pairs)), key=lambda i: (
             all(pairs[i][1].insert != e.insert for _, e in picked),
+            all((pairs[i][1].insert, pairs[i][1].slot) != (e.insert, e.slot) for _, e in picked),
             all(pairs[i][0].channel != s.channel for s, _ in picked)))
         picked.append(pairs.pop(best))
     return picked
