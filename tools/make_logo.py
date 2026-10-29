@@ -5,6 +5,7 @@ Outputs (in src/eden/assets/):
   eden-logo.png   1024 px
   eden.ico        Windows icon, 16 to 256 px
   tree.json       triangle geometry, used by the animated splash screen
+  glow.png        soft golden light for the interface background
 
 Deterministic: same seed, same logo.
 """
@@ -150,6 +151,16 @@ def raster(triangles: list[dict], size: int) -> Image.Image:
     return img.resize((size, size), Image.LANCZOS)
 
 
+def glow(size: int) -> Image.Image:
+    y, x = np.mgrid[0:size, 0:size]
+    r = np.hypot(x - size / 2, y - size / 2) / (size / 2)
+    alpha = np.clip(1 - r, 0, 1) ** 2.2
+    rgba = np.zeros((size, size, 4), dtype=np.uint8)
+    rgba[..., 0], rgba[..., 1], rgba[..., 2] = 247, 197, 49
+    rgba[..., 3] = (alpha * 255).astype(np.uint8)
+    return Image.fromarray(rgba, "RGBA")
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     triangles = build()
@@ -161,6 +172,7 @@ def main() -> None:
     raster(triangles, 256).save(OUT / "eden.ico",
                                 sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64),
                                        (128, 128), (256, 256)])
+    glow(512).save(OUT / "glow.png")
     print(f"{len(triangles)} triangles → {OUT}")
 
 
