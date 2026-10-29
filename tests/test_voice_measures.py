@@ -14,7 +14,7 @@ from eden.mix.analysis import (FREQUENT_NOTE_SHARE, RESONANCE_MIN_DB, SILENCE_DB
                                VocalMeasure, _band_power, _inside_phrases, active_frames, deess_band_low_hz,
                                find_resonances, frequent_pitches, level_of, low_mid_buildup, measure_vocal,
                                near_sung_notes, sibilant_frames, sibilant_peak)
-from eden.mix.dsp import apply_sos, peaking_sos
+from eden.mix.dsp import apply_sos, peaking_sos, shelf_sos
 from eden.mix.loudness import block_loudness, gated_loudness
 from eden.mix.treatments import apply
 from eden.mix.vocal import HIGHPASS_TRIGGER_DB, LOW_MID_MIN_DB, PROFILES, plan_voice
@@ -101,6 +101,19 @@ def test_a_broad_low_mid_bump_arms_the_low_mid_cut(seed):
     cut = [t for t in _plan(m) if t.label.startswith("Bas-médiums")]
     assert cut and _octaves(cut[0].params["freq_hz"], 300) <= 1 / 6 and m.low_mid_excess_db >= LOW_MID_MIN_DB
     assert f"{m.low_mid_excess_db:.1f} dB" in cut[0].reason
+
+
+@pytest.mark.parametrize("seed", [1, 5])
+def test_no_low_mid_bump_is_placed_where_no_harmonic_was_measured(seed):
+    centres = 75.0 * 2 ** ((np.arange(103) + 0.5) / 24)
+    counts = np.where(centres > 520, 40.0, 0.0)  # harmonics from 527 Hz up only (2nd harmonic of 262 Hz)
+    lift = np.where(np.abs(np.log2(centres / 527)) < 1 / 30, 4.0, 0.0)
+    assert low_mid_buildup(HarmonicProfile(centres, lift * counts, counts), []) == (300.0, 0.0)
+    # a clean voice on 262–440 Hz, a little warm: its 2nd harmonics sit on the vowels' first formant,
+    # and the 1/3-octave average of the 524 Hz one alone read as a 2.6 dB bump at 469 Hz, cut by 3 dB
+    x = apply_sos(voice(seed=seed, notes=[262, 294, 330, 349, 392, 440]), shelf_sos(FS, 300, 3.0, high=False))
+    m = measure_vocal(x, FS)
+    assert m.mud_db > 6.0 and not [t.label for t in _plan(m) if t.kind == "eq"]
 
 
 def _measure(**kw):
@@ -203,6 +216,13 @@ def test_a_clean_voice_is_not_high_passed_for_its_own_fundamental(notes):
         assert not [t for t in _plan(m, role) if t.kind == "highpass"], role
 
 
+@pytest.mark.parametrize("samples", [44, 60, 88, 200])
+def test_a_voice_of_a_few_milliseconds_is_measured(samples):
+    # decimated for the low spectrum, 44 to 87 samples leave a single sample to analyse
+    m = measure_vocal(voice(seed=3, seconds=1)[:samples], FS)
+    assert not [t for t in _plan(m) if t.kind == "highpass"]
+
+
 @pytest.mark.parametrize("seed,notes", [(3, None), (5, None), (3, DEEP)])
 def test_rumble_is_high_passed_and_the_reason_states_the_measure(seed, notes):
     m = measure_vocal(voice(seed=seed, notes=notes, rumble=0.04), FS)
@@ -273,8 +293,10 @@ def test_the_voice_chain_section_of_the_docs_matches_the_code():
     assert ratios[0] == pytest.approx(1.5, abs=0.01) and ratios[2] == ratios[3] == 3.0
     leveling = next(line for line in section.splitlines() if line.startswith("| Compression de niveau"))
     assert "1,5:1 (écart de 4 dB) à 3:1 (10 dB et plus)" in leveling
-    assert re.search(r"facteur de crête\s+> 9 dB\), la compression des crêtes, et au-delà de 12 dB", section)
-    assert "le gain de compensation suit dès qu'un compresseur ou un de-esser a" in section.replace("\n", " ")
+    prose = section.replace("\n", " ")
+    assert "facteur de crête > 9 dB), la compression des crêtes, et au-delà de 12 dB" in prose
+    assert "le gain de compensation suit dès qu'un compresseur ou un de-esser a agi" in prose
+    assert not re.search(r"^>", section, re.MULTILINE)  # a line opening on '>' would render as a quote
     for value in (HIGHPASS_TRIGGER_DB, RESONANCE_MIN_DB, LOW_MID_MIN_DB):
         assert f"{_french(value)} dB" in section, value
     assert f"{FREQUENT_NOTE_SHARE * 100:.0f} %" in section and f"{_french(SILENCE_DB)} dBFS" in section

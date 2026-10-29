@@ -28,7 +28,7 @@ ANALYSIS_LOW_HZ, ANALYSIS_HIGH_HZ = 150.0, 8000.0
 HARMONIC_HIGH_HZ = 2000.0  # resonances below are read on the sung harmonics, above on the LPC envelope
 RESONANCE_MIN_DB = 4.5  # how far a resonance must stick out (strict: a missed one costs less than a wrong cut)
 FREQUENT_NOTE_SHARE = 0.3  # a semitone holding this share of the pitched frames is a note the voice dwells on
-LOW_SPECTRUM_HZ = 100.0  # the high-pass is decided on the spectrum below this (half its highest cut)
+LOW_SPECTRUM_HZ = 100.0  # the high-pass is decided on the spectrum below this (half its highest cut is 80 Hz)
 
 
 @dataclass
@@ -104,10 +104,13 @@ def sung_samples(x: np.ndarray, active: np.ndarray, size: int) -> np.ndarray:
 
 
 def _psd_db(sung: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
-    """Welch spectrum (dB) of every channel, their powers averaged."""
+    """Welch spectrum (dB) of every channel, their powers averaged (one channel at a time: Welch's
+    overlapping frames take several times the signal's memory)."""
     nper = min(8192, max(256, 1 << int(math.log2(max(sung.shape[0], 256)))))
-    freqs, psd = welch(sung, fs=fs, nperseg=nper, axis=0)
-    return freqs, 10 * np.log10(np.maximum(psd.mean(axis=1), 1e-30))
+    freqs, psd = welch(sung[:, 0], fs=fs, nperseg=nper)
+    for c in range(1, sung.shape[1]):
+        psd = psd + welch(sung[:, c], fs=fs, nperseg=nper)[1]
+    return freqs, 10 * np.log10(np.maximum(psd / sung.shape[1], 1e-30))
 
 
 def _band_db(freqs: np.ndarray, psd_db: np.ndarray, lo: float, hi: float) -> float:
@@ -130,7 +133,7 @@ def _low_spectrum(sung: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
     freqs, psd = welch(low, fs=rate, nperseg=nper, axis=0)
     keep = freqs < LOW_SPECTRUM_HZ
     total = max(float(np.mean(sung ** 2)), 1e-30)
-    return freqs[keep], psd.mean(axis=1)[keep] * (freqs[1] - freqs[0]) / total
+    return freqs[keep], psd.mean(axis=1)[keep] * (rate / nper) / total
 
 
 def _excess_over_octave(f: np.ndarray, p: np.ndarray) -> np.ndarray:
@@ -349,9 +352,13 @@ def find_resonances(profile: HarmonicProfile, envelope: tuple[np.ndarray, np.nda
 def low_mid_buildup(profile: HarmonicProfile, notes: list[float]) -> tuple[float, float]:
     """(centre, excess dB) of the strongest bump between 150 and 500 Hz: the harmonics' lift over
     their neighbours' line, averaged over 1/3 octave (a broad bump: proximity effect, boxiness).
-    Bands within 1/6 octave of a note the voice dwells on, or of its octave, are left out."""
+    Only bands whose own 1/8 octave holds harmonics count: the average must not place a bump where
+    no harmonic was measured (a voice whose lowest 2nd harmonic is 524 Hz would otherwise get a
+    "bump" at 469 Hz from that harmonic alone). Bands within 1/6 octave of a note the voice dwells
+    on, or of its octave, are left out."""
     third = profile.mean(THIRD)
-    zone = (profile.centres >= 150) & (profile.centres <= 500) & np.isfinite(third)
+    zone = ((profile.centres >= 150) & (profile.centres <= 500) & np.isfinite(third)
+            & np.isfinite(profile.mean(NARROW)))
     zone &= np.array([not near_sung_notes(c, notes) for c in profile.centres])
     if not zone.any():
         return 300.0, 0.0
