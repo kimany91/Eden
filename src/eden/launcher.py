@@ -69,11 +69,13 @@ def self_test(report: Path) -> int:
 
 
 def _audio_check() -> str:
-    """The bundled audio decoder must be able to write and read a WAV file."""
+    """The bundled audio decoder and the mixing maths must work in the installed app."""
     import tempfile
 
     import numpy as np
     import soundfile as sf
+
+    from eden.mix.loudness import integrated_loudness
 
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "test.wav"
@@ -81,7 +83,11 @@ def _audio_check() -> str:
         data, sr = sf.read(path)
         if sr != 48000 or data.shape != (480, 2):
             raise RuntimeError("lecture/écriture WAV incorrecte")
-    return f"audio : libsndfile {sf.__libsndfile_version__}"
+    tone = np.sin(2 * np.pi * 997 * np.arange(48000 * 3) / 48000)
+    lufs = integrated_loudness(tone, 48000)
+    if abs(lufs + 3.01) > 0.05:
+        raise RuntimeError(f"mesure de volume incorrecte ({lufs:.2f} LUFS)")
+    return f"audio : libsndfile {sf.__libsndfile_version__}, mesure de volume {lufs:.2f} LUFS"
 
 
 def main() -> int:

@@ -147,3 +147,48 @@ def test_launcher_self_test(tmp_path):
     text = log.read_text(encoding="utf-8")
     assert proc.returncode == 0, text
     assert "OK" in text and "libsndfile" in text
+
+
+def test_mix_page_flow(ui, tmp_path):
+    from pathlib import Path
+
+    c, engine = ui(renderer_factory=sim_renderer)
+    c.openProject(str(make_session(tmp_path)))
+    wait_idle(c)
+    c.renderFromFl()
+    wait_idle(c)
+    assert c.renderSummary["ok"] is True
+
+    c.intensity = 0.6
+    assert c.intensity == pytest.approx(0.6)
+    c.mixProject()
+    assert c.stage == "mixing"
+    wait_idle(c)
+    assert c.stage == "mixed" and c.errorMessage == "", c.errorMessage
+    assert [s["status"] for s in c.mixSteps] == ["done"] * 4
+    first = c.mixResult["id"]
+    assert c.mixResult["intensity"] == 60
+    assert c.mixResult["parts"][-1]["roleKey"] == "rest"
+    assert len(c.mixVersions) == 1
+
+    c.intensity = 0.0
+    c.mixProject()
+    wait_idle(c)
+    assert c.mixResult["untouched"] is True
+    assert [v["id"] for v in c.mixVersions][1] == first
+    c.showVersion(first)
+    assert c.mixResult["id"] == first
+
+    out = tmp_path / "exports"
+    out.mkdir()
+    c.setExportFolder(str(out))
+    c.exportWav("Mon son - Eden", 48000, 24)
+    wait_idle(c)
+    assert (out / "Mon son - Eden.wav").is_file()
+    assert "48 kHz, 24 bits" in c.exportMessage and c.stage == "mixed"
+    c.exportWav("Mon son - Eden", 48000, 24)  # same name again: refused, nothing overwritten
+    wait_idle(c)
+    assert c.errorStep == "Export du WAV" and "existe déjà" in c.errorMessage
+    assert sorted(p.name for p in out.iterdir()) == ["Mon son - Eden.wav"]
+    assert engine.load_warnings == []
+    assert not list(Path(os.environ["EDEN_HOME"]).rglob("*.flp"))

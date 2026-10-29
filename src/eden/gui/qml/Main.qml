@@ -79,6 +79,11 @@ ApplicationWindow {
                     anchors.fill: parent
                     active: controller.stage === "rendering" || controller.stage === "rendered"
                 }
+                MixPage {
+                    anchors.fill: parent
+                    active: controller.stage === "mixing" || controller.stage === "mixed"
+                    onChooseFolder: exportDialog.open()
+                }
             }
         }
     }
@@ -94,6 +99,12 @@ ApplicationWindow {
         title: "Choisir un projet FL Studio"
         nameFilters: ["Projets FL Studio (*.flp)"]
         onAccepted: controller.openProject(selectedFile.toString())
+    }
+
+    FolderDialog {
+        id: exportDialog
+        title: "Dossier où enregistrer le WAV"
+        onAccepted: controller.setExportFolder(selectedFolder.toString())
     }
 
     FileDialog {

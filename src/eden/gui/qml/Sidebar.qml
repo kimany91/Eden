@@ -9,16 +9,19 @@ Rectangle {
         { title: "Projet", sub: "Choisir un .flp" },
         { title: "Analyse", sub: "Pistes, voix, effets" },
         { title: "Son de FL Studio", sub: "Pistes et Master" },
-        { title: "Mixage Eden", sub: "Prochaine version", soon: true },
-        { title: "Export WAV", sub: "Prochaine version", soon: true }
+        { title: "Mixage Eden", sub: "Voix, équilibre, ton Master" },
+        { title: "Export WAV", sub: "Dossier et format" }
     ]
     readonly property int current: controller.stage === "home" ? 0
-                                  : (controller.stage === "analyzing" || controller.stage === "analyzed") ? 1 : 2
+                                  : (controller.stage === "analyzing" || controller.stage === "analyzed") ? 1
+                                  : (controller.stage === "rendering" || controller.stage === "rendered") ? 2
+                                  : controller.exportMessage !== "" ? 4 : 3
     function stepDone(i) {
         if (i === 0) return controller.projectPath !== "" && current > 0
         if (i === 1) return controller.stage === "analyzed" || current > 1
-        if (i === 2) return controller.stage === "rendered" && controller.renderSummary.ok === true
-        return false
+        if (i === 2) return controller.renderSummary.ok === true && current > 1
+        if (i === 3) return controller.mixResult.id !== undefined
+        return controller.exportMessage !== ""
     }
 
     Rectangle { anchors { right: parent.right; top: parent.top; bottom: parent.bottom } width: 1; color: Theme.border }
@@ -79,7 +82,6 @@ Rectangle {
                         height: 58
                         readonly property bool isCurrent: index === side.current
                         readonly property bool done: side.stepDone(index)
-                        opacity: modelData.soon ? 0.45 : 1
 
                         Rectangle {
                             id: badge

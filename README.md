@@ -11,7 +11,7 @@ ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 | 1. Audit et architecture | ✅ [docs/01-audit-architecture.md](docs/01-audit-architecture.md) |
 | 2. Inspection en lecture seule | ✅ testée sur projets de test (FL 20.8) — à valider sur tes projets |
 | 3. Pilotage de FL Studio et récupération du son | ✅ implémenté et testé avec un simulateur — à valider avec ton FL Studio (`eden fl-probe`) |
-| 4. Moteur de mixage + export WAV | ⏳ |
+| 4. Mixage Eden, passage dans ton Master FL, export WAV | ✅ testé avec voix de test et simulateur FL — réglages à affiner à l'écoute ([docs/mixage.md](docs/mixage.md)) |
 | 5. Interface et installateur | ✅ interface animée (QML), installateur Windows construit et testé automatiquement — reste : lecteur A/B, réglages de mixage |
 | 6. Tests et amélioration | ⏳ |
 
@@ -31,8 +31,13 @@ projet où les autres pistes sont coupées ; cette copie est effacée dès que F
 Eden vérifie ensuite que la somme des parties redonne exactement le mix d'origine, et que
 les fins d'écho ou de reverb ne sont pas coupées. Ces pistes alimenteront le moteur de
 mixage d'Eden. **Ton mastering reste dans FL Studio** : Eden sait déjà repasser un mix
-dans ton propre Master FL (il le vérifie à chaque rendu). **Le moteur de mixage et
-l'export du WAV final ne sont pas encore faits.**
+dans ton propre Master FL (il le vérifie à chaque rendu).
+
+Enfin, **Eden mixe** : il mesure chaque voix (après tes effets FL), corrige seulement ce
+qui doit l'être (grondement, résonance, sifflantes, dynamique, équilibre avec l'instru,
+backs et ad-libs), explique chaque décision, puis repasse le mix dans **ton Master FL**.
+Tu règles l'intensité (0 % = ton morceau à l'identique), tu gardes chaque version et tu
+exportes le WAV final. Détails : [docs/mixage.md](docs/mixage.md).
 
 ## Installation (Windows)
 
@@ -58,6 +63,7 @@ pip install -e ".[gui]"
 eden inspect "C:\...\Mon son.flp"      # rapport dans le terminal
 eden fl-probe "C:\...\Mon son.flp"     # test du pilotage de FL Studio
 eden render "C:\...\Mon son.flp"       # rendu de toutes les pistes
+eden mix "C:\...\Mon son.flp" --export "C:\...\Mon son - Eden.wav"
 ```
 
 Eden ne modifie jamais le projet : il le lit une fois, vérifie son empreinte SHA-256 avant

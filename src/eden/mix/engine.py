@@ -99,7 +99,8 @@ def plan_vocal(m: VocalMeasure, role: str, k: float) -> list[Treatment]:
         cut = -min(3.0, 1.5 + (m.mud_db - 6.0) / 2)
         out.append(Treatment(
             "eq_cut", f"Bas-médiums 300 Hz {cut * k:.1f} dB",
-            f"Bas-médiums {m.mud_db:.1f} dB au-dessus de la présence (son terne)",
+            f"Bas-médiums {min(m.mud_db, 30.0):.0f} dB{'+' if m.mud_db > 30 else ''} au-dessus "
+            "de la présence (son terne)",
             {"freq_hz": 300.0, "q": 1.0, "gain_db": cut * k}))
 
     if m.sibilant_excess_db > SIBILANT_LIMIT_DB:

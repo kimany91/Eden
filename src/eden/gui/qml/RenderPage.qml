@@ -203,18 +203,22 @@ EdenPage {
                 Layout.preferredHeight: 112
                 Column {
                     anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 18 }
-                    spacing: 6
-                    Row {
-                        spacing: 8
-                        Icon { width: 16; height: 16; name: "spark"; color: Theme.gold }
-                        Text { text: "Prochaine étape : mixage Eden"; color: Theme.text; font.family: Theme.fontFamily; font.pixelSize: 14; font.weight: Font.DemiBold }
-                    }
+                    spacing: 10
                     Text {
                         width: parent.width
                         wrapMode: Text.WordWrap
-                        text: "Disponible dans la prochaine version d'Eden."
+                        text: page.sum.ok ? "Étape suivante : Eden mixe tes voix, puis ton Master FL fait le mastering."
+                                          : "Le mixage sera possible quand les deux vérifications seront validées."
                         color: Theme.textMuted
-                        font.family: Theme.fontFamily; font.pixelSize: 13
+                        font.family: Theme.fontFamily; font.pixelSize: 12
+                    }
+                    EdenButton {
+                        compact: true
+                        primary: true
+                        text: "Mixer automatiquement"
+                        iconName: "spark"
+                        enabled: page.sum.ok === true && !controller.busy
+                        onClicked: controller.mixProject()
                     }
                 }
             }

@@ -66,23 +66,25 @@ faits à chaque rendu).
 
 Ensuite : passerelle de script FL optionnelle pour lire les réglages des plugins.
 
-## Phase 4 — Premier moteur de mixage
+## Phase 4 — Mixage Eden et passage dans le Master FL ✅ (voix de test, simulateur) / ⏳ (écoute)
 
-Chaîne simple et contrôlable, appliquée seulement si l'analyse la justifie :
-gain d'entrée → EQ correctif (résonances) → compression → de-esser → équilibre
-voix/instru → mix pré-Master (niveau d'entrée du Master conservé, pour que ton mastering FL
-réagisse comme avant) → passage dans ton Master FL → export WAV (dossier, nom,
-fréquence, profondeur de bits).
+Fait (détails et seuils : `docs/mixage.md`) :
+- mesures normalisées : volume intégré ITU-R BS.1770 (coefficients exacts), crête réelle ;
+- traitements : coupe-bas, coupes de résonance, bas-médiums, de-esser, compression, niveaux,
+  place pour la voix dans l'instru — chacun sans effet à intensité 0 ;
+- décisions à partir de mesures sur les voix rendues par FL, avec leur raison ;
+- niveau d'entrée du Master conservé, passage dans le Master FL, vérifications finales ;
+- versions conservées, export WAV (dossier, nom, fréquence, 16/24/32 bits) ;
+- page « Mixage Eden » dans l'interface, commande `eden mix`.
 
-Chaque module : mesures avant/après, paramètres enregistrés avec la raison de la décision,
-tests unitaires sur signaux synthétiques (sinus, bruit rose, sifflantes simulées) et tests
-de non-régression sur extraits de référence.
+Critères validés : à 0 %, résultat identique au morceau d'origine (écart < −100 dB) ;
+voix propre et voix Auto-Tune non traitées ; chaque défaut de test corrigé et mesurablement
+réduit ; volume conservé ; aucun export écrêté en 16/24 bits.
 
-Critères : aucune saturation numérique ; LUFS et crêtes dans les cibles ; mix « intensité
-0 % » identique au rendu d'origine ; écoute validée par toi sur 3 morceaux.
+Reste à valider **avec toi** : écoute sur 3 morceaux, ajustement des seuils.
 
-Phase 4b : saturation, reverb/delay, gestion fine des backs/ad-libs, automation de volume
-vocal, correction de hauteur (cf. audit §7).
+Phase 4b : lecteur A/B intégré, saturation, reverb/delay, automation de volume vocal,
+correction de hauteur (cf. audit §7).
 
 ## Phase 5 — Interface et installateur ✅ (base) / ⏳ (compléments)
 
@@ -91,8 +93,10 @@ glisser-déposer, progression réelle) ; logo ; installateur Windows (Inno Setup
 administrateur, raccourcis) construit et testé automatiquement sur Windows à chaque envoi ;
 publication automatique des versions sur tag `v*`, utilisée par les mises à jour.
 
-Reste : lecteur audio A/B (original / Eden, à niveau égal), réglages d'intensité par
-module, historique des versions (restaurer, comparer), écran d'export WAV.
+Fait aussi : page de mixage (intensité, décisions, versions, export).
+
+Reste : lecteur audio A/B (original / Eden, à niveau égal), réglage d'intensité par
+traitement.
 
 ## Phase 6 — Tests et amélioration
 

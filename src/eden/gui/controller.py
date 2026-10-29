@@ -7,14 +7,15 @@ progress reported by the engine and real outcomes (no simulated progress).
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 
 from eden import __version__
 from eden.gui import viewmodel
+from eden.mix.session import STEPS as MIX_STEPS
 from eden.project.inspector import STEPS, InspectionError, InspectionReport, inspect_project
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
@@ -30,6 +31,11 @@ def default_renderer():
     if exe is None or not settings.render_args:
         return None
     return FLStudioRenderer([str(exe)], settings.render_args)
+
+
+def default_export_folder() -> Path:
+    music = Path.home() / "Music"
+    return music if music.is_dir() else Path.home()
 
 
 def default_probe(path: Path, log: Callable[[str], None]):
@@ -81,10 +87,17 @@ class EdenController(QObject):
     probeLogChanged = Signal()
     needsFlPathChanged = Signal()
     updateMessageChanged = Signal()
+    intensityChanged = Signal()
+    mixStepsChanged = Signal()
+    mixResultChanged = Signal()
+    mixVersionsChanged = Signal()
+    exportFolderChanged = Signal()
+    exportMessageChanged = Signal()
 
     def __init__(self, renderer_factory=None, probe=None, check_updates: bool = True) -> None:
         super().__init__()
-        self._stage = "home"  # home | analyzing | analyzed | rendering | rendered
+        # home | analyzing | analyzed | rendering | rendered | mixing | mixed
+        self._stage = "home"
         self._busy = False
         self._progress = 0.0
         self._progressLabel = ""
@@ -99,7 +112,14 @@ class EdenController(QObject):
         self._probeLog: list = []
         self._needsFlPath = False
         self._updateMessage = ""
+        self._intensity = 1.0
+        self._mixSteps: list = [{"label": s, "status": "pending"} for s in MIX_STEPS]
+        self._mixResult: dict = {}
+        self._mixVersions: list = []
+        self._exportFolder = str(default_export_folder())
+        self._exportMessage = ""
         self.report_obj: InspectionReport | None = None
+        self.renders = None  # RenderResult of the current project
         self.renderer_factory = renderer_factory or default_renderer
         self.probe = probe or default_probe
         self.worker: _Worker | None = None
@@ -123,6 +143,19 @@ class EdenController(QObject):
     probeLog = Property("QVariantList", lambda self: self._probeLog, notify=probeLogChanged)
     needsFlPath = Property(bool, lambda self: self._needsFlPath, notify=needsFlPathChanged)
     updateMessage = Property(str, lambda self: self._updateMessage, notify=updateMessageChanged)
+    mixSteps = Property("QVariantList", lambda self: self._mixSteps, notify=mixStepsChanged)
+    mixResult = Property("QVariantMap", lambda self: self._mixResult, notify=mixResultChanged)
+    mixVersions = Property("QVariantList", lambda self: self._mixVersions, notify=mixVersionsChanged)
+    exportFolder = Property(str, lambda self: self._exportFolder, notify=exportFolderChanged)
+    exportMessage = Property(str, lambda self: self._exportMessage, notify=exportMessageChanged)
+
+    def _get_intensity(self) -> float:
+        return self._intensity
+
+    def _set_intensity(self, value: float) -> None:
+        self._set("intensity", max(0.0, min(1.0, float(value))))
+
+    intensity = Property(float, _get_intensity, _set_intensity, notify=intensityChanged)
 
     @Property(str, constant=True)
     def version(self) -> str:
@@ -167,6 +200,8 @@ class EdenController(QObject):
             self._set("stage", "home")
         elif self._stage == "rendering":
             self._set("stage", "analyzed")
+        elif self._stage == "mixing":
+            self._set("stage", "mixed")
 
     def _on_log(self, line: str) -> None:
         self._set("probeLog", [*self._probeLog, line])
@@ -181,9 +216,12 @@ class EdenController(QObject):
         self._set("projectPath", str(path))
         self._set("projectName", path.stem)
         self.report_obj = None
+        self.renders = None
         self._set("report", {})
         self._set("renderRows", [])
         self._set("renderSummary", {})
+        self._set("mixResult", {})
+        self._set("exportMessage", "")
         self.analyze()
 
     @Slot()
@@ -265,6 +303,7 @@ class EdenController(QObject):
             self._set("renderRows", viewmodel.mark_step(self._renderRows, index))
 
     def _on_rendered(self, result) -> None:
+        self.renders = result
         rows, summary = viewmodel.render_view(self._renderRows, result)
         self._set("renderRows", rows)
         self._set("renderSummary", summary)
@@ -273,6 +312,100 @@ class EdenController(QObject):
                   "Terminé, avec des points à vérifier (voir ci-dessous).")
         self._set("busy", False)
         self._set("stage", "rendered")
+
+    # -- Eden's mix, the FL Master, export ---------------------------------------
+    @Slot()
+    def mixProject(self) -> None:
+        if self._busy or self.report_obj is None or self.renders is None or not self.renders.ok:
+            return
+        from eden.mix.session import MixError, mix_project
+        from eden.settings import load_settings
+
+        project, report, renders = Path(self._projectPath), self.report_obj, self.renders
+        renderer, intensity = self.renderer_factory(), self._intensity
+        if renderer is None:
+            return
+        self._set("mixSteps", [{"label": s, "status": "pending"} for s in MIX_STEPS])
+        self._set("exportMessage", "")
+        self._set("progress", 0.0)
+        self._set("stage", "mixing")
+        self._load_versions()
+
+        def job(worker: _Worker):
+            try:
+                return mix_project(project, report, renders, renderer, intensity,
+                                   timeout_s=load_settings().render_timeout_s,
+                                   on_step=lambda i, n, s: worker.progress.emit(i, n, s))
+            except MixError as exc:
+                raise _StepError("Mixage Eden", str(exc)) from exc
+
+        self._start(job, self._on_mixed, self._on_mix_progress)
+
+    def _on_mix_progress(self, index: int, total: int, label: str) -> None:
+        self._set("progress", index / total)
+        self._set("progressLabel", label)
+        self._set("mixSteps", [
+            {"label": s, "status": "done" if i < index else "running" if i == index else "pending"}
+            for i, s in enumerate(MIX_STEPS)
+        ])
+
+    def _on_mixed(self, version) -> None:
+        self._set("mixSteps", [{"label": s, "status": "done"} for s in MIX_STEPS])
+        self._set("progress", 1.0)
+        self._set("progressLabel", "")
+        self._set("mixResult", viewmodel.mix_view(json.loads(version.to_json())))
+        self._load_versions()
+        self._set("busy", False)
+        self._set("stage", "mixed")
+
+    def _load_versions(self) -> None:
+        from eden.mix.session import list_versions
+
+        self._set("mixVersions", viewmodel.versions_view(list_versions(Path(self._projectPath))))
+
+    @Slot(str)
+    def showVersion(self, version_id: str) -> None:
+        """Bring back an earlier mix (its decisions and its final WAV)."""
+        from eden.mix.session import list_versions
+
+        for data in list_versions(Path(self._projectPath)):
+            if data["id"] == version_id:
+                self._set("mixResult", viewmodel.mix_view(data))
+                self._set("exportMessage", "")
+                return
+
+    @Slot(str)
+    def setExportFolder(self, url: str) -> None:
+        self._set("exportFolder", QUrl(url).toLocalFile() if "://" in url else url)
+
+    @Slot(str, int, int)
+    def exportWav(self, name: str, sample_rate: int, bit_depth: int) -> None:
+        source = self._mixResult.get("finalWav")
+        if self._busy or not source:
+            return
+        from eden.mix.export import ExportError, export_wav
+
+        name = name.strip() or f"{self._projectName} - Eden"
+        destination = Path(self._exportFolder) / name
+        stage = self._stage
+
+        def job(_worker: _Worker):
+            try:
+                return export_wav(Path(source), destination, sample_rate or None, bit_depth)
+            except ExportError as exc:
+                raise _StepError("Export du WAV", str(exc)) from exc
+
+        def done(result) -> None:
+            self._set("busy", False)
+            self._set("stage", stage)
+            self._set("exportMessage", viewmodel.export_message(result))
+
+        self._set("exportMessage", "")
+        self._start(job, done)
+
+    @Slot()
+    def openExportFolder(self) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(self._exportFolder))
 
     @Slot(str)
     def setFlStudioPath(self, url: str) -> None:

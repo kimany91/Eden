@@ -30,3 +30,22 @@ def test_render_rows_follow_pipeline_steps(tmp_path):
     assert {r["status"] for r in final} == {"done"}
     assert summary["ok"] and summary["stemCount"] == 3 and summary["vocalCount"] == 2
     assert "Master FL est conservé" in summary["masterMessage"]
+
+
+def test_mix_view_and_versions(tmp_path):
+    import json
+
+    from eden.mix.session import list_versions, mix_project
+
+    project = make_session(tmp_path)
+    report = inspect_project(project, roots=SearchRoots())
+    renders = render_project(project, sim_renderer(), timeout_s=120, report=report)
+    version = mix_project(project, report, renders, sim_renderer(), intensity=1.0, timeout_s=120)
+    view = viewmodel.mix_view(json.loads(version.to_json()))
+    assert view["intensity"] == 100 and view["finalWav"] == version.final_wav
+    assert view["original"]["lufs"].endswith("LUFS") and view["final"]["truePeak"].endswith("dBTP")
+    lead = next(p for p in view["parts"] if p["label"] == "Lead")
+    assert lead["role"] == "Voix principale" and all(t["reason"] for t in lead["treatments"])
+    assert view["parts"][-1]["role"] == "Instru et reste du morceau"
+    versions = viewmodel.versions_view(list_versions(project))
+    assert versions[0]["id"] == version.id and versions[0]["intensity"] == 100

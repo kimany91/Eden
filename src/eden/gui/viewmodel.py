@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import math
+from datetime import datetime
 from pathlib import Path
 
+from eden.mix.export import ExportResult
+from eden.project.classify import ROLE_LABELS_FR
 from eden.project.inspector import InspectionReport, SourceAnalysis
 from eden.project.plugins import CATEGORY_LABELS_FR
 from eden.render.pipeline import RenderResult
@@ -143,3 +147,58 @@ def render_view(rows: list[dict], result: RenderResult) -> tuple[list[dict], dic
         "vocalCount": len([j for j in result.jobs if j.job.kind == "vocal"]),
     }
     return out, summary
+
+
+def _db(value: float | None, unit: str) -> str:
+    if value is None or not math.isfinite(value):
+        return "—"
+    return f"{value:.1f} {unit}"
+
+
+def _local_date(iso: str) -> str:
+    try:
+        return datetime.fromisoformat(iso).astimezone().strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        return iso
+
+
+def mix_view(version: dict) -> dict:
+    """A saved mix version (as stored in version.json) for the mix page."""
+    parts = []
+    for p in version["parts"]:
+        role = "Instru et reste du morceau" if p["role"] == "rest" else ROLE_LABELS_FR.get(p["role"], p["role"])
+        parts.append({
+            "label": p["label"],
+            "role": role,
+            "roleKey": p["role"],
+            "treatments": [{"label": t["label"], "reason": t["reason"]} for t in p["treatments"]],
+            "change": f"{_db(p['loudness_before'], 'LUFS')} → {_db(p['loudness_after'], 'LUFS')}"
+            if p["treatments"] else "",
+        })
+    o, f = version["original"], version["final"]
+    return {
+        "id": version["id"],
+        "date": _local_date(version["created_at"]),
+        "intensity": round(version["intensity"] * 100),
+        "finalWav": version["final_wav"],
+        "parts": parts,
+        "untouched": not any(p["treatments"] for p in parts),
+        "original": {"lufs": _db(o["loudness_lufs"], "LUFS"), "truePeak": _db(o["true_peak_db"], "dBTP")},
+        "final": {"lufs": _db(f["loudness_lufs"], "LUFS"), "truePeak": _db(f["true_peak_db"], "dBTP"),
+                  "sampleRate": f["sample_rate"]},
+        "warnings": version.get("warnings", []),
+    }
+
+
+def versions_view(versions: list[dict]) -> list[dict]:
+    return [{"id": v["id"], "date": _local_date(v["created_at"]),
+             "intensity": round(v["intensity"] * 100),
+             "lufs": _db(v["final"]["loudness_lufs"], "LUFS")} for v in versions]
+
+
+def export_message(result: ExportResult) -> str:
+    depth = "32 bits flottant" if result.bit_depth == 32 else f"{result.bit_depth} bits"
+    extras = [x for x, on in (("fréquence convertie", result.resampled),
+                              ("avec dither", result.dithered)) if on]
+    details = f"{result.sample_rate / 1000:g} kHz, {depth}" + (", " + ", ".join(extras) if extras else "")
+    return f"WAV exporté : {result.path} ({details})"
