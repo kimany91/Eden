@@ -162,8 +162,9 @@ Chaîne (tout hors ligne, en float64) :
    graves (moyenne sur 25 ms) qui ressort d'au moins 6 dB, à au moins 120 ms de la précédente
    et à moins de 30 dB de la plus forte ; l'écart est pris du 10ᵉ au 90ᵉ centile de ces
    crêtes, sur au moins 4 notes (choix d'Eden). La décroissance d'une note n'est donc pas un
-   écart entre notes ; une note plus faible qui démarre sur la queue encore forte de la
-   précédente peut ne pas ressortir de 6 dB, et n'est alors pas comptée ;
+   écart entre notes. Une note n'est comptée que si l'enveloppe redescend de 6 dB autour
+   d'elle : une note plus faible qui démarre sur la queue encore forte de la précédente, ou des
+   notes tenues qui s'enchaînent sans creux, ne ressortent pas et ne sont pas comparées ;
 3. compression de bus : 1,6:1, seuil 4 dB sous les passages forts (P90), attaque 30 ms,
    relâchement sur le temps ressenti, ≤ 3 dB (≈ 1,5 dB sur les passages forts) ;
 4. gain → clip doux suréchantillonné ×8 (arrondi à partir de 70 % du plafond du clip,
@@ -211,13 +212,14 @@ mesurée (moyenne quand elles agissent, et maximum).
   des masters d'Eden : 0,05 à 0,25 dB de plus).
 - **Vérifications** : volume intégré et court terme maximal, plage de volume (EBU Tech 3342),
   crête réelle, rapport crête / volume (averti 0,5 dB sous celui que le plafond prévoit,
-  plafond moins volume : 6 dB à −9 LUFS et −3 dBTP, d'où 5,5 dB ; un master plus calme ne
-  l'est que sous 7,5 dB ; choix d'Eden), perte en mono, **trous en mono** (une bande de tiers
-  d'octave qui, en moyenne sur 2 s, perd plus de 6 dB en mono alors qu'elle porte au moins
-  1 % de la puissance de ces 2 s ; un élément large et décorrélé perd 3 dB en moyenne et n'en
-  est pas un), et ce que chaque plateforme fera du fichier : Spotify, YouTube, TIDAL, Amazon,
-  SoundCloud −14 LUFS ; Deezer −15 ; Apple Music −16 (non vérifiés, cohérents entre eux) ; les
-  morceaux forts sont baissés, Spotify ne remonte les faibles que jusqu'à −1 dBTP.
+  plafond moins volume visé, ou atteint si le budget arrête le master : 6 dB à −9 LUFS et
+  −3 dBTP, d'où 5,5 dB ; un master plus calme ne l'est que sous 7,5 dB ; choix d'Eden), perte
+  en mono, **trous en mono** (une bande de tiers d'octave qui, en moyenne sur 2 s, perd plus
+  de 6 dB en mono alors qu'elle porte au moins 1 % de la puissance de ces 2 s ; un élément
+  large et décorrélé perd 3 dB en moyenne et n'en est pas un), et ce que chaque plateforme
+  fera du fichier : Spotify, YouTube, TIDAL, Amazon, SoundCloud −14 LUFS ; Deezer −15 ; Apple
+  Music −16 (non vérifiés, cohérents entre eux) ; les morceaux forts sont baissés, Spotify ne
+  remonte les faibles que jusqu'à −1 dBTP.
 
 ## Versions et export
 

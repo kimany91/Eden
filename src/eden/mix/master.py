@@ -411,8 +411,8 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
     reason = (f"Cible {goal:.1f} LUFS ; écrêtage doux : crête la plus forte baissée de {red.clip_db:.1f} dB, "
               f"puis limiteur jusqu'à {red.limiter_db:.1f} dB ; les deux ensemble baissent de "
               f"{red.recurring_db:.1f} dB les crêtes qui reviennent dans le morceau ({MAX_PEAK_REDUCTION_DB:.0f} dB "
-              f"au plus), et de {red.single_db:.1f} dB les 30 ms les plus réduites ({budget:.0f} dB au plus "
-              "pour un événement isolé)")
+              f"au plus) ; leur plus forte baisse tenue sur 30 ms de suite est de {red.single_db:.1f} dB "
+              f"({budget:.0f} dB au plus pour un événement isolé)")
     if capped:
         # the ceiling is chosen again on the loudness reached; every stage scales with the ceiling,
         # so the same master with −2 dBTP is exactly this one 1 dB higher, same reductions
@@ -424,8 +424,9 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
                        f"laisse {CEILING_DBTP - reached:.1f} dB entre crête et volume : pas assez dense pour "
                        f"demander {DENSE_CEILING_DBTP:.0f} dBTP")
         elif shift > 0:
+            higher = min(goal, reached + shift)  # with that 1 dB more, the budget may no longer stop it
             reason += (f" ; avec un plafond à {CEILING_DBTP:.0f} dBTP, ce master monterait à "
-                       f"{reached + shift:.1f} LUFS et laisserait au plus {CEILING_DBTP - reached - shift:.1f} dB "
+                       f"{higher:.1f} LUFS et laisserait au plus {CEILING_DBTP - higher:.1f} dB "
                        f"entre crête et volume : sous {DENSE_PLR_DB:.0f} dB, l'encodage à bas débit dépasse de 1 à "
                        f"2 dB, d'où {ceiling:.0f} dBTP")
         if red.isolated:

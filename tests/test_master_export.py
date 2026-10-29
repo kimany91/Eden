@@ -248,6 +248,20 @@ def test_a_capped_master_chooses_its_ceiling_on_the_loudness_reached(song, ceili
         assert f"ce master monterait à {reached + shift:.1f} LUFS" in r.treatments[-1].reason
 
 
+def test_a_master_capped_just_under_its_goal_keeps_the_dense_ceiling_and_says_why(monkeypatch):
+    # stopped 0.3 LU under −9 LUFS by one isolated event: at −2 dBTP the same budget would allow
+    # 1 dB more, so that master would reach the goal itself (not 0.7 LU above it), still dense
+    x = mix(6.0)
+    red = M.PeakReduction(6.0, 2.0, 7.2, 13.2, 3.0)
+    monkeypatch.setattr(M, "_loudest", lambda y, fs, goal, ceiling: (y, 8.0, red, goal - 0.3, True))
+    r = M.master(x, FS, 1.0, tempo_bpm=140)
+    loud = r.treatments[-1]
+    assert loud.measured["ceiling_dbtp"] == M.DENSE_CEILING_DBTP
+    assert "ce master monterait à -9.0 LUFS et laisserait au plus 7.0 dB entre crête et volume" in loud.reason
+    assert "plus forte baisse tenue sur 30 ms de suite est de 13.2 dB (13 dB au plus" in loud.reason
+    assert any("masterisé à -9.3 LUFS" in w and "crête isolée vers 0:03" in w for w in r.warnings)
+
+
 def test_dense_ceiling_reason_does_not_round_its_figure():
     r = M.master(mix(6.0), FS, 1.0, tempo_bpm=140, target_lufs=-9.6)
     assert "laisserait au plus 7.6 dB entre crête et volume : sous 8 dB" in r.treatments[-1].reason
