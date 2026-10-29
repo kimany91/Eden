@@ -74,6 +74,62 @@ class InspectWorker(QThread):
             self.done.emit(report)
 
 
+def default_renderer():
+    """FL Studio renderer from the saved settings, or None if not probed yet."""
+    from eden.render.fl_studio import FLStudioRenderer, find_fl_studio
+    from eden.settings import load_settings
+
+    settings = load_settings()
+    exe = find_fl_studio(settings.fl_path)
+    if exe is None or not settings.render_args:
+        return None
+    return FLStudioRenderer([str(exe)], settings.render_args)
+
+
+class RenderWorker(QThread):
+    """Probe FL Studio if needed, then render every part of the project."""
+
+    progress = Signal(int, int, str)
+    log = Signal(str)
+    done = Signal(object)
+    failed = Signal(str, str)
+
+    def __init__(self, path: Path, report: InspectionReport, renderer_factory, probe) -> None:
+        super().__init__()
+        self.path, self.report = path, report
+        self.renderer_factory, self.probe = renderer_factory, probe
+
+    def run(self) -> None:
+        from eden.render.fl_studio import RenderError
+        from eden.render.pipeline import render_project
+        from eden.settings import load_settings
+
+        try:
+            renderer = self.renderer_factory()
+            if renderer is None:
+                self.progress.emit(0, 1, "Configuration du pilotage de FL Studio (première fois)")
+                result = self.probe(self.path, log=self.log.emit)
+                if not result.ok:
+                    self.failed.emit("Configuration de FL Studio", " ".join(result.lines[-2:]))
+                    return
+                renderer = self.renderer_factory()
+                if renderer is None:
+                    self.failed.emit("Configuration de FL Studio", "réglages introuvables après le test")
+                    return
+            settings = load_settings()
+            result = render_project(
+                self.path, renderer, timeout_s=settings.render_timeout_s,
+                threshold_db=settings.null_test_threshold_db, report=self.report,
+                on_step=lambda i, n, s: self.progress.emit(i, n, s),
+            )
+        except RenderError as exc:
+            self.failed.emit("Rendu FL Studio", str(exc))
+        except Exception as exc:
+            self.failed.emit("Erreur inattendue", f"{type(exc).__name__}: {exc}")
+        else:
+            self.done.emit(result)
+
+
 class UpdateWorker(QThread):
     finished_check = Signal(object)
 
@@ -84,8 +140,14 @@ class UpdateWorker(QThread):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, check_updates: bool = True) -> None:
+    def __init__(self, check_updates: bool = True, renderer_factory=None, probe=None) -> None:
         super().__init__()
+        if probe is None:
+            from eden.render.probe import probe_fl_studio as probe
+        self.renderer_factory = renderer_factory or default_renderer
+        self.probe = probe
+        self.render_worker: RenderWorker | None = None
+        self.render_result = None
         self.setWindowTitle(f"Eden {__version__}")
         self.resize(1100, 720)
         self.project_path: Path | None = None
@@ -118,8 +180,17 @@ class MainWindow(QMainWindow):
         self.btn_analyze.setObjectName("primary")
         self.btn_analyze.setEnabled(False)
         self.btn_analyze.clicked.connect(self.start_analysis)
+        self.btn_render = QPushButton("Récupérer le son depuis FL Studio")
+        self.btn_render.setObjectName("primary")
+        self.btn_render.setEnabled(False)
+        self.btn_render.setToolTip(
+            "Eden ouvre FL Studio en arrière-plan sur des copies du projet et récupère "
+            "chaque groupe de pistes avec ses effets. Le projet original n'est pas modifié."
+        )
+        self.btn_render.clicked.connect(self.start_render)
         row.addWidget(self.btn_select)
         row.addWidget(self.btn_analyze)
+        row.addWidget(self.btn_render)
         row.addStretch(1)
         layout.addLayout(row)
 
@@ -154,6 +225,10 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.sources_tree, "Pistes détectées")
         self.tabs.addTab(self.mixer_tree, "Mixer")
         self.tabs.addTab(self.report_view, "Rapport complet")
+        self.render_tree = QTreeWidget()
+        self.render_tree.setHeaderLabels(["Rendu", "État", "Durée", "Crête", "Format"])
+        self.render_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.tabs.addTab(self.render_tree, "Son récupéré")
         layout.addWidget(self.tabs, 1)
 
         bottom = QHBoxLayout()
@@ -182,6 +257,8 @@ class MainWindow(QMainWindow):
         self.project_path = path
         self.path_label.setText(f"{path.name}  —  {path.parent}")
         self.btn_analyze.setEnabled(True)
+        self.btn_render.setEnabled(False)
+        self.report = None
         self.error.setText("")
 
     def start_analysis(self) -> None:
@@ -191,6 +268,7 @@ class MainWindow(QMainWindow):
         self.btn_analyze.setEnabled(False)
         self.btn_select.setEnabled(False)
         self.btn_save.setEnabled(False)
+        self.btn_render.setEnabled(False)
         self.worker = InspectWorker(self.project_path)
         self.worker.progress.connect(self.on_progress)
         self.worker.done.connect(self.on_done)
@@ -226,6 +304,57 @@ class MainWindow(QMainWindow):
         self.btn_analyze.setEnabled(True)
         self.btn_select.setEnabled(True)
         self.btn_save.setEnabled(True)
+        self.btn_render.setEnabled(True)
+
+    # -- getting the sound out of FL Studio --------------------------------
+    def start_render(self) -> None:
+        if self.report is None or self.project_path is None:
+            return
+        if self.render_worker and self.render_worker.isRunning():
+            return
+        self.error.setText("")
+        for b in (self.btn_select, self.btn_analyze, self.btn_render):
+            b.setEnabled(False)
+        self.render_worker = RenderWorker(self.project_path, self.report,
+                                          self.renderer_factory, self.probe)
+        self.render_worker.progress.connect(self.on_progress)
+        self.render_worker.log.connect(lambda m: self.status.setText(m))
+        self.render_worker.done.connect(self.on_render_done)
+        self.render_worker.failed.connect(self.on_render_failed)
+        self.render_worker.start()
+
+    def _render_buttons(self) -> None:
+        for b in (self.btn_select, self.btn_analyze, self.btn_render):
+            b.setEnabled(True)
+
+    def on_render_failed(self, step: str, message: str) -> None:
+        self.progress.setValue(0)
+        self.progress.setFormat("Échec")
+        self.error.setText(f"Échec à l'étape « {step} » : {message}")
+        self._render_buttons()
+
+    def on_render_done(self, result) -> None:
+        self.render_result = result
+        self.progress.setValue(self.progress.maximum())
+        nt = result.null_test
+        if result.ok:
+            self.progress.setFormat("Son récupéré")
+            self.status.setText(f"{nt.message}. Pistes enregistrées dans {result.folder}")
+        else:
+            self.progress.setFormat("Son récupéré avec des écarts")
+            self.error.setText(nt.message if nt else "Vérification impossible : aucune piste à comparer")
+        self.render_tree.clear()
+        for j in result.jobs:
+            c = j.check
+            self.render_tree.addTopLevelItem(QTreeWidgetItem([
+                j.job.description,
+                {"done": "rendu", "resumed": "réutilisé", "failed": "échec"}.get(j.status, j.status),
+                f"{c.duration_s:.1f} s" if c else "—",
+                f"{c.peak_db:.1f} dBFS" if c else "—",
+                f"{c.sample_rate} Hz {c.subtype}" if c else "—",
+            ]))
+        self.tabs.setCurrentWidget(self.render_tree)
+        self._render_buttons()
 
     def fill_sources(self, report: InspectionReport) -> None:
         self.sources_tree.clear()
@@ -291,6 +420,11 @@ class MainWindow(QMainWindow):
             self.banner.show()
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        if self.render_worker and self.render_worker.isRunning():
+            QMessageBox.information(self, "Eden", "Un rendu FL Studio est en cours : "
+                                    "attendez la fin avant de fermer Eden.")
+            event.ignore()
+            return
         if self.worker and self.worker.isRunning():
             self.worker.wait(5000)
         if self.update_worker and self.update_worker.isRunning():

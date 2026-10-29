@@ -82,14 +82,17 @@ fonctionner sans.
 C'est la seule façon d'obtenir le son exact (effets, VST, instruments, automations,
 bus). Deux modes :
 
-1. **Export manuel guidé** (fiable, disponible dans toutes les versions) : Fichier →
-   Exporter → WAV avec l'option « Split mixer tracks » (une piste par insert). Eden
-   indique les réglages exacts, surveille le dossier, puis vérifie les fichiers.
-2. **Rendu en ligne de commande** : des sources de forum décrivent un rendu via
-   `FL64.exe /R ...` avec des options de format. La syntaxe exacte et la prise en charge
-   des stems séparés **ne sont pas confirmées** : test prévu en début de phase 3 sur ta
-   version de FL Studio. Si ça marche, le rendu devient automatique ; sinon on garde le
-   mode guidé.
+**Choix retenu (demandé) : Eden pilote FL Studio lui-même, sans export manuel.**
+
+- Eden écrit des **copies de travail** du projet dans son espace (jamais l'original) :
+  certaines pistes coupées, effets du Master contournés, chemins audio réparés.
+- Il lance FL Studio en ligne de commande sur chaque copie (`FL64.exe /R ...`, syntaxe
+  rapportée par des utilisateurs) et récupère le WAV produit.
+- Comme cette syntaxe n'est pas documentée de façon fiable, rien n'est supposé :
+  `eden fl-probe` la teste sur ton PC et vérifie aussi que les coupures de pistes sont
+  bien respectées par FL Studio, avant d'activer le rendu automatique.
+- Plan B si la ligne de commande ne marche pas sur ta version : export guidé
+  (« Split mixer tracks ») surveillé par Eden.
 
 ### Voie D — Recréer le mix hors de FL à partir des fichiers bruts — **rejetée comme base**
 

@@ -42,3 +42,42 @@ def test_failure_names_the_step(app, tmp_path):
     assert "Décodage du projet" in w.error.text()
     assert w.progress.format() == "Échec"
     assert not w.btn_save.isEnabled()
+
+
+def _analyse(app, w, path):
+    w.set_project(path)
+    w.start_analysis()
+    w.worker.wait(10000)
+    app.processEvents()
+
+
+def test_render_button_runs_probe_then_renders(app, tmp_path):
+    import sys
+
+    from test_render import SIM, make_session, sim_renderer
+
+    from eden.render.probe import probe_fl_studio
+
+    project = make_session(tmp_path)
+
+    configured = {"ok": False}
+
+    def factory():
+        return sim_renderer() if configured["ok"] else None
+
+    def probe(path, log):
+        res = probe_fl_studio(path, command=[sys.executable, SIM], timeout_s=120, log=log)
+        configured["ok"] = res.ok
+        return res
+
+    w = MainWindow(check_updates=False, renderer_factory=factory, probe=probe)
+    assert not w.btn_render.isEnabled()
+    _analyse(app, w, project)
+    assert w.btn_render.isEnabled()
+    w.start_render()
+    w.render_worker.wait(120000)
+    app.processEvents()
+    assert w.error.text() == "", w.error.text()
+    assert w.progress.format() == "Son récupéré"
+    assert w.render_result.ok
+    assert w.render_tree.topLevelItemCount() == len(w.render_result.jobs)

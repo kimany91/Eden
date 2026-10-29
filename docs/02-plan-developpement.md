@@ -31,19 +31,34 @@ Critères restant à valider **avec toi** :
 - [ ] voix lead / backs / ad-libs correctement reconnus ou corrigeables ;
 - [ ] liste des événements inconnus revue pour ta version de FL.
 
-## Phase 3 — Rendu et récupération des sources
+## Phase 3 — Pilotage de FL Studio et récupération du son ✅ (simulateur) / ⏳ (ton PC)
 
-1. **Spike sur ton PC** (½ journée) : tester le rendu en ligne de commande de ta version
-   de FL Studio (master, puis stems par insert) ; tester un script de passerelle dans FL.
-2. Module `render/` : rendu automatique si possible, sinon export guidé (Eden affiche les
-   réglages exacts et surveille le dossier).
-3. Vérifications automatiques des stems : même fréquence d'échantillonnage, même longueur,
-   alignement à l'échantillon, absence d'écrêtage, **null test** somme des stems vs master.
-4. Choix des stems à partir du graphe de routage (pas de double comptage des bus).
-5. Passerelle FL optionnelle : export des paramètres des plugins de la chaîne vocale.
+Principe retenu : **Eden pilote FL Studio lui-même**, aucun export manuel.
 
-Critères : sur 3 projets réels, somme des stems = master à < −60 dB d'écart (ou écart
-expliqué) ; durée et synchronisation identiques ; aucun fichier du projet modifié.
+Fait :
+- écriture de **copies de travail** du `.flp` (re-sérialisation identique à l'octet près,
+  vérifiée sur le vrai projet FL 20.8) avec les seules modifications nécessaires : couper
+  un insert, un canal ou un envoi, contourner les effets du Master, réparer un chemin audio ;
+- **plan de rendu** calculé depuis le graphe du Mixer : projet complet, référence
+  pré-Master, un rendu par groupe qui sort au Master (envois parasites coupés pour ne
+  rien compter deux fois), un rendu par voix avec toute sa chaîne d'effets ;
+- lancement de FL Studio en ligne de commande sur chaque copie, délai maximum, détection
+  du fichier produit, vérifications (format, crête, silence, écrêtage) ;
+- **test de reconstruction** : somme des groupes = rendu pré-Master (seuil −60 dB) ;
+- reprise après interruption (manifeste, rendus déjà faits réutilisés) ;
+- `eden fl-probe` : sur ton PC, essaie les syntaxes connues de FL Studio, puis vérifie que
+  couper un canal, un insert et un envoi donne bien du silence ; enregistre la syntaxe qui
+  marche ;
+- `eden render` et bouton « Récupérer le son depuis FL Studio » ;
+- tests avec un simulateur de FL Studio (effets non linéaires sur bus et Master), y compris
+  la détection d'un découpage faux.
+
+Critères restant à valider **avec ton FL Studio** :
+- [ ] `eden fl-probe` réussit (sinon, son compte rendu dit exactement ce qui bloque) ;
+- [ ] sur 3 projets réels, test de reconstruction < −60 dB, durées identiques ;
+- [ ] aucune fenêtre bloquante de FL pendant les rendus (plugins manquants, etc.).
+
+Ensuite : passerelle de script FL optionnelle pour lire les réglages des plugins.
 
 ## Phase 4 — Premier moteur de mixage
 

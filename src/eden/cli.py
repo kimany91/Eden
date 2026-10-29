@@ -47,6 +47,50 @@ def _cmd_update(args: argparse.Namespace) -> int:
     return 0 if result.status != "error" else 1
 
 
+def _cmd_probe(args: argparse.Namespace) -> int:
+    from eden.project.inspector import InspectionError
+    from eden.render.probe import probe_fl_studio
+
+    try:
+        result = probe_fl_studio(args.project, fl_path=args.fl, timeout_s=args.timeout)
+    except InspectionError as exc:
+        print(f"Échec à l'étape « {exc.step} » : {exc.message}", file=sys.stderr)
+        return 2
+    return 0 if result.ok else 1
+
+
+def _cmd_render(args: argparse.Namespace) -> int:
+    from eden.project.inspector import InspectionError
+    from eden.render.fl_studio import FLStudioRenderer, RenderError, find_fl_studio
+    from eden.render.pipeline import render_project
+    from eden.settings import load_settings
+
+    settings = load_settings()
+    exe = find_fl_studio(settings.fl_path)
+    if exe is None or not settings.render_args:
+        print("Rendu automatique pas encore configuré : lancez d'abord « eden fl-probe <projet.flp> ».",
+              file=sys.stderr)
+        return 2
+    renderer = FLStudioRenderer([str(exe)], settings.render_args)
+
+    def progress(i: int, total: int, label: str) -> None:
+        print(f"[{i + 1}/{total}] {label}…", file=sys.stderr)
+
+    try:
+        result = render_project(args.project, renderer, timeout_s=settings.render_timeout_s,
+                                threshold_db=settings.null_test_threshold_db,
+                                allow_missing=args.allow_missing, on_step=progress)
+    except (InspectionError, RenderError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    for w in result.warnings:
+        print(f"Avertissement : {w}")
+    if result.null_test:
+        print(result.null_test.message)
+    print(f"Pistes rendues dans : {result.folder}")
+    return 0 if result.ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="eden", description="Eden — mixage automatique de voix rap")
     parser.add_argument("--version", action="version", version=f"Eden {__version__}")
@@ -59,6 +103,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-snapshot", action="store_true",
                    help="Ne pas archiver de copie du projet dans l'espace de travail d'Eden")
     p.set_defaults(func=_cmd_inspect)
+
+    pr = sub.add_parser("fl-probe", help="Tester le pilotage de FL Studio sur ce PC (sur une copie du projet)")
+    pr.add_argument("project", help="Un projet .flp réel (il n'est pas modifié)")
+    pr.add_argument("--fl", help="Chemin de FL64.exe si non détecté")
+    pr.add_argument("--timeout", type=float, default=600.0, help="Délai maximum par rendu (s)")
+    pr.set_defaults(func=_cmd_probe)
+
+    r = sub.add_parser("render", help="Faire rendre par FL Studio toutes les pistes nécessaires au mixage")
+    r.add_argument("project", help="Chemin du fichier .flp")
+    r.add_argument("--allow-missing", action="store_true",
+                   help="Continuer même si des fichiers audio sont introuvables")
+    r.set_defaults(func=_cmd_render)
 
     g = sub.add_parser("gui", help="Ouvrir l'interface graphique")
     g.set_defaults(func=_cmd_gui)
