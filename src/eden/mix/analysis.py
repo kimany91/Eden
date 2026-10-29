@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from scipy import fft
-from scipy.signal import get_window, resample_poly, welch
+from scipy.signal import butter, get_window, resample_poly, sosfiltfilt, welch
 
 from eden.mix.dsp import autocorrelation, band_levels_db, frame_matrix, split_band
 from eden.mix.loudness import block_loudness, gated_loudness, loudness_of_blocks
@@ -29,6 +29,9 @@ HARMONIC_HIGH_HZ = 2000.0  # resonances below are read on the sung harmonics, ab
 RESONANCE_MIN_DB = 4.5  # how far a resonance must stick out (strict: a missed one costs less than a wrong cut)
 FREQUENT_NOTE_SHARE = 0.3  # a semitone holding this share of the pitched frames is a note the voice dwells on
 LOW_SPECTRUM_HZ = 100.0  # the high-pass is decided on the spectrum below this (half its highest cut is 80 Hz)
+REST_SPECTRUM_HZ = 160.0  # ... and on the rests' spectrum below this (its highest cut, back vocals)
+REST_WINDOW_S = 0.25  # rests are read on stretches at least this long, their spectrum 4 Hz apart (Eden's choice)
+MAX_REST_WINDOWS = 2000  # evenly spread over the song: plenty for an average
 
 
 @dataclass
@@ -69,12 +72,25 @@ class VocalMeasure:
     air_db: float = -math.inf  # energy above 8 kHz relative to 2–5 kHz, on vowels only
     low_hz: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)  # about 1 Hz apart
     low_share: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)  # of the energy, per low_hz
+    rest_low_hz: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)  # 4 Hz apart
+    # power in the rests between phrases relative to the sung voice's power, per rest_low_hz
+    rest_low_share: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)
     active_blocks: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool), repr=False)
 
     def energy_below_db(self, hz: float) -> float:
         """Energy of the voice below ``hz`` (at most LOW_SPECTRUM_HZ) relative to the whole voice (dB)."""
-        share = float(self.low_share[self.low_hz < hz].sum())
-        return 10 * math.log10(share) if share > 0 else -math.inf
+        return _share_db(self.low_share[self.low_hz < hz])
+
+    def rest_energy_below_db(self, hz: float) -> float:
+        """Power below ``hz`` (at most REST_SPECTRUM_HZ) in the rests between phrases, relative to the
+        power of the sung voice (dB; −inf when the voice never rests REST_WINDOW_S, see
+        ``_rest_low_spectrum``)."""
+        return _share_db(self.rest_low_share[self.rest_low_hz < hz])
+
+
+def _share_db(shares: np.ndarray) -> float:
+    total = float(shares.sum())
+    return 10 * math.log10(total) if total > 0 else -math.inf
 
 
 def _channels(x: np.ndarray) -> np.ndarray:
@@ -120,7 +136,7 @@ def _band_db(freqs: np.ndarray, psd_db: np.ndarray, lo: float, hi: float) -> flo
     return 10 * math.log10(np.sum(10 ** (psd_db[sel] / 10)) + 1e-30)
 
 
-def _low_spectrum(sung: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
+def _low_spectrum(sung: np.ndarray, fs: float, sung_power: float) -> tuple[np.ndarray, np.ndarray]:
     """(frequencies about 1 Hz apart below LOW_SPECTRUM_HZ, share of the voice's energy at each).
 
     Fine enough that the energy under a high-pass set just below the lowest
@@ -132,8 +148,48 @@ def _low_spectrum(sung: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
     nper = min(1 << int(math.ceil(math.log2(rate))), low.shape[0])
     freqs, psd = welch(low, fs=rate, nperseg=nper, axis=0)
     keep = freqs < LOW_SPECTRUM_HZ
-    total = max(float(np.mean(sung ** 2)), 1e-30)
-    return freqs[keep], psd.mean(axis=1)[keep] * (rate / nper) / total
+    return freqs[keep], psd.mean(axis=1)[keep] * (rate / nper) / sung_power
+
+
+def _rest_low_spectrum(x: np.ndarray, fs: float, sung_power: float) -> tuple[np.ndarray, np.ndarray]:
+    """(frequencies 4 Hz apart below REST_SPECTRUM_HZ, power at each in the rests between phrases
+    relative to the power of the sung voice).
+
+    Rests are the stretches of at least REST_WINDOW_S where the voice's own
+    band (above LOW_SPECTRUM_HZ, averaged over 10 ms) stays ACTIVE_RANGE_DB
+    under its loud parts, digital silence excluded: the voice is silent there,
+    so what sounds under a high-pass is noise (rumble, handling), and a loud
+    rumble cannot make a rest pass for singing. Each stretch is read whole on
+    the voice decimated to about 1 kHz (its mean removed, Hann window), never
+    pasted to the next one, which would add the jumps between them. Empty when
+    the voice never rests that long.
+    """
+    down = max(1, int(fs // 1000))
+    rate = fs / down
+    n = int(round(REST_WINDOW_S * rate))
+    sig = _channels(x)
+    if sig.shape[0] < n * down:
+        return np.zeros(0), np.zeros(0)
+    low = resample_poly(sig, 1, down, axis=0)
+    own = sosfiltfilt(butter(4, LOW_SPECTRUM_HZ, btype="highpass", fs=rate, output="sos"), low, axis=0)
+    span = np.ones(max(1, int(round(0.01 * rate))))
+    own_db = 10 * np.log10(np.maximum(np.convolve(np.mean(own ** 2, axis=1), span / span.size, "same"), 1e-30))
+    all_db = 10 * np.log10(np.maximum(np.convolve(np.mean(low ** 2, axis=1), span / span.size, "same"), 1e-30))
+    rest = (own_db <= np.percentile(own_db, 95) - ACTIVE_RANGE_DB) & (all_db > SILENCE_DB)
+    count = np.concatenate([[0], np.cumsum(rest)])
+    starts = np.arange(0, rest.size - n + 1, max(1, n // 4))
+    starts = starts[count[starts + n] - count[starts] == n]
+    if starts.size == 0:
+        return np.zeros(0), np.zeros(0)
+    starts = starts[_evenly_spread(starts.size, MAX_REST_WINDOWS)]
+    stretches = np.stack([low[s:s + n] for s in starts])  # stretches × samples × channels
+    window = np.hanning(n)[None, :, None]
+    spectrum = np.abs(np.fft.rfft((stretches - stretches.mean(axis=1, keepdims=True)) * window, axis=1)) ** 2
+    power = spectrum.mean(axis=(0, 2)) / (n * np.sum(window ** 2))  # Parseval: the bins add up to the power
+    power[1:] *= 2  # one-sided
+    freqs = np.fft.rfftfreq(n, 1 / rate)
+    keep = freqs < REST_SPECTRUM_HZ
+    return freqs[keep], power[keep] / sung_power
 
 
 def _excess_over_octave(f: np.ndarray, p: np.ndarray) -> np.ndarray:
@@ -472,7 +528,9 @@ def measure_vocal(x: np.ndarray, fs: float) -> VocalMeasure:
         profile = harmonic_profile(frames, pitches, fs)
         resonances = find_resonances(profile, spectral_envelope(sung, fs), notes)
         low_mid_hz, low_mid_excess = low_mid_buildup(profile, notes)
-    low_hz, low_share = _low_spectrum(sung, fs)
+    sung_power = max(float(np.mean(sung ** 2)), 1e-30)
+    low_hz, low_share = _low_spectrum(sung, fs, sung_power)
+    rest_low_hz, rest_low_share = _rest_low_spectrum(x, fs, sung_power)
 
     sung_level = level[active]
     rms_db = 10 * math.log10(np.mean(10 ** (sung_level / 10)))
@@ -496,6 +554,8 @@ def measure_vocal(x: np.ndarray, fs: float) -> VocalMeasure:
         air_db=air(x, fs, vowel_frames, size),
         low_hz=low_hz,
         low_share=low_share,
+        rest_low_hz=rest_low_hz,
+        rest_low_share=rest_low_share,
         active_blocks=active_blocks,
     )
 

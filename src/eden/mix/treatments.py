@@ -57,7 +57,25 @@ def _threshold(y: np.ndarray, fs: float, p: dict) -> float:
     return float(np.percentile(level, p["percentile"])) - p["reduction_db"] / slope
 
 
-IDLE_DB = 0.3  # a dynamic stage that never reduces more than this did nothing worth applying
+IDLE_DB = 0.3  # a dynamic stage whose reduction moves less than this did nothing worth applying
+STEADY_PERCENTILE = 95.0  # the reduction a stage keeps on this share of the sounding moments is a fixed gain
+
+
+def _moves(gr_db: np.ndarray, y: np.ndarray, fs: float) -> bool:
+    """Whether a reduction curve (dB per 1 ms frame) does more than a fixed gain: its strongest
+    reduction exceeds by IDLE_DB the one it keeps on STEADY_PERCENTILE % of the moments ``y``
+    sounds. That steady part only lowers the level, which the make-up gives back: a tail-safe
+    compressor whose floor runs over the whole song (an echo fills the rests) becomes a fixed
+    −3 dB. A stage that never reduces IDLE_DB fails the same test. The top of the curve is its
+    maximum, not a percentile: a de-esser on four piercing 's' in 24 s works on about 5 % of the
+    sung moments, and its curve hardly differs between its 5th and 95th percentiles."""
+    if gr_db.size == 0:
+        return False
+    _, active, _ = active_frames(y, fs)
+    n = min(gr_db.size, active.size)
+    sounding = gr_db[:n][active[:n]]
+    steady = -float(np.percentile(sounding, STEADY_PERCENTILE)) if sounding.size else 0.0
+    return -float(gr_db.min()) - steady >= IDLE_DB
 
 
 def _vowel_level(y: np.ndarray, fs: float) -> float:
@@ -72,9 +90,9 @@ def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarra
 
     Dynamic stages read the level of the signal as it reaches them (after the
     stages before), so a chain of compressors stays as planned. A dynamic
-    stage that would reduce less than ``IDLE_DB`` anywhere is not applied and
-    is marked ``applied = False``. ``makeup`` gives back the loudness the
-    chain took (BS.1770, the voice as it came in vs. as it goes out).
+    stage whose reduction does not move by ``IDLE_DB`` (see ``_moves``) is not
+    applied and is marked ``applied = False``. ``makeup`` gives back the
+    loudness the chain took (BS.1770, the voice as it came in vs. as it goes out).
     """
     y = x
     for t in treatments:
@@ -90,7 +108,7 @@ def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarra
             high, rest, gr, size = dsp.deess_gain_db(y, fs, threshold, p["max_reduction_db"],
                                                      low_hz=p.get("low_hz", 4500.0))
             _record_gain(t, gr)
-            t.applied = t.measured["reduction_max_db"] >= IDLE_DB
+            t.applied = _moves(gr, y, fs)
             if t.applied:
                 y = rest + dsp._apply_gain(high, dsp._to_samples(gr, size, y.shape[0]))
         elif t.kind == "compressor":
@@ -99,7 +117,7 @@ def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarra
                 release_ms=p["release_ms"], slow_release_ms=p.get("slow_release_ms"),
                 max_reduction_db=p.get("max_reduction_db"), hold=hold if p.get("tail_safe") else None)
             _record_gain(t, gr)
-            t.applied = t.measured["reduction_max_db"] >= IDLE_DB
+            t.applied = _moves(gr, y, fs)
             if t.applied:
                 y = dsp._apply_gain(y, dsp._to_samples(gr, size, y.shape[0]))
         elif t.kind == "makeup":
