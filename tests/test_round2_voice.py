@@ -9,7 +9,7 @@ import pytest
 from scipy.signal import butter, fftconvolve, sosfilt
 
 from eden.mix import dsp
-from eden.mix.analysis import REST_WINDOW_S, active_frames, measure_vocal
+from eden.mix.analysis import REST_WINDOW_S, _rest_low_spectrum, active_frames, measure_vocal
 from eden.mix.dsp import apply_sos, peaking_sos, shelf_sos
 from eden.mix.engine import _chain
 from eden.mix.parts import Part
@@ -137,7 +137,7 @@ def _warm(notes, seed, shelf_db):
 
 @pytest.mark.parametrize("notes,seed,shelf_db,measured", [
     ([247, 277, 311, 330, 370], 2, 1.4, 2.76),  # the highest clean value with mud above 6 dB
-    ([247, 277, 311, 330, 370], 2, 3.0, 2.50),  # was cut at 2.5 dB
+    ([247, 277, 311, 330, 370], 2, 3.0, 2.50),  # 2.497: just under the old 2.5 dB threshold
     ([240, 270, 300, 320, 360], 2, 1.4, 2.72),
     ([233, 262, 294, 330, 349, 392], 2, 3.0, 2.38),
     ([220, 247, 262, 294, 330], 2, 0.0, 2.28),
@@ -181,7 +181,7 @@ def test_a_rumble_under_the_singing_is_found_in_the_rests(seed, notes):
         assert cut[0].params["freq_hz"] == pytest.approx(hp)
         assert cut[0].reason.startswith(
             f"Bruit grave dans les silences entre les phrases (grondement, manipulation du micro) : {rests:.0f} dB "
-            f"sous {hp:.0f} Hz par rapport à la voix chantée ; note la plus grave")
+            f"sous {hp:.0f} Hz (la coupe à 100 %) par rapport à la voix chantée ; note la plus grave")
         assert "pendant le chant" not in cut[0].reason
 
 
@@ -194,6 +194,18 @@ def test_the_rest_measure_is_the_power_under_the_cut_relative_to_the_sung_voice(
     assert m.rest_energy_below_db(80.0) == pytest.approx(-40.0, abs=0.3)
     assert m.rest_energy_below_db(30.0) < -60.0  # read 4 Hz apart: the hum is not under 30 Hz
     assert np.all(np.diff(m.rest_low_hz) == pytest.approx(1 / REST_WINDOW_S, rel=0.01))
+
+
+@pytest.mark.parametrize("shift_ms", range(0, 64, 3))
+def test_a_rest_a_little_longer_than_the_window_is_read_wherever_it_falls(shift_ms):
+    t = np.arange(6 * FS) / FS
+    start = 3.0 + shift_ms / 1000
+    # one silence of 280 ms, read as a rest of 257 ms (the decimation and the 10 ms average blur its edges):
+    # a grid of windows every 62 ms missed it more often than not
+    sung = (t < start) | (t >= start + 0.28)
+    x = np.stack([0.3 * np.sin(2 * np.pi * 200 * t) * sung + 0.003 * np.sin(2 * np.pi * 40 * t)] * 2, axis=1)
+    freqs, share = _rest_low_spectrum(x, FS, 0.3 ** 2 / 2)
+    assert 10 * math.log10(share[freqs < 80].sum()) == pytest.approx(-40.0, abs=0.3)
 
 
 def test_a_voice_that_never_rests_long_enough_has_no_rest_measure():

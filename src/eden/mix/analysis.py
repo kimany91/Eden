@@ -155,14 +155,15 @@ def _rest_low_spectrum(x: np.ndarray, fs: float, sung_power: float) -> tuple[np.
     """(frequencies 4 Hz apart below REST_SPECTRUM_HZ, power at each in the rests between phrases
     relative to the power of the sung voice).
 
-    Rests are the stretches of at least REST_WINDOW_S where the voice's own
-    band (above LOW_SPECTRUM_HZ, averaged over 10 ms) stays ACTIVE_RANGE_DB
-    under its loud parts, digital silence excluded: the voice is silent there,
-    so what sounds under a high-pass is noise (rumble, handling), and a loud
-    rumble cannot make a rest pass for singing. Each stretch is read whole on
-    the voice decimated to about 1 kHz (its mean removed, Hann window), never
-    pasted to the next one, which would add the jumps between them. Empty when
-    the voice never rests that long.
+    Rests are where the voice's own band (LOW_SPECTRUM_HZ to 500 Hz, averaged
+    over 10 ms) stays ACTIVE_RANGE_DB under its loud parts, digital silence
+    excluded: the voice is silent there, so what sounds under a high-pass is
+    noise (rumble, handling), and a loud rumble cannot make a rest pass for
+    singing. They are read on the voice decimated to about 1 kHz, in windows
+    of REST_WINDOW_S lying wholly in a rest (every rest at least that long
+    has some; at most MAX_REST_WINDOWS, evenly spread), each with its mean
+    removed and a Hann window: never pasted to the next rest, which would add
+    the jumps between them. Empty when the voice never rests that long.
     """
     down = max(1, int(fs // 1000))
     rate = fs / down
@@ -177,15 +178,14 @@ def _rest_low_spectrum(x: np.ndarray, fs: float, sung_power: float) -> tuple[np.
     all_db = 10 * np.log10(np.maximum(np.convolve(np.mean(low ** 2, axis=1), span / span.size, "same"), 1e-30))
     rest = (own_db <= np.percentile(own_db, 95) - ACTIVE_RANGE_DB) & (all_db > SILENCE_DB)
     count = np.concatenate([[0], np.cumsum(rest)])
-    starts = np.arange(0, rest.size - n + 1, max(1, n // 4))
-    starts = starts[count[starts + n] - count[starts] == n]
+    starts = np.flatnonzero(count[n:] - count[:-n] == n)  # every window lying wholly in a rest
     if starts.size == 0:
         return np.zeros(0), np.zeros(0)
     starts = starts[_evenly_spread(starts.size, MAX_REST_WINDOWS)]
-    stretches = np.stack([low[s:s + n] for s in starts])  # stretches × samples × channels
-    window = np.hanning(n)[None, :, None]
-    spectrum = np.abs(np.fft.rfft((stretches - stretches.mean(axis=1, keepdims=True)) * window, axis=1)) ** 2
-    power = spectrum.mean(axis=(0, 2)) / (n * np.sum(window ** 2))  # Parseval: the bins add up to the power
+    windows = np.stack([low[s:s + n] for s in starts])  # windows × samples × channels
+    hann = np.hanning(n)[None, :, None]
+    spectrum = np.abs(np.fft.rfft((windows - windows.mean(axis=1, keepdims=True)) * hann, axis=1)) ** 2
+    power = spectrum.mean(axis=(0, 2)) / (n * np.sum(hann ** 2))  # Parseval: the bins add up to the power
     power[1:] *= 2  # one-sided
     freqs = np.fft.rfftfreq(n, 1 / rate)
     keep = freqs < REST_SPECTRUM_HZ

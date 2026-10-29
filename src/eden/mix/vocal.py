@@ -51,8 +51,8 @@ TAIL_SAFE_MAX_REDUCTION_DB = 3.0
 HIGHPASS_TRIGGER_DB = -32.0  # energy an octave under the planned cut, re. the whole voice (Eden's choice)
 HIGHPASS_REST_TRIGGER_DB = -40.0  # power under the planned cut in the rests, re. the sung voice (Eden's choice)
 # lift of the harmonics over 1/3 octave that makes a low-mid bump (Eden's choice): +6 dB bumps at 200–400 Hz
-# read 2.97 dB or more on the test voices (seeds 1–8), slightly warm clean voices whose lowest notes are
-# 220–250 Hz 2.76 dB at most (docs/mixage.md: on another seed they can read 3.6 dB)
+# read 2.97 dB or more on the test voices (seeds 1–8); clean voices whose lowest notes are 220–250 Hz, with
+# mud over 6 dB, read 2.76 dB at most (docs/mixage.md: on another seed they can read 3.6 dB)
 LOW_MID_MIN_DB = 2.85
 
 
@@ -108,7 +108,7 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
                      f"sous {hp / 2:.0f} Hz (une octave sous {hp:.0f} Hz, la coupe à 100 %)")
     if rest_lows > HIGHPASS_REST_TRIGGER_DB:
         found.append(f"bruit grave dans les silences entre les phrases (grondement, manipulation du micro) : "
-                     f"{rest_lows:.0f} dB sous {hp:.0f} Hz par rapport à la voix chantée")
+                     f"{rest_lows:.0f} dB sous {hp:.0f} Hz (la coupe à 100 %) par rapport à la voix chantée")
     if found:
         freq = max(20.0, hp * k)
         if m.lowest_f0_hz:
