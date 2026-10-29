@@ -202,35 +202,67 @@ Chaîne (tout hors ligne, en float64) :
 
 1. graves en mono sous 100 Hz si la corrélation G/D y est < 0,9 (filtre à phase nulle) ;
 2. tenue des graves : 2:1 sous 100 Hz, ≤ 3 dB, attaque 10 ms, si les notes graves varient de
-   plus de 4 dB d'une note à l'autre (choix d'Eden) ;
+   plus de 4 dB d'une note à l'autre (choix d'Eden). Une note = une crête de l'enveloppe des
+   graves (moyenne sur 25 ms) qui ressort d'au moins 6 dB, à au moins 120 ms de la précédente
+   et à moins de 30 dB de la plus forte ; l'écart est pris du 10ᵉ au 90ᵉ centile de ces
+   crêtes, sur au moins 4 notes (choix d'Eden). La décroissance d'une note n'est donc pas un
+   écart entre notes. Une note n'est comptée que si l'enveloppe redescend de 6 dB autour
+   d'elle : une note plus faible qui démarre sur la queue encore forte de la précédente, ou des
+   notes tenues qui s'enchaînent sans creux, ne ressortent pas et ne sont pas comparées ;
 3. compression de bus : 1,6:1, seuil 4 dB sous les passages forts (P90), attaque 30 ms,
    relâchement sur le temps ressenti, ≤ 3 dB (≈ 1,5 dB sur les passages forts) ;
 4. gain → clip doux suréchantillonné ×8 (arrondi à partir de 70 % du plafond du clip,
    plafond du clip à −1 dBFS, ou −2 dBFS avec un plafond final à −3 dBTP) → limiteur
-   true-peak (8×, anticipation 1,5 ms, tenue 20 ms pour ne pas onduler dans un cycle de 808)
-   au plafond final.
+   true-peak (sur la crête de l'onde continue, anticipation 1,5 ms : le gain descend en rampe
+   sur au moins 1,5 ms avant une crête, jamais d'un coup ; tenue 20 ms pour ne pas onduler
+   dans un cycle de 808) au plafond final.
+
+Comme pour les voix, une compression qui ne réduirait nulle part plus de 0,3 dB n'est pas
+appliquée et n'apparaît pas dans le rapport ; celles qui agissent affichent la réduction
+mesurée (moyenne quand elles agissent, et maximum).
 
 - **Cible : −9 LUFS** intégrés (« fort, comme le rap commercial », ton choix). Les charts se
   tiennent vers −8 LUFS (iZotope 2024, non vérifié). Au-delà, rien n'est gagné sur les
   plateformes, qui baissent les morceaux forts, et la distorsion d'encodage augmente. Le gain
-  est visé sur une estimation rapide, puis au plus trois passes réelles le corrigent. Si clip
-  + limiteur dépassent **9 dB** de réduction (choix d'Eden), Eden s'arrête un peu moins fort
-  et le dit.
+  est visé sur une estimation rapide (le clip et la loi du limiteur sans suréchantillonnage) ;
+  une première passe réelle mesure l'écart entre l'estimation et la vraie chaîne, et le gain
+  est visé à nouveau avec cet écart. Deux passes réelles suffisent le plus souvent, trois au
+  plus ; une quatrième n'a lieu que si la troisième dépasse encore le budget.
+- **Budget de réduction** (choix d'Eden) : clip + limiteur ne baissent pas de plus de
+  **9 dB** les crêtes qui reviennent dans le morceau, mesurées par blocs de 50 ms (le 98,5ᵉ
+  centile des blocs réduits de plus de 0,5 dB, sans dépasser le 10ᵉ bloc le plus réduit :
+  un clic, une plosive ou un seul impact au drop ne décident pas du volume de tout le
+  morceau). Un événement isolé peut aller jusqu'à **13 dB** sur 30 ms (trois blocs de 10 ms
+  de suite). Plus court, un clic écrêté reste un clic : sa réduction est affichée, pas
+  comptée. Au-delà du budget, Eden baisse le gain de l'excès et le dit : « les crêtes qui
+  reviennent » quand ce sont elles, ou le moment de l'événement isolé. Après une baisse, il
+  remonte une fois s'il reste au moins 0,3 dB de budget.
 - **Plafond** : −2 dBTP (Spotify demande ≤ −2 dBTP pour un master plus fort que −14 LUFS :
   non vérifié, cohérent avec AES TD1008). À −9 LUFS, −2 dBTP laisserait moins de 8 dB entre
   crête et volume. Sur un master aussi dense, Opus 96k et MP3 128k dépassent de 1,2 à 2,2 dB
   à l'encodage (sourcé : essais d'encodage reproduits deux fois indépendamment). Un master à
-  −9 LUFS reçoit donc **−3 dBTP**, c'est le cas normal.
-- **Crête réelle** : lue deux fois, par reconstruction idéale (8×, sous-lecture ≤ 0,17 dB,
-  sourcé) et comme la lit un mesureur courant (libebur128, celui de FFmpeg : 4×, filtre de
-  49 points, vérifié sur son code). La plus haute des deux est gardée, et le plafond tient
-  pour les deux.
+  −9 LUFS reçoit donc **−3 dBTP**, c'est le cas normal. Si le budget arrête le master plus
+  bas, le plafond est choisi à nouveau sur le volume atteint : quand, à −2 dBTP, le même master
+  (1 dB plus haut, exactement : toute la chaîne suit le plafond) laisse encore au moins 8 dB
+  entre crête et volume, il passe à −2 dBTP.
+- **Crête réelle** : lue deux fois. D'abord la crête de l'onde continue : reconstruction
+  idéale à 8× (sans affinage, jusqu'à 0,17 dB sous-lus entre les points), affinée par une
+  parabole autour du point le plus haut de chaque échantillon ; elle reste à 0,01 dB d'une
+  référence à 64× sur du bruit, des ondes écrêtées et des masters (vérifié par les tests).
+  Ensuite comme la lit libebur128 (4×, filtre de 49 points, vérifié sur son code). La plus
+  haute des deux est gardée ; le limiteur laisse la sortie au moins 0,01 dB sous le plafond.
+  Les mesureurs de FFmpeg (filtres ebur128 et loudnorm) ne lisent pas comme libebur128 : ils
+  rééchantillonnent à 192 kHz et peuvent afficher jusqu'à environ 0,3 dB de plus (mesuré sur
+  des masters d'Eden : 0,05 à 0,25 dB de plus).
 - **Vérifications** : volume intégré et court terme maximal, plage de volume (EBU Tech 3342),
-  crête réelle, rapport crête / volume (averti sous 6 dB), perte en mono, **trous en mono**
-  (une bande de tiers d'octave qui perd plus de 6 dB en mono pendant au moins 2 s, alors
-  qu'elle porte au moins 1 % de la puissance du moment), et ce que chaque plateforme fera du
-  fichier : Spotify, YouTube, TIDAL, Amazon, SoundCloud −14 LUFS ; Deezer −15 ; Apple Music
-  −16 (non vérifiés, cohérents entre eux) ; les morceaux forts sont baissés, Spotify ne
+  crête réelle, rapport crête / volume (averti 0,5 dB sous celui que le plafond prévoit,
+  plafond moins volume visé, ou atteint si le budget arrête le master : 6 dB à −9 LUFS et
+  −3 dBTP, d'où 5,5 dB ; un master plus calme ne l'est que sous 7,5 dB ; choix d'Eden), perte
+  en mono, **trous en mono** (une bande de tiers d'octave qui, en moyenne sur 2 s, perd plus
+  de 6 dB en mono alors qu'elle porte au moins 1 % de la puissance de ces 2 s ; un élément
+  large et décorrélé perd 3 dB en moyenne et n'en est pas un), et ce que chaque plateforme
+  fera du fichier : Spotify, YouTube, TIDAL, Amazon, SoundCloud −14 LUFS ; Deezer −15 ; Apple
+  Music −16 (non vérifiés, cohérents entre eux) ; les morceaux forts sont baissés, Spotify ne
   remonte les faibles que jusqu'à −1 dBTP.
 
 ## Versions et export
@@ -238,12 +270,13 @@ Chaîne (tout hors ligne, en float64) :
 - Chaque mixage est gardé : WAV final 32 bits flottant, et toutes les décisions avec leurs
   raisons (le morceau, le mastering et ses contrôles). Il peut être réaffiché puis exporté.
 - L'export choisit le dossier, le nom, la fréquence et la profondeur : 16 bits avec dither
-  TPDF, 24 bits, ou 32 bits flottant.
+  TPDF, 24 bits, ou 32 bits flottant. « .wav » est ajouté au nom tel que tu l'as tapé, points
+  compris : « Beat v1.2 - Eden » donne « Beat v1.2 - Eden.wav ».
 - Il n'y a pas de conversion si tu gardes la fréquence de FL. Sinon, le filtre est plat
   jusqu'à 91 % de la fréquence de Nyquist la plus basse (20 kHz à 44,1 kHz) et rejette
   100 dB au-dessus : rien ne se replie dans l'audible.
 - Une conversion peut remonter un peu la crête réelle (l'onde est reconstruite entre de
-  nouveaux points). Un limiteur true-peak la ramène alors à celle du fichier, et l'export
+  nouveaux points). Un limiteur true-peak la ramène alors sous celle du fichier, et l'export
   affiche la crête finale.
 - Eden n'écrase jamais un fichier existant et refuse un export 16 ou 24 bits qui serait
   écrêté.

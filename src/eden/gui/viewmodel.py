@@ -164,6 +164,20 @@ def _song_lines(song: dict) -> list[str]:
     return lines
 
 
+def reduction_text(kind: str, measured: dict) -> str:
+    """For a compressor or a de-esser: the gain reduction it really applied, as measured while
+    applying it (mean over the moments it reduces, and maximum); empty for the other steps."""
+    if kind not in ("compressor", "deesser") or "reduction_max_db" not in measured:
+        return ""
+    return (f"Réduction mesurée : {measured['reduction_mean_db']:.1f} dB en moyenne quand il agit, "
+            f"{measured['reduction_max_db']:.1f} dB au plus")
+
+
+def _treatment_view(t: dict) -> dict:
+    return {"label": t["label"], "reason": t["reason"],
+            "measured": reduction_text(t.get("kind", ""), t.get("measured") or {})}
+
+
 def mix_view(version: dict) -> dict:
     """A saved mix version (as stored in version.json) for the mix page."""
     parts = []
@@ -181,7 +195,7 @@ def mix_view(version: dict) -> dict:
             "label": p["label"],
             "role": MIX_ROLE_LABELS_FR.get(p["role"], p["role"]),
             "roleKey": p["role"],
-            "treatments": [{"label": t["label"], "reason": t["reason"]} for t in p["treatments"]],
+            "treatments": [_treatment_view(t) for t in p["treatments"]],
             "notes": notes,
             "change": f"{_db(p['loudness_before'], 'LUFS')} → {_db(after, 'LUFS')}"
             if p["treatments"] and after is not None and after == after else "",
@@ -195,7 +209,7 @@ def mix_view(version: dict) -> dict:
         "song": _song_lines(version.get("song", {})),
         "parts": parts,
         "untouched": not changed,
-        "master": [{"label": t["label"], "reason": t["reason"]} for t in version.get("master", [])],
+        "master": [_treatment_view(t) for t in version.get("master", [])],
         "checks": [
             f"Plage de volume {c['loudness_range_lu']:.1f} LU",
             f"Crête / volume {c['plr_db']:.1f} dB",
