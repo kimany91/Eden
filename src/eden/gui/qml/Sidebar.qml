@@ -8,8 +8,8 @@ Rectangle {
     readonly property var steps: [
         { title: "Projet", sub: "Choisir un .flp" },
         { title: "Analyse", sub: "Pistes, voix, effets" },
-        { title: "Son de FL Studio", sub: "Pistes et Master" },
-        { title: "Mixage Eden", sub: "Voix, équilibre, ton Master" },
+        { title: "Son de FL Studio", sub: "Pistes, voix sèches" },
+        { title: "Mixage Eden", sub: "Mix et mastering" },
         { title: "Export WAV", sub: "Dossier et format" }
     ]
     readonly property int current: controller.stage === "home" ? 0

@@ -26,7 +26,7 @@ EdenPage {
                 Text {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
-                    text: "Eden corrige et équilibre tes voix, puis ton Master FL Studio fait le mastering."
+                    text: "Eden mixe tes voix comme un ingénieur du son (tonalité, espace, stéréo, basses) puis fait le mastering pour les plateformes."
                     color: Theme.textMuted
                     font.family: Theme.fontFamily; font.pixelSize: 13
                 }
@@ -188,7 +188,7 @@ EdenPage {
                         Repeater {
                             model: [
                                 { title: "Ton morceau d'origine", data: page.r.original || {}, gold: false },
-                                { title: "Avec Eden (après ton Master)", data: page.r.final || {}, gold: true }
+                                { title: "Avec Eden (mix + mastering)", data: page.r.final || {}, gold: true }
                             ]
                             delegate: Reveal {
                                 required property var modelData
@@ -237,6 +237,22 @@ EdenPage {
                         }
                     }
 
+                    SectionTitle { text: "Le morceau"; count: -1; topPad: 4; visible: (page.r.song || []).length > 0 }
+                    Card {
+                        visible: (page.r.song || []).length > 0
+                        width: parent.width
+                        height: songCol.implicitHeight + 32
+                        Column {
+                            id: songCol
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+                            spacing: 6
+                            Repeater {
+                                model: page.r.song || []
+                                Text { required property var modelData; text: modelData; color: Theme.text; font.family: Theme.fontFamily; font.pixelSize: 13 }
+                            }
+                        }
+                    }
+
                     SectionTitle { text: "Ce qu'Eden a fait"; count: -1; topPad: 4 }
                     Text {
                         visible: page.r.untouched === true
@@ -267,7 +283,6 @@ EdenPage {
                                         spacing: 10
                                         Text { text: modelData.label; color: Theme.text; font.family: Theme.fontFamily; font.pixelSize: 15; font.weight: Font.DemiBold }
                                         Chip {
-                                            visible: modelData.roleKey !== "rest"
                                             text: modelData.role
                                             tint: Theme.roleColor(modelData.roleKey)
                                             filled: true
@@ -276,7 +291,7 @@ EdenPage {
                                         Text { text: modelData.change; color: Theme.textDim; font.family: Theme.fontFamily; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
                                     }
                                     Text {
-                                        visible: modelData.treatments.length === 0
+                                        visible: modelData.treatments.length === 0 && modelData.notes.length === 0
                                         text: "Laissé tel quel : rien à corriger."
                                         color: Theme.textDim
                                         font.family: Theme.fontFamily; font.pixelSize: 13; font.italic: true
@@ -298,6 +313,67 @@ EdenPage {
                                             }
                                         }
                                     }
+                                    Repeater {
+                                        model: modelData.notes
+                                        Text {
+                                            required property var modelData
+                                            width: partCol.width
+                                            wrapMode: Text.WordWrap
+                                            text: "◦ " + modelData
+                                            color: Theme.textMuted
+                                            font.family: Theme.fontFamily; font.pixelSize: 12
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    SectionTitle { text: "Mastering Eden"; count: -1; topPad: 8; visible: (page.r.master || []).length > 0 }
+                    Card {
+                        visible: (page.r.master || []).length > 0
+                        width: parent.width
+                        height: masterCol.implicitHeight + 32
+                        Column {
+                            id: masterCol
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+                            spacing: 8
+                            Repeater {
+                                model: page.r.master || []
+                                Column {
+                                    required property var modelData
+                                    width: masterCol.width
+                                    spacing: 2
+                                    Text { text: "• " + modelData.label; color: Theme.text; font.family: Theme.fontFamily; font.pixelSize: 13; font.weight: Font.Medium }
+                                    Text {
+                                        width: parent.width
+                                        leftPadding: 12
+                                        wrapMode: Text.WordWrap
+                                        text: modelData.reason
+                                        color: Theme.textMuted
+                                        font.family: Theme.fontFamily; font.pixelSize: 12
+                                    }
+                                }
+                            }
+                            Text {
+                                width: masterCol.width
+                                wrapMode: Text.WordWrap
+                                text: (page.r.checks || []).join("   ·   ")
+                                color: Theme.textDim
+                                font.family: Theme.fontFamily; font.pixelSize: 12
+                            }
+                            Text {
+                                topPadding: 6
+                                text: "Ce que les plateformes en feront (elles ramènent les morceaux forts à leur niveau de référence)"
+                                color: Theme.text
+                                font.family: Theme.fontFamily; font.pixelSize: 13; font.weight: Font.Medium
+                            }
+                            Flow {
+                                width: masterCol.width
+                                spacing: 6
+                                Repeater {
+                                    model: page.r.platforms || []
+                                    Chip { required property var modelData; text: modelData.name + " " + modelData.gain + " → " + modelData.heard }
                                 }
                             }
                         }

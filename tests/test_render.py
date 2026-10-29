@@ -61,9 +61,14 @@ def make_session(tmp_path):
     d = tmp_path / "Session"
     d.mkdir(exist_ok=True)
     t = np.arange(int(4.0 * 22050)) / 22050
+    rng = np.random.default_rng(7)
     for k, name in enumerate(("Lead.wav", "Adlib.wav", "Beat.wav", "808.wav")):
-        tone = 0.25 * np.sin(2 * np.pi * (140 + 90 * k) * t) * (0.6 + 0.4 * np.sin(2 * np.pi * (k + 1) * t))
-        sf.write(d / name, tone if k < 2 else np.stack([tone, 0.8 * tone], axis=1), 22050)
+        if k < 2:  # voices: broadband and in syllables, so a delayed copy does not look like the voice
+            syllables = np.clip(np.sin(2 * np.pi * (3 + k) * t), 0, None)
+            sf.write(d / name, 0.15 * rng.standard_normal(t.size) * syllables, 22050)
+        else:
+            tone = 0.25 * np.sin(2 * np.pi * (140 + 90 * k) * t) * (0.6 + 0.4 * np.sin(2 * np.pi * (k + 1) * t))
+            sf.write(d / name, np.stack([tone, 0.8 * tone], axis=1), 22050)
     inserts = [
         Insert(routes=(), slots={0: Slot("Fruity Limiter")}),
         Insert(name="Voix lead", routes=(3,), slots={0: Slot("Fruity parametric EQ 2")}),
@@ -155,7 +160,95 @@ def test_render_plan(session):
     assert all(j.bypass_master_effects for j in plan.jobs[1:])
     vocal = {j.name for j in plan.jobs if j.kind == "vocal"}
     assert vocal == {"vocal-ch000-lead", "vocal-ch001-adlib"}
+    dry = {j.name: j for j in plan.jobs if j.kind == "vocal_dry"}
+    assert set(dry) == {"dry-ch000-lead", "dry-ch001-adlib"}
+    # the vocal bus carries the reverb and the voices need it to reach the Master:
+    # its reverb slot is bypassed, the bus itself stays
+    assert dry["dry-ch000-lead"].bypass_slots == [(3, 0)] and not dry["dry-ch000-lead"].mute_inserts
     assert any("plusieurs groupes" in n for n in plan.notes)
+
+
+def make_send_session(tmp_path):
+    """Lead with Auto-Tune and a delay on its own insert, plus a send to a reverb return."""
+    d = tmp_path / "Sends"
+    d.mkdir(exist_ok=True)
+    t = np.arange(int(2.0 * 22050)) / 22050
+    sf.write(d / "Lead.wav", 0.3 * np.sin(2 * np.pi * 220 * t), 22050)
+    sf.write(d / "Beat.wav", np.stack([0.2 * np.sin(2 * np.pi * 55 * t)] * 2, axis=1), 22050)
+    inserts = [
+        Insert(routes=()),
+        Insert(name="Lead", routes=(0, 2), slots={0: Slot("Auto-Tune Pro"), 1: Slot("Fruity Delay 3")}),
+        Insert(name="Reverb", routes=(0,), slots={0: Slot("Fruity parametric EQ 2"),
+                                                 1: Slot("Fruity Reeverb 2")}),
+        Insert(name="Beat", routes=(0,), slots={0: Slot("Fruity Reeverb 2")}),
+    ]
+    channels = [Chan("Lead", insert=1, sample_path=str(d / "Lead.wav")),
+                Chan("Instru", insert=3, sample_path=str(d / "Beat.wav"))]
+    clips = [Clip(1, 0, BAR, channel=0), Clip(2, 0, BAR, channel=1)]
+    flp = d / "Sends.flp"
+    flp.write_bytes(build_flp(channels, inserts, clips, tempo=120))
+    return flp
+
+
+def test_dry_vocal_plan_mutes_returns_and_bypasses_space_slots(tmp_path):
+    plan = plan_renders(_report(make_send_session(tmp_path)))
+    dry = next(j for j in plan.jobs if j.kind == "vocal_dry")
+    assert dry.mute_inserts == [2]  # reverb return: the lead reaches the Master without it
+    assert dry.bypass_slots == [(1, 1)]  # delay on the lead's own insert; Auto-Tune stays
+    assert dry.mute_channels == [1] and dry.channels == [0]
+
+
+def test_dry_edits_mute_a_whole_return_and_need_every_slot_state():
+    from eden.project.classify import RoleGuess
+    from eden.project.inspector import SourceAnalysis, _effects_on, _signal_path
+    from eden.project.model import FlpProject, MixerInsert, MixerSlot, PluginInfo, Route
+    from eden.render.plan import _dry_edits
+
+    def lead(project):
+        path, reaches = _signal_path(project, 1)
+        return SourceAnalysis(1, "Lead", "sampler", 1, "Lead", path, reaches,
+                              _effects_on(project, [i for i in path if i]), RoleGuess("lead_vocal"), 1, 0.0, 10.0)
+
+    tune = MixerSlot(0, PluginInfo("Fruity Wrapper", vst_name="Auto-Tune Pro"), enabled=True)
+    # a reverb return ducked by a limiter: the limiter only shapes the effect, the whole return is muted
+    ducked = FlpProject(inserts=[
+        MixerInsert(0, "Master", routes=[]),
+        MixerInsert(1, "Lead", slots=[tune], routes=[Route(0), Route(2, 6400)]),
+        MixerInsert(2, "Rev", routes=[Route(0)], slots=[MixerSlot(0, PluginInfo("Fruity Reeverb 2"), enabled=True),
+                                                        MixerSlot(1, PluginInfo("Fruity Limiter"), enabled=True)])])
+    assert _dry_edits(ducked, lead(ducked)) == ([2], [], True)
+    # a reverb whose on/off state FL did not store cannot be bypassed: no dry render is trusted
+    unknown = FlpProject(inserts=[
+        MixerInsert(0, "Master", routes=[]),
+        MixerInsert(1, "Lead", routes=[Route(0)], slots=[
+            tune, MixerSlot(1, PluginInfo("Fruity Reeverb 2"), enabled=None),
+            MixerSlot(2, PluginInfo("Fruity Delay 3"), enabled=True)])])
+    assert _dry_edits(unknown, lead(unknown)) == ([], [(1, 2)], False)
+
+
+def test_editor_bypasses_one_slot(tmp_path):
+    data = make_send_session(tmp_path).read_bytes()
+    ed = FlpEditor(data)
+    ed.set_slot_enabled(1, 1, False)
+    p = parse_bytes(ed.to_bytes())
+    assert [s.enabled for s in p.insert(1).slots] == [True, False]
+    assert p.insert(2).slots[1].enabled is True
+    with pytest.raises(FlpEditError):
+        ed.set_slot_enabled(1, 7, False)
+
+
+def test_dry_vocal_render_removes_only_the_fl_space_effects(tmp_path):
+    result = render_project(make_send_session(tmp_path), sim_renderer(), timeout_s=120)
+    assert result.ok
+    full = sf.read(result.wav("vocal-ch000-lead"))[0]
+    dry = sf.read(result.wav("dry-ch000-lead"))[0]
+    sr = 22050
+    after = slice(int(2.05 * sr), int(2.7 * sr))  # after the clip: echoes and reverb only
+    assert np.max(np.abs(dry[after])) < 1e-6 < np.max(np.abs(full[after]))
+    # while the voice sounds, the dry render is the voice through Auto-Tune alone
+    t = np.arange(int(2.0 * sr)) / sr
+    expected = np.tanh(1.5 * 0.3 * np.sin(2 * np.pi * 220 * t) * 10000 / 12800) / 1.5
+    np.testing.assert_allclose(dry[: int(0.2 * sr), 0], expected[: int(0.2 * sr)], atol=1e-4)  # 16-bit source
 
 
 # -- full pipeline ---------------------------------------------------------------
@@ -166,12 +259,7 @@ def test_render_pipeline_reproduces_the_mix(session, tmp_path):
     result = render_project(session, renderer, timeout_s=120, workspace_home=None)
     assert result.ok, (result.null_test, [j.error for j in result.jobs])
     assert result.null_test.residual_db < -100
-    assert len(result.plan.jobs) == 7
-    assert renderer.calls == 7 + 2  # + the two Master controls
-    # Master kept in FL: the re-injected channel's gain is measured and compensated...
-    assert abs(result.calibration.gain - 10000 / 12800) < 1e-4
-    # ...so the original pre-master mix through the user's Master gives back the song.
-    assert result.master_test.passed and result.master_test.residual_db < -100
+    assert renderer.calls == len(result.plan.jobs) == 9
     # the Master limiter is in the original render but not in the pre-master one
     a, _ = sf.read(result.wav("original"))
     b, _ = sf.read(result.wav("premaster"))
@@ -189,29 +277,6 @@ def test_render_pipeline_reproduces_the_mix(session, tmp_path):
     result2 = render_project(session, again, timeout_s=120)
     assert again.calls == 0
     assert {j.status for j in result2.jobs} == {"resumed"} and result2.ok
-
-
-def test_unfaithful_reinjection_is_refused(session, monkeypatch):
-    monkeypatch.setenv("EDEN_SIM_DISTORT_MIX", "1")
-    result = render_project(session, sim_renderer(), timeout_s=120)
-    assert result.stems_ok  # the stems themselves are fine
-    assert not result.calibration.passed and not result.master_ok and not result.ok
-    assert any("réinjection" in w for w in result.warnings)
-
-
-def test_reinjection_copy_structure(session, tmp_path):
-    from eden.render.master import MIX_CHANNEL_NAME, reinjection_copy
-
-    report = _report(session)
-    mix = session.parent / "Beat.wav"
-    p = parse_bytes(reinjection_copy(session.read_bytes(), report, {}, mix, False))
-    new = p.channels[-1]
-    assert (new.name, new.insert, new.enabled, new.sample_path) == (MIX_CHANNEL_NAME, 0, True, str(mix))
-    assert len(p.channels) == 5 and all(c.enabled is False for c in p.channels[:4])
-    clip = next(c for c in p.arrangements[0].clips if c.source_index == new.index)
-    assert clip.position_ticks == 0 and clip.track == 500
-    assert clip.length_seconds >= 4.0
-    assert p.insert(0).effects_enabled is True and p.insert(0).slots  # Master chain intact
 
 
 def test_wrong_stem_split_is_caught(session, monkeypatch):
@@ -263,17 +328,6 @@ def test_no_tail_warning_when_effects_ring_out(session):
     result = render_project(session, sim_renderer(), timeout_s=120)
     assert not any("Leave remainder" in w for w in result.warnings)
     assert not any(j.check.ends_with_sound for j in result.jobs)
-
-
-def test_master_pass_gives_back_the_song_for_an_unchanged_mix(session, tmp_path):
-    from eden.render.master import master_pass
-
-    result = render_project(session, sim_renderer(), timeout_s=120)
-    report = _report(session)
-    out = master_pass(session.read_bytes(), report, {}, result.wav("premaster"), result.calibration,
-                      tmp_path / "final", sim_renderer(), timeout_s=120)
-    assert null_test(result.wav("original"), [out]).passed  # Eden at 0 % = the original song
-    assert [p.name for p in (tmp_path / "final").iterdir()] == ["master-pass.wav"]
 
 
 def test_missing_sample_stops_before_rendering(session):
@@ -347,19 +401,3 @@ def test_cli_render_requires_probe(session, capsys):
 
     assert main(["render", str(session)]) == 2
     assert "fl-probe" in capsys.readouterr().err
-
-
-def test_add_mix_channel_on_real_project(real_flp):
-    ed = FlpEditor(real_flp.read_bytes())
-    assert ed.audio_channel_templates() == [11]  # "22in Kick", the only plain audio channel
-    new = ed.add_audio_channel(r"C:\Eden\mix.wav", "Eden - mix")
-    track = ed.add_playlist_clip(new, 0, 96 * 4 * 8)
-    p = parse_bytes(ed.to_bytes())
-    assert new == 19 and len(p.channels) == 20 == p.header_channel_count
-    ch = p.channel(19)
-    assert (ch.name, ch.sample_path, ch.insert, ch.volume_raw) == ("Eden - mix", r"C:\Eden\mix.wav", 0, 10000)
-    assert p.channel(11).sample_path.endswith("22in Kick.wav")  # template untouched
-    clips = [c for c in p.arrangements[0].clips if c.source == "channel" and c.source_index == 19]
-    assert len(clips) == 1 and clips[0].track == track == 500
-    assert len(p.arrangements[0].clips) == 23
-    assert not p.warnings

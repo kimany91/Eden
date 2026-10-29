@@ -5,18 +5,17 @@ Usage, like FL Studio:  python fl_simulator.py /R /Ewav <project.flp>
 
 It reads the project with Eden's parser and renders each channel (its audio
 file when it has one, else a deterministic tone) through the mixer graph.
-Channel volume is applied as raw/12800, so FL's default 10000 is NOT unity
-gain: Eden has to measure it, as it would with real FL Studio. Insert
-enable/effects flags, routes, send levels and volumes are honoured, and any
-insert with effects applies a
-*non-linear* curve (like a compressor or saturation would), so a wrong
-stem split fails the null test exactly as it would with real FL Studio.
+Channel volume is applied as raw/12800 (FL's default 10000 is not unity
+gain). Insert enable/effects flags, slot bypass, routes, send levels and volumes are
+honoured. A delay slot adds tempo-free echoes and a reverb slot a decaying tail (both
+linear, dry signal kept, like a plugin with its own dry/wet mix); any other effect slot
+applies a *non-linear* curve (like a compressor or saturation would), so a wrong stem
+split fails the null test exactly as it would with real FL Studio.
 
 Environment switches used by tests:
   EDEN_SIM_IGNORE_MUTE=1   behave as if FL ignored mute flags
   EDEN_SIM_NO_OUTPUT=1     exit without writing anything
   EDEN_SIM_ACCEPT=<flag>   only accept this syntax ("project" or "folder")
-  EDEN_SIM_DISTORT_MIX=1   colour the channel Eden adds (as a stray envelope would)
   EDEN_SIM_CUT_TAIL=1      stop exactly at the last clip (FL's "cut remainder"), instead
                            of leaving one second for echoes and reverbs to ring out
 """
@@ -34,6 +33,7 @@ import soundfile as sf
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from eden.flp.parser import parse_bytes  # noqa: E402
+from eden.project.plugins import categorize  # noqa: E402
 
 SR = 22050
 
@@ -43,6 +43,20 @@ def channel_signal(index: int, frames: int) -> np.ndarray:
     left = 0.2 * np.sin(2 * np.pi * (110 + 37 * index) * t)
     right = 0.2 * np.sin(2 * np.pi * (170 + 23 * index) * t + index)
     return np.stack([left, right], axis=1)
+
+
+def shifted(x: np.ndarray, seconds: float) -> np.ndarray:
+    n = int(seconds * SR)
+    return np.vstack([np.zeros((n, 2)), x[:-n]]) if n < x.shape[0] else np.zeros_like(x)
+
+
+def effect(slot, x: np.ndarray) -> np.ndarray:
+    category = categorize(slot.plugin)
+    if category == "delay":
+        return x + sum(0.5 ** k * shifted(x, 0.25 * k) for k in (1, 2, 3))
+    if category == "reverb":
+        return x + sum(0.3 * 0.7 ** k * shifted(x, 0.031 * k) for k in range(1, 12))
+    return np.tanh(1.5 * x) / 1.5  # stands for any non-linear plugin
 
 
 def render(project_path: Path) -> np.ndarray:
@@ -68,10 +82,7 @@ def render(project_path: Path) -> np.ndarray:
             continue
         target = ch.insert or 0
         gain = (ch.volume_raw if ch.volume_raw is not None else 10000) / 12800
-        sig = source(ch) * gain
-        if os.environ.get("EDEN_SIM_DISTORT_MIX") == "1" and ch.name == "Eden - mix":
-            sig = np.tanh(3 * sig) / 3
-        inputs[target] = inputs.get(target, 0) + sig
+        inputs[target] = inputs.get(target, 0) + source(ch) * gain
 
     @cache
     def output(idx: int) -> np.ndarray:
@@ -83,8 +94,10 @@ def render(project_path: Path) -> np.ndarray:
                 x = x + output(src.index) * (1.0 if level is None else level / 12800)
         if ins.enabled is False and not ignore_mute:
             return np.zeros((frames, 2))
-        if ins.slots and ins.effects_enabled is not False:
-            x = np.tanh(1.5 * x) / 1.5  # stands for any non-linear plugin
+        if ins.effects_enabled is not False:
+            for slot in ins.slots:
+                if slot.enabled is not False:
+                    x = effect(slot, x)
         return x * ((ins.volume_raw if ins.volume_raw is not None else 12800) / 12800)
 
     return output(0)

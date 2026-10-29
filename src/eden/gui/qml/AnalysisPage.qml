@@ -176,7 +176,7 @@ EdenPage {
                         }
                     }
 
-                    SectionTitle { text: "Ton Master FL Studio"; count: -1; topPad: 10 }
+                    SectionTitle { text: "Effets de ton Master FL Studio"; count: -1; topPad: 10 }
                     Card {
                         width: parent.width
                         height: masterRow.implicitHeight + 36
@@ -193,7 +193,7 @@ EdenPage {
                                 width: parent.width - 60
                                 spacing: 8
                                 Text {
-                                    text: "Ton mastering reste dans FL Studio : le mix d'Eden repassera dans ton Master."
+                                    text: "Eden fait lui-même le mastering : ces effets servent à ton écoute dans FL Studio, pas au fichier final."
                                     width: parent.width
                                     wrapMode: Text.WordWrap
                                     color: Theme.text

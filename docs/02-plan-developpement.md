@@ -60,31 +60,49 @@ Critères restant à valider **avec ton FL Studio** :
 - [ ] sur 3 projets réels, test de reconstruction < −60 dB, durées identiques ;
 - [ ] aucune fenêtre bloquante de FL pendant les rendus (plugins manquants, etc.).
 
-Mastering : il reste dans FL Studio. Le mix d'Eden est réinjecté dans ton Master
-(calibration du gain + contrôle « mix d'origine repassé dans le Master = morceau d'origine »,
-faits à chaque rendu).
+Rendu « voix sèche » : pour chaque voix dont la chaîne FL contient une reverb ou un delay,
+une copie supplémentaire est rendue avec ces effets contournés (slots désactivés, retours
+d'effets coupés) ; voix complète − voix sèche = exactement ce que tes effets ajoutent.
+
+Mastering : c'est Eden qui le fait (décision : « Eden fait tout le mastering »). Les
+effets de ton Master FL ne servent qu'à ton écoute dans FL Studio.
 
 Ensuite : passerelle de script FL optionnelle pour lire les réglages des plugins.
 
-## Phase 4 — Mixage Eden et passage dans le Master FL ✅ (voix de test, simulateur) / ⏳ (écoute)
+## Phase 4 — Mixage et mastering Eden ✅ (voix de test, simulateur) / ⏳ (écoute)
 
-Fait (détails et seuils : `docs/mixage.md`) :
-- mesures normalisées : volume intégré ITU-R BS.1770 (coefficients exacts), crête réelle ;
-- traitements : coupe-bas, coupes de résonance, bas-médiums, de-esser, compression, niveaux,
-  place pour la voix dans l'instru — chacun sans effet à intensité 0 ;
-- décisions à partir de mesures sur les voix rendues par FL, avec leur raison ;
-- niveau d'entrée du Master conservé, passage dans le Master FL, vérifications finales ;
+Fait (détails, seuils et sources : `docs/mixage.md`) :
+- mesures normalisées : volume intégré, court terme, plage de volume (ITU-R BS.1770 /
+  EBU R128, coefficients exacts), crête réelle à 8× et lue comme un mesureur courant
+  (libebur128) ;
+- analyse du morceau : accordage de l'instru, tonalité (profils Krumhansl-Kessler, Shaath et
+  edma, 808 pour départager les relatives), tempo du projet et pulsation ressentie, notes du 808 et accord avec la
+  gamme, collisions kick / 808, stéréo des graves ;
+- chaîne vocale complète par rôle, dans l'ordre des chaînes pro documentées, chaque étape
+  déclenchée par une mesure et plafonnée ; voix sèche quand FL a une reverb ou un delay
+  (effets remis tels quels), sinon compression « prudente » ;
+- niveaux (voix principale au-dessus de l'instru pendant le chant, autres voix par rapport
+  à elle), suivi phrase par phrase, espace en quatre envois pour les voix qui n'en ont pas,
+  placement stéréo, place pour les paroles (bandes pondérées par leur importance pour
+  l'intelligibilité), kick / 808, harmoniques du 808 pour petites enceintes ;
+- mastering Eden : graves en mono, tenue des graves, compression de bus, clip doux puis
+  limiteur true-peak, volume cible rap commercial, simulation de la lecture sur chaque
+  plateforme ;
 - versions conservées, export WAV (dossier, nom, fréquence, 16/24/32 bits) ;
 - page « Mixage Eden » dans l'interface, commande `eden mix`.
 
 Critères validés : à 0 %, résultat identique au morceau d'origine (écart < −100 dB) ;
-voix propre et voix Auto-Tune non traitées ; chaque défaut de test corrigé et mesurablement
-réduit ; volume conservé ; aucun export écrêté en 16/24 bits.
+voix propre : seulement les étapes de forme, volume rendu par le gain de compensation ;
+chaque défaut de test corrigé et mesurablement réduit ; plafond de crête tenu pour les deux
+lectures ; conversion à l'export sans repliement ni crête remontée ; aucun export écrêté en
+16/24 bits.
 
 Reste à valider **avec toi** : écoute sur 3 morceaux, ajustement des seuils.
 
-Phase 4b : lecteur A/B intégré, saturation, reverb/delay, automation de volume vocal,
-correction de hauteur (cf. audit §7).
+Phase 4b : lecteur A/B intégré, courbe d'équilibre tonal de référence (corpus de masters
+rap), séparation kick / 808 quand l'instru est un seul fichier stéréo, suppression
+dynamique des résonances (détecteur tenant compte des harmoniques, à valider sur de vraies
+voix).
 
 ## Phase 5 — Interface et installateur ✅ (base) / ⏳ (compléments)
 

@@ -3,10 +3,13 @@
 Every processor leaves the signal untouched when its amount is zero, so that
 "Eden at 0 %" gives back FL Studio's render exactly.
 
-* filters: RBJ biquads (high-pass, peaking), applied causally like an
-  analog-style EQ;
+* filters: RBJ biquads (high-pass, peaking, shelves), applied causally like
+  an analog-style EQ;
 * compressor: feed-forward, linked stereo, gain computed on 1 ms frames
-  then interpolated, with look-ahead (possible because Eden works offline);
+  then interpolated, with look-ahead (possible because Eden works offline),
+  program-dependent release, an optional cap on the reduction and an
+  optional "hold" mask that freezes the gain (used on the tails of effects
+  FL Studio already printed, so make-up gain never lifts them);
 * de-esser and vocal-space dip: the signal is split into a band and its
   exact complement (zero-phase filter, band + rest == input), and only the
   band's gain moves.
@@ -41,8 +44,42 @@ def peaking_sos(fs: float, f0: float, q: float, gain_db: float) -> np.ndarray:
     return _biquad([1 + alpha * a, -2 * cos, 1 - alpha * a], [1 + alpha / a, -2 * cos, 1 - alpha / a])
 
 
+def shelf_sos(fs: float, f0: float, gain_db: float, high: bool = True, slope: float = 1.0
+              ) -> np.ndarray:
+    """RBJ shelving filter: ``high`` lifts/lowers everything above ``f0``, else below."""
+    a = 10 ** (gain_db / 40)
+    w0 = 2 * math.pi * f0 / fs
+    cos, sin = math.cos(w0), math.sin(w0)
+    alpha = sin / 2 * math.sqrt((a + 1 / a) * (1 / slope - 1) + 2)
+    r = 2 * math.sqrt(a) * alpha
+    if high:
+        b = [a * ((a + 1) + (a - 1) * cos + r), -2 * a * ((a - 1) + (a + 1) * cos),
+             a * ((a + 1) + (a - 1) * cos - r)]
+        den = [(a + 1) - (a - 1) * cos + r, 2 * ((a - 1) - (a + 1) * cos), (a + 1) - (a - 1) * cos - r]
+    else:
+        b = [a * ((a + 1) - (a - 1) * cos + r), 2 * a * ((a - 1) - (a + 1) * cos),
+             a * ((a + 1) - (a - 1) * cos - r)]
+        den = [(a + 1) + (a - 1) * cos + r, -2 * ((a - 1) + (a + 1) * cos), (a + 1) + (a - 1) * cos - r]
+    return _biquad(b, den)
+
+
 def apply_sos(x: np.ndarray, sos: np.ndarray) -> np.ndarray:
     return sosfilt(sos, x, axis=0)
+
+
+def frame_matrix(x: np.ndarray, n: int, hop: int) -> np.ndarray:
+    """Consecutive frames of a mono signal as rows (no copy until written to)."""
+    if x.size < n:
+        return np.zeros((0, n))
+    return np.lib.stride_tricks.sliding_window_view(x, n)[::hop]
+
+
+def autocorrelation(frames: np.ndarray, max_lag: int) -> np.ndarray:
+    """Linear autocorrelation of each row for lags 0..``max_lag`` (FFT, zero-padded)."""
+    n = frames.shape[1]
+    nfft = 1 << int(math.ceil(math.log2(n + max_lag + 1)))
+    spec = np.fft.rfft(frames, nfft, axis=1)
+    return np.fft.irfft(np.abs(spec) ** 2, nfft, axis=1)[:, : max_lag + 1]
 
 
 def _frames(x: np.ndarray, fs: float) -> tuple[np.ndarray, int]:
@@ -54,15 +91,44 @@ def _frames(x: np.ndarray, fs: float) -> tuple[np.ndarray, int]:
     return ms, size
 
 
-def _smooth(gain_db: np.ndarray, attack_frames: float, release_frames: float) -> np.ndarray:
-    """Attack/release smoothing of a gain-reduction curve (negative dB values)."""
+def _smooth(gain_db: np.ndarray, attack_frames: float, release_frames: float,
+            slow_release_frames: float | None = None, slow_after_frames: float = 0.0,
+            hold: np.ndarray | None = None) -> np.ndarray:
+    """Attack/release smoothing of a gain-reduction curve (negative dB values).
+
+    With ``slow_release_frames`` the release gets slower once the reduction
+    has lasted ``slow_after_frames`` (program-dependent, like an opto
+    compressor). Where ``hold`` is true the gain is frozen at the mean
+    reduction of the stretch just before: an effect tail then keeps the same
+    level relative to its phrase as before compression (frozen at the
+    phrase's last value, near 0 dB, the tail would come up by the phrase's
+    reduction).
+    """
     att = math.exp(-1 / max(attack_frames, 1e-9))
     rel = math.exp(-1 / max(release_frames, 1e-9))
+    slow = math.exp(-1 / max(slow_release_frames, 1e-9)) if slow_release_frames else rel
     out = np.empty_like(gain_db)
     state = 0.0
+    busy = 0.0  # frames spent under reduction
+    phrase_sum, phrase_n, held = 0.0, 0, False
     for i, target in enumerate(gain_db):
-        coef = att if target < state else rel  # going down = more reduction = attack
+        if hold is not None and hold[i]:
+            if not held:
+                state = phrase_sum / phrase_n if phrase_n else state
+                held = True
+            out[i] = state
+            continue
+        if held:
+            phrase_sum, phrase_n, held = 0.0, 0, False
+        if target < state:  # going down = more reduction = attack
+            coef = att
+        else:
+            coef = slow if busy > slow_after_frames else rel
         state = coef * state + (1 - coef) * target
+        # how long reduction was asked for; remembered until the gain has recovered
+        busy = busy + 1 if target < -0.1 else (busy if state < -0.1 else 0.0)
+        phrase_sum += state
+        phrase_n += 1
         out[i] = state
     return out
 
@@ -81,7 +147,9 @@ def _apply_gain(x: np.ndarray, gain: np.ndarray) -> np.ndarray:
 
 def compressor_gain_db(x: np.ndarray, fs: float, threshold_db: float, ratio: float,
                        attack_ms: float = 8.0, release_ms: float = 140.0, knee_db: float = 6.0,
-                       detector_ms: float = 5.0) -> tuple[np.ndarray, int]:
+                       detector_ms: float = 5.0, slow_release_ms: float | None = None,
+                       slow_after_ms: float = 200.0, max_reduction_db: float | None = None,
+                       hold: np.ndarray | None = None) -> tuple[np.ndarray, int]:
     """Gain reduction per 1 ms frame (dB, ≤ 0) and the frame size in samples."""
     ms, size = _frames(x, fs)
     if ms.size == 0 or ratio <= 1:
@@ -95,9 +163,17 @@ def compressor_gain_db(x: np.ndarray, fs: float, threshold_db: float, ratio: flo
     if knee_db > 0:
         in_knee = np.abs(over) < knee_db / 2
         gr[in_knee] = -slope * (over[in_knee] + knee_db / 2) ** 2 / (2 * knee_db)
+    if max_reduction_db is not None:
+        gr = np.maximum(gr, -max_reduction_db)
     frame_ms = FRAME_S * 1000
-    gr = _smooth(gr, attack_ms / frame_ms, release_ms / frame_ms)
     lookahead = int(round(attack_ms / frame_ms))
+    if hold is not None:
+        # the curve is moved ``lookahead`` frames earlier below: frame i of the smoothing acts on
+        # frame i − lookahead of the signal, so the mask is moved the other way
+        hold = np.concatenate([np.zeros(lookahead, dtype=bool), hold[: max(gr.size - lookahead, 0)]])
+        hold = np.pad(hold, (0, max(gr.size - hold.size, 0)))
+    gr = _smooth(gr, attack_ms / frame_ms, release_ms / frame_ms,
+                 slow_release_ms / frame_ms if slow_release_ms else None, slow_after_ms / frame_ms, hold)
     if lookahead:
         gr = np.concatenate([gr[lookahead:], np.zeros(lookahead)])
     return gr, size
@@ -108,6 +184,19 @@ def compress(x: np.ndarray, fs: float, threshold_db: float, ratio: float, **kw) 
         return x
     gr, size = compressor_gain_db(x, fs, threshold_db, ratio, **kw)
     return _apply_gain(x, _to_samples(gr, size, x.shape[0]))
+
+
+def parallel_compress(x: np.ndarray, fs: float, threshold_db: float, blend: float,
+                      low_hz: float = 100.0, high_hz: float = 5000.0, ratio: float = 8.0,
+                      attack_ms: float = 5.0, release_ms: float = 50.0,
+                      max_reduction_db: float = 15.0) -> np.ndarray:
+    """Add a heavily compressed, band-limited copy of ``x`` (New York style), sample-aligned."""
+    if blend <= 0:
+        return x
+    band, _ = split_band(x, fs, low_hz, high_hz)
+    gr, size = compressor_gain_db(x, fs, threshold_db, ratio, attack_ms=attack_ms,
+                                  release_ms=release_ms, max_reduction_db=max_reduction_db)
+    return x + blend * _apply_gain(band, _to_samples(gr, size, x.shape[0]))
 
 
 def split_band(x: np.ndarray, fs: float, low_hz: float | None, high_hz: float | None
@@ -128,15 +217,26 @@ def band_levels_db(x: np.ndarray, fs: float) -> tuple[np.ndarray, int]:
     return 10 * np.log10(np.maximum(ms, 1e-20)), size
 
 
-def deess(x: np.ndarray, fs: float, threshold_db: float, max_reduction_db: float,
-          ratio: float = 4.0, low_hz: float = 4500.0) -> np.ndarray:
-    """Reduce the sibilance band only when it exceeds ``threshold_db`` (1 ms frames)."""
-    if max_reduction_db <= 0:
-        return x
+def deess_gain_db(x: np.ndarray, fs: float, threshold_db: float, max_reduction_db: float,
+                  ratio: float = 4.0, low_hz: float = 4500.0, lookahead_ms: float = 5.0
+                  ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """(sibilance band, rest, gain reduction per 1 ms frame in dB, frame size) of a de-esser."""
     high, rest = split_band(x, fs, low_hz, None)
     level, size = band_levels_db(high, fs)
     gr = np.clip(-(level - threshold_db) * (1 - 1 / ratio), -max_reduction_db, 0.0)
     gr = _smooth(gr, 1.0, 60.0)
+    ahead = int(round(lookahead_ms / (FRAME_S * 1000)))
+    if ahead:  # the gain is already down when the 's' starts
+        gr = np.minimum(gr, np.concatenate([gr[ahead:], np.zeros(ahead)]))
+    return high, rest, gr, size
+
+
+def deess(x: np.ndarray, fs: float, threshold_db: float, max_reduction_db: float,
+          ratio: float = 4.0, low_hz: float = 4500.0, lookahead_ms: float = 5.0) -> np.ndarray:
+    """Reduce the sibilance band only when it exceeds ``threshold_db`` (1 ms frames)."""
+    if max_reduction_db <= 0:
+        return x
+    high, rest, gr, size = deess_gain_db(x, fs, threshold_db, max_reduction_db, ratio, low_hz, lookahead_ms)
     return rest + _apply_gain(high, _to_samples(gr, size, x.shape[0]))
 
 

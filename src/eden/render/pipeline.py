@@ -2,7 +2,6 @@
 
     inspection → render plan → temporary copy → FL Studio render → copy deleted
     → checks → null test (sum of stems == pre-master mix)
-    → Master checks (a mix re-injected into FL's Master gives back the song)
 
 FL Studio does all the sound: Eden only mutes parts of the project in a
 temporary copy so that FL renders each part separately, with every effect
@@ -25,7 +24,6 @@ from eden.flp.edit import FlpEditor
 from eden.project.inspector import InspectionReport, inspect_project
 from eden.project.model import MASTER_INSERT
 from eden.render.fl_studio import RenderError, Renderer
-from eden.render.master import Calibration, measure_gain, prepare_mix_for_master, reinjection_copy
 from eden.render.plan import RenderJob, RenderPlan, plan_renders
 from eden.render.verify import AudioCheck, NullTest, check_audio, null_test
 from eden.safety import Workspace, read_project_bytes, verify_unchanged
@@ -53,22 +51,11 @@ class RenderResult:
     null_test: NullTest | None
     repairs: list[str]
     warnings: list[str] = field(default_factory=list)
-    calibration: Calibration | None = None  # gain of a channel re-injected into the Master
-    master_test: NullTest | None = None  # original mix through the Master == original render
-
-    @property
-    def stems_ok(self) -> bool:
-        return all(j.status in ("done", "resumed") for j in self.jobs) and bool(
-            self.null_test and self.null_test.passed)
-
-    @property
-    def master_ok(self) -> bool:
-        return bool(self.calibration and self.calibration.passed
-                    and self.master_test and self.master_test.passed)
 
     @property
     def ok(self) -> bool:
-        return self.stems_ok and self.master_ok
+        return all(j.status in ("done", "resumed") for j in self.jobs) and bool(
+            self.null_test and self.null_test.passed)
 
     def wav(self, name: str) -> Path | None:
         j = next((j for j in self.jobs if j.job.name == name), None)
@@ -101,6 +88,8 @@ def build_copy(original: bytes, job: RenderJob, repairs: dict[int, str]) -> byte
         ed.set_channel_enabled(ch, False)
     for src, target in job.cut_routes:
         ed.set_route(src, target, False)
+    for insert, slot in job.bypass_slots:
+        ed.set_slot_enabled(insert, slot, False)
     if job.bypass_master_effects:
         ed.set_insert_effects_enabled(MASTER_INSERT, False)
     return ed.to_bytes()
@@ -152,7 +141,7 @@ def render_project(
         repairs=[f"canal {c} → {p}" for c, p in repairs.items()],
         warnings=list(plan.notes),
     )
-    total = len(plan.jobs) + 3
+    total = len(plan.jobs) + 1
 
     def run(job: RenderJob, copy_bytes: bytes, step: int) -> JobResult:
         """Have FL render a temporary copy (or reuse the audio of an identical one)."""
@@ -204,31 +193,6 @@ def render_project(
     stems = [Path(j.wav_path) for j in result.jobs if j.job.kind == "stem" and j.wav_path]
     if premaster and stems:
         result.null_test = null_test(premaster, stems, threshold_db)
-
-    # Master chain kept in FL Studio: check that Eden can play a mix through it.
-    if premaster and result.null_test and result.null_test.passed:
-        check_job = RenderJob("controle-master", "control",
-                              "Contrôle : réinjection dans le Master (effets contournés)")
-        jr = run(check_job, reinjection_copy(original, report, repairs, premaster, True),
-                 len(plan.jobs) + 1)
-        result.calibration = measure_gain(premaster, Path(jr.wav_path), threshold_db)
-        if result.calibration.passed:
-            control_dir = folder / "controle-eden-0"
-            control_dir.mkdir(exist_ok=True)
-            feed = prepare_mix_for_master(premaster, result.calibration,
-                                          control_dir / "controle-eden-0-entree.wav")
-            zero_job = RenderJob("controle-eden-0", "control",
-                                 "Contrôle : mix d'origine repassé dans ton Master")
-            try:
-                jr0 = run(zero_job, reinjection_copy(original, report, repairs, feed, False),
-                          len(plan.jobs) + 2)
-            finally:
-                feed.unlink(missing_ok=True)
-            original_wav = result.wav("original")
-            if original_wav:
-                result.master_test = null_test(original_wav, [Path(jr0.wav_path)], threshold_db)
-        else:
-            result.warnings.append(result.calibration.message)
 
     checks = [j.check for j in result.jobs if j.check]
     if len({(c.sample_rate, c.channels) for c in checks}) > 1:

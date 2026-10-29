@@ -56,7 +56,7 @@ EdenPage {
                 model: [
                     { icon: "lock", title: "Projet intact", text: "Ton .flp n'est jamais modifié, et rien n'est ajouté dans son dossier." },
                     { icon: "wave", title: "Ton son, à l'identique", text: "C'est FL Studio qui joue chaque piste : Auto-Tune, delays, échos et automations restent tels quels." },
-                    { icon: "crown", title: "Ton mastering gardé", text: "Le mix d'Eden repasse dans ton Master FL Studio." }
+                    { icon: "crown", title: "Mix et mastering pro", text: "Tonalité, espace, stéréo, basses, puis un master fort et propre pour les plateformes." }
                 ]
                 delegate: Reveal {
                     required property var modelData

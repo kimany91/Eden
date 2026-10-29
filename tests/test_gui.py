@@ -102,7 +102,7 @@ def test_analysis_then_render(ui, tmp_path):
     assert c.probeLog, "first use must run the FL Studio set-up test"
     statuses = {r["name"]: r["status"] for r in c.renderRows}
     assert set(statuses.values()) == {"done"}
-    assert "controle-eden-0" in statuses
+    assert "verification" in statuses
     assert engine.load_warnings == []
 
 
@@ -168,7 +168,7 @@ def test_mix_page_flow(ui, tmp_path):
     assert [s["status"] for s in c.mixSteps] == ["done"] * 4
     first = c.mixResult["id"]
     assert c.mixResult["intensity"] == 60
-    assert c.mixResult["parts"][-1]["roleKey"] == "rest"
+    assert c.mixResult["parts"][-1]["roleKey"] in ("beat", "bass")
     assert len(c.mixVersions) == 1
 
     c.intensity = 0.0

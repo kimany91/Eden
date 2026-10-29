@@ -145,8 +145,8 @@ EdenPage {
                             id: kindChip
                             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
                             text: modelData.kind === "stem" ? "Groupe" : modelData.kind === "vocal" ? "Voix"
-                                : modelData.kind === "check" ? "Vérification" : modelData.kind === "control" ? "Master"
-                                : "Référence"
+                                : modelData.kind === "vocal_dry" ? "Voix sèche"
+                                : modelData.kind === "check" ? "Vérification" : "Référence"
                         }
                     }
                 }
@@ -159,8 +159,7 @@ EdenPage {
             visible: !page.rendering && page.sum.folder !== undefined
             Repeater {
                 model: [
-                    { ok: page.sum.stemsOk, title: "Pistes reconstruites", text: page.sum.nullMessage, icon: "wave" },
-                    { ok: page.sum.masterOk, title: "Mastering FL conservé", text: page.sum.masterMessage, icon: "crown" }
+                    { ok: page.sum.ok, title: "Son de ton projet récupéré", text: page.sum.nullMessage }
                 ]
                 delegate: Reveal {
                     required property var modelData
@@ -207,8 +206,8 @@ EdenPage {
                     Text {
                         width: parent.width
                         wrapMode: Text.WordWrap
-                        text: page.sum.ok ? "Étape suivante : Eden mixe tes voix, puis ton Master FL fait le mastering."
-                                          : "Le mixage sera possible quand les deux vérifications seront validées."
+                        text: page.sum.ok ? "Étape suivante : Eden mixe ton morceau et fait le mastering."
+                                          : "Le mixage sera possible quand la vérification sera validée."
                         color: Theme.textMuted
                         font.family: Theme.fontFamily; font.pixelSize: 12
                     }

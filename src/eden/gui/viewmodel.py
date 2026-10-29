@@ -13,12 +13,6 @@ from eden.project.plugins import CATEGORY_LABELS_FR
 from eden.render.pipeline import RenderResult
 from eden.render.plan import RenderPlan
 
-CONTROL_JOBS = [
-    ("controle-master", "Contrôle : réinjection dans le Master (effets contournés)"),
-    ("controle-eden-0", "Contrôle : mix d'origine repassé dans ton Master"),
-]
-
-
 def _time(seconds: float | None) -> str:
     if seconds is None:
         return "—"
@@ -87,8 +81,6 @@ def render_rows(plan: RenderPlan) -> list[dict]:
              "detail": ""} for j in plan.jobs]
     rows.append({"name": "verification", "description": "Vérification : la somme des pistes "
                  "reproduit-elle le mix ?", "kind": "check", "status": "pending", "detail": ""})
-    rows.extend({"name": n, "description": d, "kind": "control", "status": "pending", "detail": ""}
-                for n, d in CONTROL_JOBS)
     return rows
 
 
@@ -100,19 +92,6 @@ def mark_step(rows: list[dict], index: int) -> list[dict]:
         elif i == index:
             row["status"] = "running"
     return rows
-
-
-def _master_message(result: RenderResult) -> str:
-    mt, cal = result.master_test, result.calibration
-    if mt is not None:
-        if mt.passed:
-            return (f"Ton Master FL est conservé : ton mix repassé dedans redonne exactement "
-                    f"ton morceau (écart {mt.residual_db:.0f} dB)")
-        return (f"Ton mix repassé dans le Master FL ne redonne pas exactement le morceau "
-                f"(écart {mt.residual_db:.0f} dB)")
-    if cal is not None:
-        return cal.message
-    return "Contrôle du Master non effectué (les pistes doivent d'abord être validées)"
 
 
 def render_view(rows: list[dict], result: RenderResult) -> tuple[list[dict], dict]:
@@ -136,11 +115,8 @@ def render_view(rows: list[dict], result: RenderResult) -> tuple[list[dict], dic
         out.append(row)
     summary = {
         "ok": result.ok,
-        "stemsOk": result.stems_ok,
-        "masterOk": result.master_ok,
         "nullMessage": result.null_test.message if result.null_test else
         "Aucune piste à comparer",
-        "masterMessage": _master_message(result),
         "folder": result.folder,
         "warnings": result.warnings,
         "stemCount": len([j for j in result.jobs if j.job.kind == "stem"]),
@@ -162,27 +138,70 @@ def _local_date(iso: str) -> str:
         return iso
 
 
+FL_SPACE_FR = {
+    "tracked": "Reverb / delay FL Studio gardés tels quels (rendus à part)",
+    "untracked": "Reverb / delay FL Studio dans la voix : compression prudente, rien ajouté",
+}
+
+
+def _song_lines(song: dict) -> list[str]:
+    lines = []
+    if song.get("key"):
+        lines.append(f"Tonalité : {song['key']} (confiance {song.get('key_confidence') or '?'})")
+    if abs(song.get("tuning_cents") or 0) >= 10:
+        lines.append(f"Accordage du beat : La = {440 * 2 ** (song['tuning_cents'] / 1200):.0f} Hz "
+                     f"({song['tuning_cents']:+.0f} cents)")
+    if song.get("tempo_bpm"):
+        lines.append(f"Tempo : {song['tempo_bpm']:g} BPM, noire ressentie {song['felt_quarter_ms']:.0f} ms")
+    if song.get("bass_root"):
+        bass = f"808 / basse : note principale {song['bass_root']}"
+        if song.get("bass_out_of_scale"):
+            bass += f" ; hors gamme : {', '.join(song['bass_out_of_scale'])}"
+        lines.append(bass)
+    if song.get("kick_overlap"):
+        lines.append(f"Kick et 808 ensemble sur {song['kick_overlap'] * 100:.0f} % des kicks")
+    return lines
+
+
 def mix_view(version: dict) -> dict:
     """A saved mix version (as stored in version.json) for the mix page."""
     parts = []
+    changed = False
     for p in version["parts"]:
-        role = "Instru et reste du morceau" if p["role"] == "rest" else ROLE_LABELS_FR.get(p["role"], p["role"])
+        changes = [*p.get("space", [])]
+        if p.get("placement"):
+            changes.append(p["placement"])
+        changed = changed or bool(p["treatments"] or changes)
+        notes = [*changes]
+        if p.get("fl_space") in FL_SPACE_FR:
+            notes.append(FL_SPACE_FR[p["fl_space"]])
+        after = p["loudness_after"]
         parts.append({
             "label": p["label"],
-            "role": role,
+            "role": ROLE_LABELS_FR.get(p["role"], p["role"]),
             "roleKey": p["role"],
             "treatments": [{"label": t["label"], "reason": t["reason"]} for t in p["treatments"]],
-            "change": f"{_db(p['loudness_before'], 'LUFS')} → {_db(p['loudness_after'], 'LUFS')}"
-            if p["treatments"] else "",
+            "notes": notes,
+            "change": f"{_db(p['loudness_before'], 'LUFS')} → {_db(after, 'LUFS')}"
+            if p["treatments"] and after is not None and after == after else "",
         })
-    o, f = version["original"], version["final"]
+    o, f, c = version["original"], version["final"], version["checks"]
     return {
         "id": version["id"],
         "date": _local_date(version["created_at"]),
         "intensity": round(version["intensity"] * 100),
         "finalWav": version["final_wav"],
+        "song": _song_lines(version.get("song", {})),
         "parts": parts,
-        "untouched": not any(p["treatments"] for p in parts),
+        "untouched": not changed,
+        "master": [{"label": t["label"], "reason": t["reason"]} for t in version.get("master", [])],
+        "checks": [
+            f"Plage de volume {c['loudness_range_lu']:.1f} LU",
+            f"Crête / volume {c['plr_db']:.1f} dB",
+            f"Perte en mono {-c['mono_loss_db']:.1f} dB",
+        ] if c else [],
+        "platforms": [{"name": pf["name"], "gain": f"{pf['gain_db']:+.1f} dB",
+                       "heard": _db(pf["heard_lufs"], "LUFS")} for pf in (c or {}).get("platforms", [])],
         "original": {"lufs": _db(o["loudness_lufs"], "LUFS"), "truePeak": _db(o["true_peak_db"], "dBTP")},
         "final": {"lufs": _db(f["loudness_lufs"], "LUFS"), "truePeak": _db(f["true_peak_db"], "dBTP"),
                   "sampleRate": f["sample_rate"]},
@@ -201,4 +220,6 @@ def export_message(result: ExportResult) -> str:
     extras = [x for x, on in (("fréquence convertie", result.resampled),
                               ("avec dither", result.dithered)) if on]
     details = f"{result.sample_rate / 1000:g} kHz, {depth}" + (", " + ", ".join(extras) if extras else "")
+    if math.isfinite(result.true_peak_dbtp):
+        details += f", crête {_db(result.true_peak_dbtp, 'dBTP')}"
     return f"WAV exporté : {result.path} ({details})"

@@ -313,18 +313,15 @@ class EdenController(QObject):
         self._set("busy", False)
         self._set("stage", "rendered")
 
-    # -- Eden's mix, the FL Master, export ---------------------------------------
+    # -- Eden's mix and master, export ---------------------------------------------
     @Slot()
     def mixProject(self) -> None:
         if self._busy or self.report_obj is None or self.renders is None or not self.renders.ok:
             return
         from eden.mix.session import MixError, mix_project
-        from eden.settings import load_settings
 
         project, report, renders = Path(self._projectPath), self.report_obj, self.renders
-        renderer, intensity = self.renderer_factory(), self._intensity
-        if renderer is None:
-            return
+        intensity = self._intensity
         self._set("mixSteps", [{"label": s, "status": "pending"} for s in MIX_STEPS])
         self._set("exportMessage", "")
         self._set("progress", 0.0)
@@ -333,15 +330,18 @@ class EdenController(QObject):
 
         def job(worker: _Worker):
             try:
-                return mix_project(project, report, renders, renderer, intensity,
-                                   timeout_s=load_settings().render_timeout_s,
-                                   on_step=lambda i, n, s: worker.progress.emit(i, n, s))
+                return mix_project(project, report, renders, intensity,
+                                   on_step=lambda i, n, s: worker.progress.emit(i, n, s),
+                                   on_progress=lambda s: worker.progress.emit(-1, 0, s))
             except MixError as exc:
                 raise _StepError("Mixage Eden", str(exc)) from exc
 
         self._start(job, self._on_mixed, self._on_mix_progress)
 
     def _on_mix_progress(self, index: int, total: int, label: str) -> None:
+        if index < 0:  # detail of the running step
+            self._set("progressLabel", label)
+            return
         self._set("progress", index / total)
         self._set("progressLabel", label)
         self._set("mixSteps", [

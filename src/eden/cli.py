@@ -118,19 +118,34 @@ def _cmd_mix(args: argparse.Namespace) -> int:
     try:
         report = inspect_project(project, on_step=_progress)
         renders = _render(args, renderer, settings, report)
-        version = mix_project(project, report, renders, renderer, args.intensite / 100,
-                              timeout_s=settings.render_timeout_s, on_step=_progress)
+        version = mix_project(project, report, renders, args.intensite / 100, on_step=_progress)
     except (InspectionError, RenderError, MixError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    song = version.song
+    print(f"Morceau : {song.key or 'tonalité inconnue'}"
+          + (f" (confiance {song.key_confidence})" if song.key_confidence else "")
+          + (f", {song.tempo_bpm:g} BPM" if song.tempo_bpm else "")
+          + (f", 808 sur {song.bass_root}" if song.bass_root else ""))
     for part in version.parts:
         print(f"{part.label} :")
         for t in part.treatments:
             print(f"  - {t.label} ({t.reason})")
-        if not part.treatments:
+        for line in part.space:
+            print(f"  - {line}")
+        if part.placement:
+            print(f"  - {part.placement}")
+        if not part.treatments and not part.space:
             print("  - laissé tel quel")
-    print(f"Origine : {version.original.loudness_lufs:.1f} LUFS, crête {version.original.true_peak_db:.1f} dBTP")
-    print(f"Eden    : {version.final.loudness_lufs:.1f} LUFS, crête {version.final.true_peak_db:.1f} dBTP")
+    print("Mastering Eden :")
+    for t in version.master:
+        print(f"  - {t.label} ({t.reason})")
+    c = version.checks
+    print(f"Export FL : {version.original.loudness_lufs:.1f} LUFS, crête {version.original.true_peak_db:.1f} dBTP")
+    print(f"Eden      : {c.integrated_lufs:.1f} LUFS, crête {c.true_peak_dbtp:.1f} dBTP, "
+          f"plage {c.loudness_range_lu:.1f} LU, crête/volume {c.plr_db:.1f} dB")
+    for p in c.platforms:
+        print(f"  {p.name} : {p.gain_db:+.1f} dB à la lecture → {p.heard_lufs:.1f} LUFS")
     for w in version.warnings:
         print(f"Avertissement : {w}")
     if args.export:
@@ -139,7 +154,7 @@ def _cmd_mix(args: argparse.Namespace) -> int:
         except ExportError as exc:
             print(str(exc), file=sys.stderr)
             return 2
-        print(f"WAV exporté : {result.path}")
+        print(f"WAV exporté : {result.path} (crête {result.true_peak_dbtp:.1f} dBTP)")
     else:
         print(f"Mix final : {version.final_wav}")
     return 0

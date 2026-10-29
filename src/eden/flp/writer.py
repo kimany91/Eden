@@ -39,12 +39,9 @@ def encode_text(text: str, unicode: bool = True) -> bytes:
     return text.encode("latin-1", errors="replace") + b"\0"
 
 
-def serialize(header: FlpHeader, events: list[Event], channel_count: int | None = None) -> bytes:
+def serialize(header: FlpHeader, events: list[Event]) -> bytes:
     body = b"".join(encode_event(e.id, e.data) for e in events)
-    head = HEADER_MAGIC + struct.pack(
-        "<IhHH", 6, header.format,
-        header.channel_count if channel_count is None else channel_count, header.ppq,
-    )
+    head = HEADER_MAGIC + struct.pack("<IhHH", 6, header.format, header.channel_count, header.ppq)
     return head + DATA_MAGIC + struct.pack("<I", len(body)) + body
 
 

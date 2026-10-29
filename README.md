@@ -11,7 +11,7 @@ ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 | 1. Audit et architecture | ✅ [docs/01-audit-architecture.md](docs/01-audit-architecture.md) |
 | 2. Inspection en lecture seule | ✅ testée sur projets de test (FL 20.8) — à valider sur tes projets |
 | 3. Pilotage de FL Studio et récupération du son | ✅ implémenté et testé avec un simulateur — à valider avec ton FL Studio (`eden fl-probe`) |
-| 4. Mixage Eden, passage dans ton Master FL, export WAV | ✅ testé avec voix de test et simulateur FL — réglages à affiner à l'écoute ([docs/mixage.md](docs/mixage.md)) |
+| 4. Mixage et mastering Eden, export WAV | ✅ moteur v2 (tonalité, chaîne vocale pro, espace, stéréo, basses, master fort pour les plateformes) testé avec voix de test et simulateur FL — à valider à l'écoute ([docs/mixage.md](docs/mixage.md)) |
 | 5. Interface et installateur | ✅ interface animée (QML), installateur Windows construit et testé automatiquement — reste : lecteur A/B, réglages de mixage |
 | 6. Tests et amélioration | ⏳ |
 
@@ -29,15 +29,19 @@ réglés au millimètre, échos, automations — et Eden récupère ce son exact
 aucun effet. Pour que FL joue une partie seule, Eden lui donne une copie temporaire du
 projet où les autres pistes sont coupées ; cette copie est effacée dès que FL a fini.
 Eden vérifie ensuite que la somme des parties redonne exactement le mix d'origine, et que
-les fins d'écho ou de reverb ne sont pas coupées. Ces pistes alimenteront le moteur de
-mixage d'Eden. **Ton mastering reste dans FL Studio** : Eden sait déjà repasser un mix
-dans ton propre Master FL (il le vérifie à chaque rendu).
+les fins d'écho ou de reverb ne sont pas coupées. Chaque voix qui porte une reverb ou un
+delay FL est aussi rendue **sans** eux : Eden travaille la voix sèche comme un ingénieur
+du son et remet tes effets tels quels par-dessus.
 
-Enfin, **Eden mixe** : il mesure chaque voix (après tes effets FL), corrige seulement ce
-qui doit l'être (grondement, résonance, sifflantes, dynamique, équilibre avec l'instru,
-backs et ad-libs), explique chaque décision, puis repasse le mix dans **ton Master FL**.
-Tu règles l'intensité (0 % = ton morceau à l'identique), tu gardes chaque version et tu
-exportes le WAV final. Détails : [docs/mixage.md](docs/mixage.md).
+Enfin, **Eden mixe et masterise** : tonalité et tempo du morceau, notes du 808, chaîne
+vocale complète (coupe-bas réglé sur la note la plus grave, résonances, de-esser en deux
+passes, compression en deux étages puis parallèle, saturation, présence), niveau de la voix
+suivi phrase par phrase au-dessus de l'instru, espace (ambiance, plate, delay sur le tempo,
+jet d'écho en fin de phrase) seulement pour les voix qui n'en ont pas, placement stéréo des
+doublages, chœurs et ad-libs, place pour les paroles dans l'instru, kick / 808, puis un
+master fort et propre pour les plateformes (−9 LUFS, crête réelle à −3 dBTP). Chaque décision est
+expliquée ; tu règles l'intensité (0 % = ton morceau à l'identique), tu gardes chaque
+version et tu exportes le WAV final. Détails : [docs/mixage.md](docs/mixage.md).
 
 ## Installation (Windows)
 

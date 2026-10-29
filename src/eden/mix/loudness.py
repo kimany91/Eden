@@ -4,7 +4,12 @@
   designed for any sample rate.
 * Integrated loudness: 400 ms blocks, 75 % overlap, absolute gate −70 LUFS,
   relative gate −10 LU.
-* True peak: 4× oversampling.
+* Short-term loudness (3 s) and loudness range (EBU Tech 3342: gates −70
+  LUFS absolute and −20 LU relative, 10th to 95th percentile).
+* True peak: ideal band-limited interpolation at 8× (``oversampling``): at
+  most 0.17 dB under-read between the 8 interpolated points, and no
+  interpolation-filter roll-off on bright transients; the reading of a
+  common meter (libebur128, 4×) is taken too, and the higher one is kept.
 """
 
 from __future__ import annotations
@@ -12,7 +17,9 @@ from __future__ import annotations
 import math
 
 import numpy as np
-from scipy.signal import resample_poly, sosfilt
+from scipy.signal import sosfilt
+
+from eden.mix.oversampling import meter_peak, true_peak
 
 ABS_GATE = -70.0
 REL_GATE = -10.0
@@ -51,18 +58,25 @@ def block_loudness(x: np.ndarray, fs: float, block_s: float = 0.4, overlap: floa
     step = max(1, int(round(size * (1 - overlap))))
     if weighted.shape[0] < size:
         return np.array([])
-    power = weighted ** 2
-    cumulative = np.vstack([np.zeros((1, power.shape[1])), np.cumsum(power, axis=0)])
+    power = weighted[:, 0] ** 2
+    for c in range(1, weighted.shape[1]):  # channel weights are 1 for L/R/C
+        power += weighted[:, c] ** 2
+    cumulative = np.empty(power.size + 1)
+    cumulative[0] = 0.0
+    np.cumsum(power, out=cumulative[1:])
     starts = np.arange(0, weighted.shape[0] - size + 1, step)
-    mean_square = (cumulative[starts + size] - cumulative[starts]) / size  # per channel
-    total = mean_square.sum(axis=1)  # channel weights are 1 for L/R/C
+    total = (cumulative[starts + size] - cumulative[starts]) / size
     with np.errstate(divide="ignore"):
-        return -0.691 + 10 * np.log10(total)
+        return -0.691 + 10 * np.log10(np.maximum(total, 0.0))
 
 
 def integrated_loudness(x: np.ndarray, fs: float) -> float:
     """Integrated loudness in LUFS (−inf if the signal is silent)."""
-    blocks = block_loudness(x, fs)
+    return gated_loudness(block_loudness(x, fs))
+
+
+def gated_loudness(blocks: np.ndarray) -> float:
+    """Integrated loudness from the 400 ms block loudness values (both gates applied)."""
     gated = blocks[blocks > ABS_GATE]
     if gated.size == 0:
         return -math.inf
@@ -82,12 +96,30 @@ def loudness_of_blocks(x: np.ndarray, fs: float, mask: np.ndarray) -> float:
     return 10 * math.log10(np.mean(10 ** (chosen / 10)))
 
 
-def true_peak_db(x: np.ndarray, oversample: int = 4) -> float:
-    x = _as_2d(np.asarray(x, dtype=np.float64))
-    if x.size == 0:
-        return -math.inf
-    up = resample_poly(x, oversample, 1, axis=0)
-    peak = float(np.max(np.abs(up)))
+def short_term_loudness(x: np.ndarray, fs: float) -> np.ndarray:
+    """Loudness of 3 s windows every 100 ms (LUFS)."""
+    return block_loudness(x, fs, block_s=3.0, overlap=1 - 0.1 / 3.0)
+
+
+def loudness_range(x: np.ndarray, fs: float) -> float:
+    """EBU Tech 3342 loudness range in LU (0 for signals shorter than a few seconds)."""
+    st = short_term_loudness(x, fs)
+    st = st[st > ABS_GATE]
+    if st.size < 2:
+        return 0.0
+    power = 10 ** ((st + 0.691) / 10)
+    relative = -0.691 + 10 * math.log10(power.mean()) - 20.0
+    kept = st[st > relative]
+    if kept.size < 2:
+        return 0.0
+    return float(np.percentile(kept, 95) - np.percentile(kept, 10))
+
+
+def true_peak_db(x: np.ndarray, fs: float) -> float:
+    """True peak in dBTP: the higher of the ideal reconstruction (8×) and the reading of a
+    common loudness meter (libebur128), so the value holds whatever meter checks it."""
+    x = np.asarray(x, dtype=np.float64)
+    peak = max(true_peak(x), meter_peak(x, fs))
     return 20 * math.log10(peak) if peak > 0 else -math.inf
 
 

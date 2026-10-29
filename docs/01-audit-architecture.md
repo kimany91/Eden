@@ -130,13 +130,15 @@ Règles :
   de hauteur, EQ, compression, de-esser, reverb, delay, saturation…) et leur état. Le moteur
   de mixage s'en sert : pas d'Auto-Tune ajouté si une correction de hauteur est déjà
   active, pas de reverb supplémentaire si le bus vocal en a déjà une, etc.
-- **Master de FL — décision : il reste dans FL Studio** (ton mastering y est). Les pistes
-  sont récupérées avant le Master ; Eden mixe ; puis le mix est **réinjecté** dans une
-  copie temporaire du projet où toutes les sources d'origine sont coupées et où un canal audio
-  (dupliqué d'un canal existant) joue le mix d'Eden dans le Master. FL Studio rend cette
-  copie : ta chaîne Master et ses automations s'appliquent. Le gain exact du canal ajouté
-  est mesuré à chaque projet (calibration), et Eden vérifie que « mix d'origine repassé
-  dans le Master = morceau d'origine ».
+- **Master de FL — décision (révisée) : Eden fait le mastering.** Les pistes sont
+  récupérées avant le Master (effets du Master contournés dans les copies) ; Eden mixe puis
+  masterise lui-même (graves, bus, clip doux, limiteur true-peak, volume cible rap
+  commercial). Les effets de ton Master FL servent à ton écoute dans FL Studio, pas au
+  fichier final. La réinjection du mix dans le Master FL (première version) a été retirée.
+- **Voix sèche** : pour une voix dont la chaîne contient une reverb ou un delay, une copie
+  est rendue avec ces effets contournés (slot désactivé dans les paramètres du Mixer,
+  retours d'effets coupés). La différence voix complète − voix sèche est exactement ce que
+  tes effets ajoutent : Eden traite la voix sèche et remet tes effets par-dessus.
 
 ---
 
