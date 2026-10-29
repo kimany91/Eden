@@ -10,8 +10,8 @@ Every processor leaves the signal untouched when its amount is zero, so that
   program-dependent release, an optional cap on the reduction and an
   optional "hold" mask for voices that carry effects FL Studio already
   printed: the gain never comes back above the phrase's mean reduction and
-  is frozen there in the rests, so after make-up gain the tails keep their
-  level relative to the voice;
+  is frozen there in the rests, so after make-up gain the tails keep about
+  their level relative to the voice (see ``_smooth``);
 * de-esser and vocal-space dip: the signal is split into a band and its
   exact complement (zero-phase filter, band + rest == input), and only the
   band's gain moves.
@@ -106,13 +106,16 @@ def _smooth(gain_db: np.ndarray, attack_frames: float, release_frames: float,
     marks the rests between phrases. A phrase is the stretch between two
     rests, and its mean reduction is the power-weighted mean of the gain the
     compressor would apply without ``hold``, 10·log10(Σ p·10^(g/10) / Σ p),
-    over the phrase so far: how much the phrase's loudness went down. Inside a
+    over the phrase so far: how much a compressor without ``hold`` would take
+    from the phrase's loudness. Inside a
     phrase the gain releases toward that mean instead of 0 dB, and over a
     rest it is frozen at the mean of the phrase before. Everything quieter
-    than the threshold (an effect tail, an echo) then goes down by the
+    than the threshold (an effect tail, an echo) then goes down by about the
     phrase's loudness reduction, which make-up gain gives back: the tail
-    keeps its level relative to its phrase. The mean is taken on the gain
-    without ``hold``, not on the output, which would only ever go down.
+    keeps about its level relative to its phrase. It still comes up a little,
+    because the phrase's loud moments get more reduction than the mean, so
+    the phrase loses a little more than its tail. The mean is taken on the
+    gain without ``hold``, not on the output, which would only ever go down.
     """
     att = math.exp(-1 / max(attack_frames, 1e-9))
     rel = math.exp(-1 / max(release_frames, 1e-9))

@@ -82,7 +82,7 @@ class Phrase:
     end_s: float
     difference_db: float  # voice minus beat (above MASKING_FROM_HZ) over the phrase
     gain_db: float
-    exposed: bool = False  # the beat is more than EXPOSED_DB under its median phrase: left alone
+    exposed: bool  # the beat is more than EXPOSED_DB under its median phrase: left alone
 
 
 @dataclass
@@ -157,7 +157,8 @@ def _differences(voice_db: np.ndarray, beat_db: np.ndarray) -> np.ndarray:
 
 def phrase_differences(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None
                        ) -> tuple[list[tuple[int, int]], np.ndarray, int]:
-    """(phrases in 1 ms frames, voice-minus-beat dB per phrase, frame size in samples)."""
+    """(phrases in 1 ms frames, voice minus beat above ``MASKING_FROM_HZ`` in dB per phrase,
+    frame size in samples)."""
     phrases, voice_db, beat_db, size = phrase_levels(voice, beat, fs, tempo_bpm)
     return phrases, _differences(voice_db, beat_db), size
 

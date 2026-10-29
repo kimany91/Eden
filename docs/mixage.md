@@ -34,12 +34,15 @@ est marqué :
   de la phrase jusque-là (moyenne pondérée par la puissance, comme le volume, du gain qu'aurait
   le compresseur sans ce plancher) ; dans les silences entre phrases (au moins une double
   croche du tempo ressenti), il reste figé à la moyenne de la phrase qui précède. Ce qui passe
-  sous le seuil, tes queues de reverb ou d'écho, baisse donc comme le volume de sa phrase, et
-  le gain de compensation le lui rend (choix d'Eden). Mesuré sur des voix de test avec une
-  reverb de 1,5 s à −12 dB ou un écho à la noire à −6 dB : pris en entier, tes effets changent
-  de niveau comme la voix à 0,3 dB près ; seuls dans les silences, ils ressortent de 0,1 à
-  0,5 dB par rapport à elle, et jusqu'à 0,9 dB quand un écho fort remplit les silences d'une
-  voix aux phrases très inégales (les silences ne sont alors plus repérés).
+  sous le seuil, tes queues de reverb ou d'écho, baisse donc à peu près comme le volume de sa
+  phrase, et le gain de compensation le lui rend (choix d'Eden). Les queues baissent quand même
+  un peu moins que leur phrase, dont les moments forts sont réduits plus que la moyenne, et
+  ressortent donc un peu. Mesuré sur 10 voix de test (25 et 40 s) avec une reverb de 1,5 s à
+  −12 dB ou un écho à la noire à −6 dB : pris en entier, tes effets changent de niveau comme
+  la voix à 0,3 dB près ; seuls dans les silences, ils ressortent par rapport à elle de 0,1 à
+  0,4 dB avec la reverb (jusqu'à 0,6 dB après une phrase) et de 0,2 à 0,9 dB avec l'écho
+  (jusqu'à 1,4 dB après une phrase). Un écho aussi fort remplit les silences : Eden ne les
+  repère plus, et la moyenne court alors sur plusieurs phrases.
 - **Chaque groupe** du Mixer qui sort au Master sans voix (808, batterie, instru…).
 - **Le reste** = mix d'origine (avant Master) − voix − groupes.
 

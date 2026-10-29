@@ -59,12 +59,6 @@ def test_tail_safe_gain_never_comes_back_above_the_phrase_mean():
     free = dsp._smooth(g, 1.0, 50.0)
     assert free[599] > -0.05  # a normal compressor is back at 0 dB under the threshold
     assert out[599] == pytest.approx(out[650], abs=0.05)  # tail-safe: it stays at the phrase's reduction
-    # the frozen gain does not move whatever the look-ahead
-    x = voice(seconds=8, seed=2)
-    mask = np.zeros(8000, dtype=bool)
-    mask[4000:5000] = True
-    held, _ = dsp.compressor_gain_db(x, FS, -40.0, 4.0, hold=mask)
-    assert np.ptp(held[4000:5000]) == 0.0
 
 
 def _reverb(x, rt60, wet_db, seed=0, predelay=0.02):

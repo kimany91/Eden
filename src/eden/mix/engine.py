@@ -313,8 +313,8 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
                     "ride", f"Niveau suivi sur {r.moved} phrase(s), jusqu'à {r.max_change_db:.1f} dB",
                     f"D'une phrase à l'autre, la voix doit rester à {r.reference_db:+.1f} dB de l'instru "
                     f"au-dessus de {MASKING_FROM_HZ:.0f} Hz, la bande qui couvre les paroles (son équilibre sur "
-                    f"tout le morceau) ; écart toléré ±{TOLERANCE_DB:.1f} dB ; baissée seulement de ce que la voix "
-                    "elle-même est montée, jamais parce que l'instru se retire"
+                    f"tout le morceau) ; écart toléré ±{TOLERANCE_DB:.1f} dB ; baissée seulement de ce dont la voix "
+                    "elle-même dépasse sa phrase médiane, jamais parce que l'instru se retire"
                     + (f" ; {r.exposed} phrase(s) laissée(s) telle(s) quelle(s), l'instru y est à plus de "
                        f"{EXPOSED_DB:.0f} dB sous sa médiane" if r.exposed else "")))
             if reference is None or results[v.key].loudness_after > results[reference.key].loudness_after:
