@@ -339,8 +339,8 @@ def test_ceiling_follows_how_dense_the_target_makes_the_master():
 def test_master_gain_search_respects_its_budget_and_says_so():
     x = beat(16, level=0.5) * 0.05  # very quiet and very peaky: −9 LUFS would need a huge reduction
     r = master(x, FS, 1.0, tempo_bpm=140)
-    loud = r.treatments[-1].measured
-    assert loud["clip_db"] + loud["limiter_db"] <= 9.0 + 0.15
+    loud = r.treatments[-1].measured  # the budget holds for the recurring peaks and for isolated events
+    assert loud["peak_reduction_db"] <= 9.0 + 0.1 and loud["single_peak_reduction_db"] <= 13.0 + 0.1
     if r.checks.integrated_lufs < TARGET_LUFS - 0.3:
         assert any("au lieu de" in w for w in r.warnings)
 

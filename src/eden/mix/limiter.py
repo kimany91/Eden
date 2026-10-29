@@ -1,17 +1,20 @@
 """True-peak limiter for the final master (offline, look-ahead, linked stereo).
 
-1. Peaks are found on the reconstructed waveform (ideal 8× interpolation),
-   and as a common loudness meter reads them (libebur128, whose short
-   interpolation filter can read a little higher): the ceiling holds for
-   both readings, not only for the samples.
+1. Peaks are found on the reconstructed, continuous waveform (ideal 8×
+   interpolation refined between its points, ``oversampling``), and as
+   libebur128 reads them (its short interpolation filter can read a little
+   higher): the ceiling holds for both readings, not only for the samples.
 2. The gain each sample needs is held from the look-ahead window before a
-   peak to 20 ms after it (sliding minimum) and smoothed with the look-ahead
-   window: the gain is already down when a peak arrives, without clicks,
-   and does not ripple inside an 808 cycle (distortion).
+   peak to 20 ms after it (sliding minimum), so it does not ripple inside
+   an 808 cycle (distortion).
 3. The recovery (release) follows a smooth exponential on 1 ms frames.
-4. The output is measured again; if the ceiling is still exceeded (the gain
-   aims 0.02 dB under it, so this is rare), the pass is repeated on the
-   remaining excess. That last measurement is the reported true peak.
+   The result is averaged over the look-ahead window that ends at each
+   sample: the gain ramps down ahead of a peak over at least the look-ahead
+   (1.5 ms), never in one step (a click).
+4. The output is measured again; if it is not at least 0.01 dB under the
+   ceiling (what the continuous-peak reading may miss), the pass is repeated
+   on the remaining excess (the gain aims 0.04 dB under the ceiling, so this
+   is rare). That last measurement is the reported true peak.
 """
 
 from __future__ import annotations
@@ -26,7 +29,8 @@ from eden.mix.oversampling import meter_envelope, peak_envelope
 
 OVERSAMPLE = 8
 HOLD_MS = 20.0  # a 40 Hz half-cycle is 12.5 ms: shorter, the gain would ripple inside each cycle
-AIM_DB = 0.02  # the gain aims this far under the ceiling, so one pass is usually enough
+AIM_DB = 0.04  # the gain aims this far under the ceiling, so one pass is usually enough
+READ_DB = 0.01  # the output stays this far under it: the most the continuous-peak reading can miss
 
 
 @dataclass
@@ -63,23 +67,25 @@ def gain_for(peak: np.ndarray, fs: float, aim: float, lookahead_ms: float = 1.5,
     window = max(1, int(round(lookahead_ms / 1000 * fs)))
     size = max(1, int(round(HOLD_MS / 1000 * fs))) + window + 1
     need = np.minimum(1.0, aim / np.maximum(peak, 1e-12))
-    # the lowest gain over [n − hold, n + look-ahead], then smoothed with the look-ahead window:
-    # it is down before the peak it protects, and stays down over a sub-bass half-cycle
+    # the lowest gain over [n − hold, n + look-ahead]: it is down before the peak it protects,
+    # and stays down over a sub-bass half-cycle
     held = minimum_filter1d(need, size=size, origin=size // 2 - window, mode="nearest")
-    attack = np.minimum(uniform_filter1d(held, size=window, mode="nearest"), held)
-    return np.minimum(attack, _release(held, fs, release_ms))
+    # with the recovery, then averaged over the samples n − look-ahead + 1 … n: each of those
+    # already covers need[n], so no peak gets through, and no sample's gain moves by more than
+    # the reduction divided by the look-ahead window
+    gain = np.minimum(held, _release(held, fs, release_ms))
+    return uniform_filter1d(gain, size=window, origin=(window - 1) // 2, mode="nearest")
 
 
 def limit(x: np.ndarray, fs: float, ceiling_dbtp: float = -1.0, lookahead_ms: float = 1.5,
           release_ms: float = 80.0) -> LimiterResult:
-    x = x if x.ndim == 2 else x[:, None]
-    ceiling = 10 ** (ceiling_dbtp / 20)
+    out = x if x.ndim == 2 else x[:, None]  # never written to: each pass makes a new array
+    highest = 10 ** ((ceiling_dbtp - READ_DB) / 20)  # the highest reading accepted
     aim = 10 ** ((ceiling_dbtp - AIM_DB) / 20)
-    out = x.copy()
-    total = np.ones(x.shape[0])
+    total = np.ones(out.shape[0])
     peak = _peaks(out, fs)
     for _ in range(3):
-        if peak.max() <= ceiling:
+        if peak.max() <= highest:
             break
         gain = gain_for(peak, fs, aim, lookahead_ms, release_ms)
         out = out * gain[:, None]

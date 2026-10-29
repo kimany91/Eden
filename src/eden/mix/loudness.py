@@ -6,10 +6,12 @@
   relative gate −10 LU.
 * Short-term loudness (3 s) and loudness range (EBU Tech 3342: gates −70
   LUFS absolute and −20 LU relative, 10th to 95th percentile).
-* True peak: ideal band-limited interpolation at 8× (``oversampling``): at
-  most 0.17 dB under-read between the 8 interpolated points, and no
-  interpolation-filter roll-off on bright transients; the reading of a
-  common meter (libebur128, 4×) is taken too, and the higher one is kept.
+* True peak: the peak of the continuous waveform, by ideal band-limited
+  interpolation at 8× refined between its points (``oversampling``: within
+  0.01 dB, no interpolation-filter roll-off on bright transients); the
+  reading of libebur128 (4×, 49-tap filter) is taken too, and the higher
+  one is kept. FFmpeg's meters resample to 192 kHz first and can read up to
+  about 0.3 dB higher than both.
 """
 
 from __future__ import annotations
@@ -116,8 +118,8 @@ def loudness_range(x: np.ndarray, fs: float) -> float:
 
 
 def true_peak_db(x: np.ndarray, fs: float) -> float:
-    """True peak in dBTP: the higher of the ideal reconstruction (8×) and the reading of a
-    common loudness meter (libebur128), so the value holds whatever meter checks it."""
+    """True peak in dBTP: the higher of the continuous waveform's peak and libebur128's reading
+    (4×, whose short filter can read a little above it)."""
     x = np.asarray(x, dtype=np.float64)
     peak = max(true_peak(x), meter_peak(x, fs))
     return 20 * math.log10(peak) if peak > 0 else -math.inf
