@@ -127,9 +127,13 @@ Règles :
   de hauteur, EQ, compression, de-esser, reverb, delay, saturation…) et leur état. Le moteur
   de mixage s'en sert : pas d'Auto-Tune ajouté si une correction de hauteur est déjà
   active, pas de reverb supplémentaire si le bus vocal en a déjà une, etc.
-- **Master de FL** : par défaut Eden récupère les stems **avant** le Master et applique sa
-  propre finition ; l'option « garder la chaîne Master de FL » reste possible (rendu du
-  Master inclus). Décision à confirmer avec toi.
+- **Master de FL — décision : il reste dans FL Studio** (ton mastering y est). Les pistes
+  sont récupérées avant le Master ; Eden mixe ; puis le mix est **réinjecté** dans une
+  copie du projet où toutes les sources d'origine sont coupées et où un canal audio
+  (dupliqué d'un canal existant) joue le mix d'Eden dans le Master. FL Studio rend cette
+  copie : ta chaîne Master et ses automations s'appliquent. Le gain exact du canal ajouté
+  est mesuré à chaque projet (calibration), et Eden vérifie que « mix d'origine repassé
+  dans le Master = morceau d'origine ».
 
 ---
 

@@ -58,14 +58,19 @@ Critères restant à valider **avec ton FL Studio** :
 - [ ] sur 3 projets réels, test de reconstruction < −60 dB, durées identiques ;
 - [ ] aucune fenêtre bloquante de FL pendant les rendus (plugins manquants, etc.).
 
+Mastering : il reste dans FL Studio. Le mix d'Eden est réinjecté dans ton Master
+(calibration du gain + contrôle « mix d'origine repassé dans le Master = morceau d'origine »,
+faits à chaque rendu).
+
 Ensuite : passerelle de script FL optionnelle pour lire les réglages des plugins.
 
 ## Phase 4 — Premier moteur de mixage
 
 Chaîne simple et contrôlable, appliquée seulement si l'analyse la justifie :
 gain d'entrée → EQ correctif (résonances) → compression → de-esser → équilibre
-voix/instru → finition (crêtes, true peak) → export WAV (dossier, nom, 44,1/48/96 kHz,
-16/24/32 bits flottant).
+voix/instru → mix pré-Master (niveau d'entrée du Master conservé, pour que ton mastering FL
+réagisse comme avant) → passage dans ton Master FL → export WAV (dossier, nom,
+fréquence, profondeur de bits).
 
 Chaque module : mesures avant/après, paramètres enregistrés avec la raison de la décision,
 tests unitaires sur signaux synthétiques (sinus, bruit rose, sifflantes simulées) et tests
@@ -77,11 +82,15 @@ Critères : aucune saturation numérique ; LUFS et crêtes dans les cibles ; mix
 Phase 4b : saturation, reverb/delay, gestion fine des backs/ad-libs, automation de volume
 vocal, correction de hauteur (cf. audit §7).
 
-## Phase 5 — Interface complète
+## Phase 5 — Interface et installateur ✅ (base) / ⏳ (compléments)
 
-Lecteur audio avec bascule A/B instantanée (original / Eden, à niveau égal), réglages
-d'intensité par module, historique des versions (restaurer, comparer, annuler), export WAV,
-installateur Windows (PyInstaller + Inno Setup) et publication automatique des versions.
+Fait : interface Qt Quick animée (ouverture avec l'arbre qui se construit, étapes,
+glisser-déposer, progression réelle) ; logo ; installateur Windows (Inno Setup, sans droits
+administrateur, raccourcis) construit et testé automatiquement sur Windows à chaque envoi ;
+publication automatique des versions sur tag `v*`, utilisée par les mises à jour.
+
+Reste : lecteur audio A/B (original / Eden, à niveau égal), réglages d'intensité par
+module, historique des versions (restaurer, comparer), écran d'export WAV.
 
 ## Phase 6 — Tests et amélioration
 
