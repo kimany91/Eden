@@ -29,10 +29,17 @@ est marqué :
   dont le bouton dry/wet baisse aussi la voix), ni être plus forte que la voix. Sinon la voix
   sèche est écartée et Eden le dit.
 - **Voix « prudente »** : quand la séparation est impossible (état d'un slot non enregistré
-  par FL) ou écartée, la réduction est limitée à 3 dB, sans compression parallèle, et le gain
-  est figé dans les silences entre phrases (silence = au moins une double croche du tempo
-  ressenti) à la réduction **moyenne** de la phrase qui précède : tes queues de reverb ou
-  d'écho gardent leur niveau par rapport à la voix.
+  par FL) ou écartée, la réduction est limitée à 3 dB par compresseur, sans compression
+  parallèle. Dans une phrase, le gain ne remonte jamais au-dessus de la réduction **moyenne**
+  de la phrase jusque-là (moyenne pondérée par la puissance, comme le volume, du gain qu'aurait
+  le compresseur sans ce plancher) ; dans les silences entre phrases (au moins une double
+  croche du tempo ressenti), il reste figé à la moyenne de la phrase qui précède. Ce qui passe
+  sous le seuil, tes queues de reverb ou d'écho, baisse donc comme le volume de sa phrase, et
+  le gain de compensation le lui rend (choix d'Eden). Mesuré sur des voix de test avec une
+  reverb de 1,5 s à −12 dB ou un écho à la noire à −6 dB : pris en entier, tes effets changent
+  de niveau comme la voix à 0,3 dB près ; seuls dans les silences, ils ressortent de 0,1 à
+  0,5 dB par rapport à elle, et jusqu'à 0,9 dB quand un écho fort remplit les silences d'une
+  voix aux phrases très inégales (les silences ne sont alors plus repérés).
 - **Chaque groupe** du Mixer qui sort au Master sans voix (808, batterie, instru…).
 - **Le reste** = mix d'origine (avant Master) − voix − groupes.
 
@@ -91,11 +98,16 @@ dépassent.
   pour une voix 3 à 6 dB plus forte (Knoll & Siedenburg 2022) n'ont pas pu être ouverts.
 - **Suivi phrase par phrase** (« vocal riding », pratique d'expert sourcée : Pestana & Reiss
   2014) : phrases = plages de chant d'au moins 0,3 s séparées d'au moins une croche du tempo
-  ressenti ; référence = l'équilibre médian de la voix sur tout le morceau (pas une valeur
-  fixe) ; une phrase à plus de 1,5 dB de cette référence est ramenée, ±6 dB max (plage par
-  défaut d'un Vocal Rider, non vérifié). Le gain tient pendant le silence et change dans les
-  120 ms qui précèdent la phrase suivante (les silences du rap durent le plus souvent une
-  double croche, ~180 ms : MCFlow, non vérifié).
+  ressenti ; l'instru est mesurée **au-dessus de 200 Hz**, la bande qui couvre les paroles (le
+  sub d'un 808 les masque à peine ; choix d'Eden) ; référence = l'équilibre médian de la voix
+  sur tout le morceau (pas une valeur fixe) ; une phrase à plus de 1,5 dB de cette référence
+  est ramenée, ±6 dB max (plage par défaut d'un Vocal Rider, non vérifié). La voix n'est
+  **jamais baissée parce que l'instru se retire** : une phrase où l'instru est à plus de 6 dB
+  sous sa phrase médiane (break, filtre, beat coupé pour une punchline) est laissée telle
+  quelle et ne compte pas dans la référence, et une phrase n'est baissée que de ce dont la voix
+  elle-même dépasse sa phrase médiane (6 dB et cette règle : choix d'Eden). Le gain tient
+  pendant le silence et change dans les 120 ms qui précèdent la phrase suivante (les silences
+  du rap durent le plus souvent une double croche, ~180 ms : MCFlow, non vérifié).
 - **Doublages / ad-libs / chœurs** par rapport à la voix principale : −6 (−10 à −3), −6
   (−9 à −3), −7 (−10 à −4) dB (moyennes de blogs, **non vérifié**). Un doublage **copie** de
   la voix principale (corrélation > 0,8 à ±40 ms, choix d'Eden) n'est jamais remonté

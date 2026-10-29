@@ -43,11 +43,18 @@ def _sung_percentile(y: np.ndarray, fs: float, pct: float) -> float:
 
 def _threshold(y: np.ndarray, fs: float, p: dict) -> float:
     """A fixed ``threshold_db``, or one set on the signal the stage really receives: the level
-    of the ``percentile`` of the sung moments, lowered so that level gets ``reduction_db``."""
+    of the ``percentile`` of the sung moments as the compressor's detector reads it (5 ms
+    smoothing: raw 1 ms frames ripple within each pitch period, and at the P97 of the test
+    voices they read 2.5 to 3 dB higher), lowered so that level gets ``reduction_db``."""
     if "threshold_db" in p:
         return p["threshold_db"]
+    _, active, _ = active_frames(y, fs)
+    if not active.any():
+        return -math.inf
+    power, _ = dsp.detector_power(y, fs)
+    level = 10 * np.log10(np.maximum(power[active], 1e-20))
     slope = 1 - 1 / p["ratio"]
-    return _sung_percentile(y, fs, p["percentile"]) - p["reduction_db"] / slope
+    return float(np.percentile(level, p["percentile"])) - p["reduction_db"] / slope
 
 
 IDLE_DB = 0.3  # a dynamic stage that never reduces more than this did nothing worth applying
@@ -60,7 +67,8 @@ def _vowel_level(y: np.ndarray, fs: float) -> float:
 
 def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarray | None = None
           ) -> np.ndarray:
-    """``hold``: 1 ms frames where tail-safe compressors freeze their gain (effect tails).
+    """``hold``: 1 ms frames of the rests between phrases (effect tails), where tail-safe
+    compressors freeze their gain at the phrase's mean reduction (see ``dsp._smooth``).
 
     Dynamic stages read the level of the signal as it reaches them (after the
     stages before), so a chain of compressors stays as planned. A dynamic

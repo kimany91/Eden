@@ -10,8 +10,9 @@ cap; a step whose trigger is not met is simply not added.
 When the voice is processed from FL's dry render, the user's reverbs and
 delays are added back afterwards, untouched. When no dry render exists but
 the FL chain holds a reverb or a delay, the compressors work "tail-safe":
-little reduction and a frozen gain in the gaps, so make-up never lifts the
-tails the artist set.
+little reduction, and a gain that never comes back above the phrase's mean
+reduction and is frozen there in the gaps, so make-up gives the tails the
+artist set about what it gives the voice (see ``dsp._smooth``).
 """
 
 from __future__ import annotations
