@@ -5,6 +5,9 @@ Rules enforced here:
 * every inspection records the SHA-256 of the file and checks it again at
   the end, so a project saved by FL Studio during the analysis is detected;
 * Eden's own files live in a separate workspace, never next to the project.
+
+The original is never copied: Eden reads it, and the temporary copies FL
+Studio renders from (see eden.render) are deleted as soon as FL is done.
 """
 
 from __future__ import annotations
@@ -12,9 +15,8 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import shutil
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 
@@ -68,7 +70,7 @@ def _slug(name: str) -> str:
 
 
 class Workspace:
-    """Per-project folder holding snapshots, reports and (later) renders and mixes."""
+    """Per-project folder holding Eden's reports, FL Studio renders and (later) mixes."""
 
     def __init__(self, project_path: Path, home: Path | None = None) -> None:
         project_path = project_path.resolve()
@@ -80,34 +82,10 @@ class Workspace:
             raise RuntimeError("Le dossier de travail d'Eden ne peut pas être dans le dossier du projet")
 
     @property
-    def snapshots(self) -> Path:
-        return self.root / "snapshots"
-
-    @property
     def inspections(self) -> Path:
         return self.root / "inspections"
 
-    def ensure(self) -> None:
-        self.snapshots.mkdir(parents=True, exist_ok=True)
-        self.inspections.mkdir(parents=True, exist_ok=True)
-
-    def snapshot(self, data: bytes, fp: FileFingerprint) -> Path:
-        """Keep a copy of this exact version of the .flp (deduplicated by hash)."""
-        self.ensure()
-        existing = list(self.snapshots.glob(f"*_{fp.sha256[:12]}.flp"))
-        if existing:
-            return existing[0]
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        target = self.snapshots / f"{stamp}_{fp.sha256[:12]}.flp"
-        tmp = target.with_suffix(".tmp")
-        tmp.write_bytes(data)
-        tmp.replace(target)
-        return target
-
     def new_inspection_path(self) -> Path:
-        self.ensure()
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        self.inspections.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         return self.inspections / f"{stamp}.json"
-
-    def remove(self) -> None:  # pragma: no cover - used by tests only
-        shutil.rmtree(self.root, ignore_errors=True)

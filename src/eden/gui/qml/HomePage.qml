@@ -54,8 +54,8 @@ EdenPage {
             spacing: 16
             Repeater {
                 model: [
-                    { icon: "lock", title: "Projet intact", text: "Eden travaille sur des copies. Ton .flp n'est jamais modifié." },
-                    { icon: "wave", title: "Ton son, à l'identique", text: "FL Studio rend chaque piste avec tes plugins, bus et automations." },
+                    { icon: "lock", title: "Projet intact", text: "Ton .flp n'est jamais modifié, et rien n'est ajouté dans son dossier." },
+                    { icon: "wave", title: "Ton son, à l'identique", text: "C'est FL Studio qui joue chaque piste : Auto-Tune, delays, échos et automations restent tels quels." },
                     { icon: "crown", title: "Ton mastering gardé", text: "Le mix d'Eden repasse dans ton Master FL Studio." }
                 ]
                 delegate: Reveal {

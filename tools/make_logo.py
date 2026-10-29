@@ -87,7 +87,7 @@ def facet_color(cx: float, cy: float, rng: random.Random, base_h: float, light: 
     lum = max(0.2, min(0.74, light + 0.34 * (shade - 0.5) + rng.uniform(-0.07, 0.07)))
     h = base_h + rng.uniform(-0.012, 0.012)
     r, g, b = colorsys.hls_to_rgb(h, lum, sat)
-    return "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
+    return f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
 
 
 def build() -> list[dict]:

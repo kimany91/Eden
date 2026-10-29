@@ -26,8 +26,8 @@ EdenPage {
                     width: parent.width
                     wrapMode: Text.WordWrap
                     text: page.rendering
-                          ? "Eden ouvre FL Studio en arrière-plan sur des copies de ton projet et récupère chaque groupe de pistes, avec tous tes effets."
-                          : "Chaque groupe de pistes a été rendu par FL Studio puis vérifié par Eden."
+                          ? "FL Studio joue chaque partie de ton morceau en arrière-plan, avec tous tes effets, et Eden récupère le son exact."
+                          : "Chaque partie a été jouée par FL Studio avec tes effets, puis vérifiée par Eden."
                     color: Theme.textMuted
                     font.family: Theme.fontFamily; font.pixelSize: 15
                 }

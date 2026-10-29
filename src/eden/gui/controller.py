@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
@@ -100,7 +100,6 @@ class EdenController(QObject):
         self._needsFlPath = False
         self._updateMessage = ""
         self.report_obj: InspectionReport | None = None
-        self.render_result = None
         self.renderer_factory = renderer_factory or default_renderer
         self.probe = probe or default_probe
         self.worker: _Worker | None = None
@@ -266,7 +265,6 @@ class EdenController(QObject):
             self._set("renderRows", viewmodel.mark_step(self._renderRows, index))
 
     def _on_rendered(self, result) -> None:
-        self.render_result = result
         rows, summary = viewmodel.render_view(self._renderRows, result)
         self._set("renderRows", rows)
         self._set("renderSummary", summary)

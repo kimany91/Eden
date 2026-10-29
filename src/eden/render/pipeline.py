@@ -1,21 +1,25 @@
 """Get the real sound of a project out of FL Studio, automatically.
 
-    inspection → render plan → working copies → FL Studio renders → checks
-    → null test (sum of stems == pre-master mix)
+    inspection → render plan → temporary copy → FL Studio render → copy deleted
+    → checks → null test (sum of stems == pre-master mix)
     → Master checks (a mix re-injected into FL's Master gives back the song)
 
-Everything is written under Eden's workspace; the original project and its
-folder are never modified. A manifest is updated after every render so an
-interrupted run resumes where it stopped.
+FL Studio does all the sound: Eden only mutes parts of the project in a
+temporary copy so that FL renders each part separately, with every effect
+the user set (delays, Auto-Tune, echoes...). Each copy is deleted as soon as
+FL has rendered it; only the audio stays, in Eden's workspace. The original
+project and its folder are never modified. A manifest (with the hash of each
+copy) is updated after every render so an interrupted run resumes where it
+stopped.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from eden.flp.edit import FlpEditor
 from eden.project.inspector import InspectionReport, inspect_project
@@ -32,8 +36,7 @@ StepCallback = Callable[[int, int, str], None]
 @dataclass
 class JobResult:
     job: RenderJob
-    copy_path: str
-    copy_sha256: str
+    copy_sha256: str  # identifies the rendered content, to resume interrupted runs
     wav_path: str | None = None
     check: AudioCheck | None = None
     status: str = "pending"  # pending | done | resumed | failed
@@ -152,14 +155,14 @@ def render_project(
     total = len(plan.jobs) + 3
 
     def run(job: RenderJob, copy_bytes: bytes, step: int) -> JobResult:
-        """Render one working copy (or reuse it when an identical one was rendered)."""
+        """Have FL render a temporary copy (or reuse the audio of an identical one)."""
         if on_step:
             on_step(step, total, f"Rendu FL Studio : {job.description}")
         job_dir = folder / job.name
         job_dir.mkdir(exist_ok=True)
         copy_path = job_dir / f"{job.name}.flp"
         copy_sha = hashlib.sha256(copy_bytes).hexdigest()
-        jr = JobResult(job=job, copy_path=str(copy_path), copy_sha256=copy_sha)
+        jr = JobResult(job=job, copy_sha256=copy_sha)
         result.jobs.append(jr)
 
         prev = previous.get(job.name)
@@ -187,6 +190,8 @@ def render_project(
             jr.status, jr.error = "failed", str(exc)
             _write_manifest(manifest, result)
             raise RenderError(f"Échec du rendu « {job.description} » : {exc}") from exc
+        finally:
+            copy_path.unlink(missing_ok=True)
         _write_manifest(manifest, result)
         return jr
 
@@ -214,8 +219,11 @@ def render_project(
                                           control_dir / "controle-eden-0-entree.wav")
             zero_job = RenderJob("controle-eden-0", "control",
                                  "Contrôle : mix d'origine repassé dans ton Master")
-            jr0 = run(zero_job, reinjection_copy(original, report, repairs, feed, False),
-                      len(plan.jobs) + 2)
+            try:
+                jr0 = run(zero_job, reinjection_copy(original, report, repairs, feed, False),
+                          len(plan.jobs) + 2)
+            finally:
+                feed.unlink(missing_ok=True)
             original_wav = result.wav("original")
             if original_wav:
                 result.master_test = null_test(original_wav, [Path(jr0.wav_path)], threshold_db)
@@ -225,6 +233,13 @@ def render_project(
     checks = [j.check for j in result.jobs if j.check]
     if len({(c.sample_rate, c.channels) for c in checks}) > 1:
         result.warnings.append("Les rendus n'ont pas tous le même format audio")
+    cut = [j.job.description for j in result.jobs if j.check and j.check.ends_with_sound]
+    if cut:
+        result.warnings.append(
+            "Le son est encore présent à la toute fin de certains rendus (" + "; ".join(cut) + ") : "
+            "une fin d'écho, de delay ou de reverb est peut-être coupée. Dans la fenêtre d'export "
+            "de FL Studio, choisissez de laisser la fin des effets (« Leave remainder »), puis "
+            "relancez.")
     if any(c.clipped_samples for c in checks if "FLOAT" not in c.subtype.upper()):
         result.warnings.append(
             "Certains rendus atteignent 0 dBFS en format entier (écrêtage possible) : "

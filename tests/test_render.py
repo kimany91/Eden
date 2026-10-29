@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -27,6 +28,17 @@ BAR = 96 * 4
 
 def sim_renderer(args=("/R", "/Ewav", "{project}")):
     return FLStudioRenderer([sys.executable, SIM], list(args), name="simulateur")
+
+
+class CapturingRenderer:
+    """Keeps the bytes of every copy FL Studio is asked to render."""
+
+    def __init__(self, inner):
+        self.inner, self.copies, self.name = inner, {}, "capture"
+
+    def render(self, copy, timeout_s):
+        self.copies[copy.stem] = copy.read_bytes()
+        return self.inner.render(copy, timeout_s)
 
 
 class CountingRenderer:
@@ -134,14 +146,14 @@ def test_render_plan(session):
     plan = plan_renders(_report(session))
     kinds = [j.kind for j in plan.jobs]
     assert kinds[:2] == ["original", "premaster"]
-    stems = {j.name: j for j in plan.by_kind("stem")}
+    stems = {j.name: j for j in plan.jobs if j.kind == "stem"}
     assert set(stems) == {"stem-003-bus-voix", "stem-005-808", "stem-ch002-instru"}
     bus = stems["stem-003-bus-voix"]
     assert not {1, 2, 3, 5} & set(bus.mute_inserts)  # bus keeps everything feeding it
     assert stems["stem-005-808"].mute_inserts.count(3) == 1  # 808 stem: its send to the bus is muted
     assert bus.cut_routes == [(5, 0)]  # bus stem: the 808's direct route to the Master is cut
     assert all(j.bypass_master_effects for j in plan.jobs[1:])
-    vocal = {j.name for j in plan.by_kind("vocal")}
+    vocal = {j.name for j in plan.jobs if j.kind == "vocal"}
     assert vocal == {"vocal-ch000-lead", "vocal-ch001-adlib"}
     assert any("plusieurs groupes" in n for n in plan.notes)
 
@@ -219,10 +231,49 @@ def test_moved_samples_are_repaired_in_copies(session, tmp_path):
     moved = tmp_path / "Ailleurs"
     session.parent.rename(moved)
     project = moved / "Session.flp"
-    result = render_project(project, sim_renderer(), timeout_s=120)
+    renderer = CapturingRenderer(sim_renderer())
+    result = render_project(project, renderer, timeout_s=120)
     assert result.repairs and result.ok
-    copy = parse_bytes(Path(result.jobs[0].copy_path).read_bytes())
+    copy = parse_bytes(renderer.copies["original"])
     assert Path(copy.channel(0).sample_path).parent == moved
+
+
+def test_copies_are_deleted_after_rendering(session):
+    result = render_project(session, sim_renderer(), timeout_s=120)
+    workspace = Path(result.folder).parent.parent
+    assert not list(workspace.rglob("*.flp"))  # only audio and the manifest remain
+    assert not list(Path(result.folder).rglob("*entree.wav"))
+    assert {p.suffix for p in Path(result.folder).rglob("*.*")} == {".wav", ".json"}
+
+
+def test_copy_is_deleted_even_when_fl_fails(session, monkeypatch):
+    monkeypatch.setenv("EDEN_SIM_NO_OUTPUT", "1")
+    with pytest.raises(RenderError):
+        render_project(session, sim_renderer(), timeout_s=120)
+    assert not list(Path(os.environ["EDEN_HOME"]).rglob("*.flp"))
+
+
+def test_echo_tail_cut_by_fl_is_reported(session, monkeypatch):
+    monkeypatch.setenv("EDEN_SIM_CUT_TAIL", "1")
+    result = render_project(session, sim_renderer(), timeout_s=120)
+    assert any("Leave remainder" in w for w in result.warnings)
+
+
+def test_no_tail_warning_when_effects_ring_out(session):
+    result = render_project(session, sim_renderer(), timeout_s=120)
+    assert not any("Leave remainder" in w for w in result.warnings)
+    assert not any(j.check.ends_with_sound for j in result.jobs)
+
+
+def test_master_pass_gives_back_the_song_for_an_unchanged_mix(session, tmp_path):
+    from eden.render.master import master_pass
+
+    result = render_project(session, sim_renderer(), timeout_s=120)
+    report = _report(session)
+    out = master_pass(session.read_bytes(), report, {}, result.wav("premaster"), result.calibration,
+                      tmp_path / "final", sim_renderer(), timeout_s=120)
+    assert null_test(result.wav("original"), [out]).passed  # Eden at 0 % = the original song
+    assert [p.name for p in (tmp_path / "final").iterdir()] == ["master-pass.wav"]
 
 
 def test_missing_sample_stops_before_rendering(session):
@@ -257,6 +308,7 @@ def _probe(session, tmp_path, **kw):
 def test_probe_finds_working_syntax_and_saves_it(session, tmp_path):
     res, settings = _probe(session, tmp_path)
     assert res.ok and res.isolation_channels_ok and res.isolation_inserts_ok and res.isolation_routes_ok
+    assert not list(Path(os.environ["EDEN_HOME"]).rglob("probe/*"))  # test copies and renders removed
     assert settings.render_args == ["/R", "/Ewav", "{project}"]
     assert "FLOAT" in res.audio_format
 

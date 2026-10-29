@@ -27,7 +27,7 @@ class SearchRoots:
     extra_dirs: list[Path] = field(default_factory=list)
 
     @classmethod
-    def default(cls) -> "SearchRoots":
+    def default(cls) -> SearchRoots:
         factory: list[Path] = []
         user: list[Path] = []
         program_files = os.environ.get("ProgramFiles")

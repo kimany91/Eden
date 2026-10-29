@@ -18,8 +18,8 @@ Fait :
   par catégorie ;
 - identification des rôles (voix lead, doublage, backs, ad-libs, instru, batterie, 808…)
   avec raisons et niveau de confiance ;
-- sécurité : lecture seule, empreinte SHA-256 vérifiée avant/après, copie du projet dans
-  l'espace de travail d'Eden, aucun fichier écrit dans le dossier du projet ;
+- sécurité : lecture seule, empreinte SHA-256 vérifiée avant/après, aucun fichier écrit
+  dans le dossier du projet ;
 - rapport Markdown (français) et JSON ; ligne de commande ; interface PySide6 avec
   progression réelle et erreurs indiquant l'étape ;
 - mises à jour automatiques (vérification, téléchargement, contrôle SHA-256, installation
@@ -36,14 +36,16 @@ Critères restant à valider **avec toi** :
 Principe retenu : **Eden pilote FL Studio lui-même**, aucun export manuel.
 
 Fait :
-- écriture de **copies de travail** du `.flp` (re-sérialisation identique à l'octet près,
+- écriture de **copies temporaires** du `.flp`, effacées dès que FL les a rendues
+  (re-sérialisation identique à l'octet près,
   vérifiée sur le vrai projet FL 20.8) avec les seules modifications nécessaires : couper
   un insert, un canal ou un envoi, contourner les effets du Master, réparer un chemin audio ;
 - **plan de rendu** calculé depuis le graphe du Mixer : projet complet, référence
   pré-Master, un rendu par groupe qui sort au Master (envois parasites coupés pour ne
   rien compter deux fois), un rendu par voix avec toute sa chaîne d'effets ;
 - lancement de FL Studio en ligne de commande sur chaque copie, délai maximum, détection
-  du fichier produit, vérifications (format, crête, silence, écrêtage) ;
+  du fichier produit, vérifications (format, crête, silence, écrêtage, fin d'écho ou de
+  reverb coupée) ;
 - **test de reconstruction** : somme des groupes = rendu pré-Master (seuil −60 dB) ;
 - reprise après interruption (manifeste, rendus déjà faits réutilisés) ;
 - `eden fl-probe` : sur ton PC, essaie les syntaxes connues de FL Studio, puis vérifie que

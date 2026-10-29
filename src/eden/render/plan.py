@@ -42,9 +42,6 @@ class RenderPlan:
     jobs: list[RenderJob]
     notes: list[str] = field(default_factory=list)
 
-    def by_kind(self, kind: str) -> list[RenderJob]:
-        return [j for j in self.jobs if j.kind == kind]
-
 
 def _slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()[:40] or "piste"

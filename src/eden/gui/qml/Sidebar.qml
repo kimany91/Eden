@@ -5,14 +5,12 @@ import "."
 Rectangle {
     id: side
     color: Theme.sidebar
-    signal newProject()
-
     readonly property var steps: [
-        { title: "Projet", sub: "Choisir un .flp", key: "home" },
-        { title: "Analyse", sub: "Pistes, voix, effets", key: "analysis" },
-        { title: "Son de FL Studio", sub: "Pistes et Master", key: "render" },
-        { title: "Mixage Eden", sub: "Prochaine version", key: "mix", soon: true },
-        { title: "Export WAV", sub: "Prochaine version", key: "export", soon: true }
+        { title: "Projet", sub: "Choisir un .flp" },
+        { title: "Analyse", sub: "Pistes, voix, effets" },
+        { title: "Son de FL Studio", sub: "Pistes et Master" },
+        { title: "Mixage Eden", sub: "Prochaine version", soon: true },
+        { title: "Export WAV", sub: "Prochaine version", soon: true }
     ]
     readonly property int current: controller.stage === "home" ? 0
                                   : (controller.stage === "analyzing" || controller.stage === "analyzed") ? 1 : 2

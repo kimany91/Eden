@@ -23,10 +23,13 @@ identifie les voix (lead, doublages, backs, ad-libs) et l'instru avec les raison
 chaque choix, liste les traitements déjà appliqués sur le chemin de chaque voix, et
 produit un rapport.
 
-Ensuite, **Eden pilote FL Studio lui-même** : il crée des copies de travail du projet
-(certaines pistes coupées, chemins audio réparés), ouvre FL Studio en arrière-plan pour
-rendre chaque groupe de pistes avec tous ses effets, puis vérifie que la somme des pistes
-récupérées redonne exactement le mix d'origine. Ces pistes alimenteront le moteur de
+Ensuite, **Eden pilote FL Studio lui-même** : c'est FL Studio qui joue chaque partie du
+morceau (voix seule, instru, chaque groupe) avec **tous tes effets** — Auto-Tune, delays
+réglés au millimètre, échos, automations — et Eden récupère ce son exact. Eden ne recrée
+aucun effet. Pour que FL joue une partie seule, Eden lui donne une copie temporaire du
+projet où les autres pistes sont coupées ; cette copie est effacée dès que FL a fini.
+Eden vérifie ensuite que la somme des parties redonne exactement le mix d'origine, et que
+les fins d'écho ou de reverb ne sont pas coupées. Ces pistes alimenteront le moteur de
 mixage d'Eden. **Ton mastering reste dans FL Studio** : Eden sait déjà repasser un mix
 dans ton propre Master FL (il le vérifie à chaque rendu). **Le moteur de mixage et
 l'export du WAV final ne sont pas encore faits.**
@@ -58,7 +61,7 @@ eden render "C:\...\Mon son.flp"       # rendu de toutes les pistes
 ```
 
 Eden ne modifie jamais le projet : il le lit une fois, vérifie son empreinte SHA-256 avant
-et après, et range ses propres fichiers (copies, rendus, rapports) dans
+et après, et range ses propres fichiers (sons rendus par FL, rapports) dans
 `%LOCALAPPDATA%\Eden\`, jamais dans le dossier du projet. La désinstallation ne
 supprime pas ces fichiers.
 

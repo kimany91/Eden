@@ -1,7 +1,7 @@
 """Play Eden's mix through the project's own Master chain in FL Studio.
 
 The user's mastering lives on FL Studio's Master insert. To keep it, Eden's
-final mix (pre-master) is *re-injected*: in a copy of the project, every
+final mix (pre-master) is *re-injected*: in a temporary copy of the project, every
 original source is muted and a new audio channel plays Eden's mix straight
 into the Master; FL Studio renders that copy, Master chain and Master
 automations included.
@@ -115,8 +115,12 @@ def master_pass(
     work_dir.mkdir(parents=True, exist_ok=True)
     feed = prepare_mix_for_master(mix_wav, calibration, work_dir / f"{name}-entree.wav")
     copy = work_dir / f"{name}.flp"
-    copy.write_bytes(reinjection_copy(original, report, repairs, feed, bypass_master_effects=False))
-    produced = renderer.render(copy, timeout_s)
+    try:
+        copy.write_bytes(reinjection_copy(original, report, repairs, feed, bypass_master_effects=False))
+        produced = renderer.render(copy, timeout_s)
+    finally:  # temporary files: only the rendered audio is kept
+        copy.unlink(missing_ok=True)
+        feed.unlink(missing_ok=True)
     target = work_dir / f"{name}.wav"
     if produced != target:
         if target.exists():

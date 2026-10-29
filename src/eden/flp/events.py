@@ -19,10 +19,10 @@ and never interprets plugin states.
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import BinaryIO, Iterator
+from typing import BinaryIO
 
-BYTE = 0
 WORD = 64
 DWORD = 128
 TEXT = 192
@@ -50,19 +50,10 @@ class Event:
     data: bytes
     offset: int  # byte offset of the event ID in the file, for diagnostics
 
-    @property
-    def is_variable(self) -> bool:
-        return self.id >= TEXT
-
     def as_int(self, signed: bool = False) -> int:
         if self.id >= TEXT:
             raise TypeError(f"event {self.id} has a variable-length payload")
         return int.from_bytes(self.data, "little", signed=signed)
-
-    def as_float(self) -> float:
-        if len(self.data) != 4:
-            raise TypeError(f"event {self.id} is not a 32-bit value")
-        return struct.unpack("<f", self.data)[0]
 
 
 def payload_size(event_id: int) -> int | None:

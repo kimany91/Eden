@@ -24,7 +24,7 @@ import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from packaging.version import InvalidVersion, Version
 

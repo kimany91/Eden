@@ -17,13 +17,15 @@ Environment switches used by tests:
   EDEN_SIM_NO_OUTPUT=1     exit without writing anything
   EDEN_SIM_ACCEPT=<flag>   only accept this syntax ("project" or "folder")
   EDEN_SIM_DISTORT_MIX=1   colour the channel Eden adds (as a stray envelope would)
+  EDEN_SIM_CUT_TAIL=1      stop exactly at the last clip (FL's "cut remainder"), instead
+                           of leaving one second for echoes and reverbs to ring out
 """
 
 from __future__ import annotations
 
 import os
 import sys
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 import numpy as np
@@ -47,7 +49,8 @@ def render(project_path: Path) -> np.ndarray:
     p = parse_bytes(project_path.read_bytes())
     ignore_mute = os.environ.get("EDEN_SIM_IGNORE_MUTE") == "1"
     end = max((c.position_ticks + c.length_ticks for a in p.arrangements for c in a.clips), default=0)
-    frames = int((p.ticks_to_seconds(end) or 2.0) * SR) or SR
+    remainder = 0.0 if os.environ.get("EDEN_SIM_CUT_TAIL") == "1" else 1.0
+    frames = int(((p.ticks_to_seconds(end) or 2.0) + remainder) * SR)
     inserts = {i.index: i for i in p.inserts}
 
     def source(ch) -> np.ndarray:
@@ -70,7 +73,7 @@ def render(project_path: Path) -> np.ndarray:
             sig = np.tanh(3 * sig) / 3
         inputs[target] = inputs.get(target, 0) + sig
 
-    @lru_cache(maxsize=None)
+    @cache
     def output(idx: int) -> np.ndarray:
         ins = inserts[idx]
         x = inputs.get(idx, np.zeros((frames, 2))).copy()

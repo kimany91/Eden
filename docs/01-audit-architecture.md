@@ -84,8 +84,11 @@ bus). Deux modes :
 
 **Choix retenu (demandé) : Eden pilote FL Studio lui-même, sans export manuel.**
 
-- Eden écrit des **copies de travail** du projet dans son espace (jamais l'original) :
-  certaines pistes coupées, effets du Master contournés, chemins audio réparés.
+- C'est FL Studio qui produit tout le son : Eden ne recrée aucun effet (un delay réglé,
+  un Auto-Tune, un écho restent exactement ceux de FL).
+- Pour que FL joue une partie seule, Eden écrit une **copie temporaire** du projet dans
+  son espace (jamais l'original) : certaines pistes coupées, effets du Master contournés,
+  chemins audio réparés. La copie est effacée dès que FL l'a rendue.
 - Il lance FL Studio en ligne de commande sur chaque copie (`FL64.exe /R ...`, syntaxe
   rapportée par des utilisateurs) et récupère le WAV produit.
 - Comme cette syntaxe n'est pas documentée de façon fiable, rien n'est supposé :
@@ -129,7 +132,7 @@ Règles :
   active, pas de reverb supplémentaire si le bus vocal en a déjà une, etc.
 - **Master de FL — décision : il reste dans FL Studio** (ton mastering y est). Les pistes
   sont récupérées avant le Master ; Eden mixe ; puis le mix est **réinjecté** dans une
-  copie du projet où toutes les sources d'origine sont coupées et où un canal audio
+  copie temporaire du projet où toutes les sources d'origine sont coupées et où un canal audio
   (dupliqué d'un canal existant) joue le mix d'Eden dans le Master. FL Studio rend cette
   copie : ta chaîne Master et ses automations s'appliquent. Le gain exact du canal ajouté
   est mesuré à chaque projet (calibration), et Eden vérifie que « mix d'origine repassé
@@ -166,7 +169,7 @@ Règles :
 │        │                                                 - finition + export WAV │
 │        │                                                          │              │
 │        └──────────── Espace de travail Eden (%LOCALAPPDATA%\Eden) ◄┘              │
-│                      snapshots .flp, rapports, stems, versions de mix, réglages  │
+│                      rapports, sons rendus par FL, versions de mix, réglages     │
 └─────────────────────────────────────────────────────────────────────────────────┘
           ▲ lecture seule                         ▲ rendu / script
           │                                       │

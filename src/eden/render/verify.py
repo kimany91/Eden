@@ -14,6 +14,8 @@ import numpy as np
 import soundfile as sf
 
 SILENCE_DB = -90.0
+TAIL_DB = -60.0  # level above which the very end of a render is considered still sounding
+TAIL_S = 0.05
 
 
 def _db(x: float) -> float:
@@ -32,6 +34,7 @@ class AudioCheck:
     rms_db: float
     silent: bool
     clipped_samples: int  # samples at or above full scale (integer formats clip there)
+    ends_with_sound: bool  # still sounding at the last sample: an echo/reverb tail may be cut
 
 
 def load(path: Path) -> tuple[np.ndarray, int]:
@@ -44,11 +47,14 @@ def check_audio(path: Path) -> AudioCheck:
     data, sr = load(path)
     peak = float(np.max(np.abs(data))) if data.size else 0.0
     rms = float(np.sqrt(np.mean(data ** 2))) if data.size else 0.0
+    end = data[-max(1, int(TAIL_S * sr)):]
+    end_peak = float(np.max(np.abs(end))) if end.size else 0.0
     return AudioCheck(
         path=str(path), sample_rate=sr, channels=data.shape[1], frames=data.shape[0],
         duration_s=data.shape[0] / sr if sr else 0.0, subtype=str(info.subtype),
         peak_db=_db(peak), rms_db=_db(rms), silent=_db(peak) < SILENCE_DB,
         clipped_samples=int(np.count_nonzero(np.abs(data) >= 0.99999)),
+        ends_with_sound=_db(end_peak) > TAIL_DB,
     )
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from eden.safety import eden_home
@@ -17,7 +17,6 @@ class Settings:
     render_args: list[str] | None = None
     render_timeout_s: float = 900.0
     null_test_threshold_db: float = -60.0
-    extra: dict = field(default_factory=dict)
 
 
 def settings_path() -> Path:

@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from eden import __version__
 from eden.flp.events import FlpFormatError
@@ -88,7 +88,6 @@ class InspectionReport:
     project_end_seconds: float | None
     limitations: list[str]
     warnings: list[str] = field(default_factory=list)
-    snapshot_path: str | None = None
     report_path: str | None = None
 
     def to_json(self) -> str:
@@ -102,14 +101,14 @@ class InspectionReport:
 LIMITATIONS = [
     "Les paramètres internes des plugins (VST/VST3 et la plupart des plugins FL) sont stockés "
     "sous forme de blocs opaques : Eden identifie le plugin, son emplacement et son état "
-    "activé/désactivé, pas ses réglages. Les réglages exacts ne sont lisibles qu'à l'intérieur "
-    "de FL Studio (passerelle de script prévue en phase 3).",
+    "activé/désactivé, pas ses réglages. Ces réglages ne sont lisibles qu'à l'intérieur de "
+    "FL Studio ; le son qu'ils produisent, lui, est récupéré par le rendu FL Studio.",
     "Les cibles des clips d'automation ne sont pas encore décodées : Eden détecte les clips "
     "d'automation et leur position, pas le paramètre qu'ils pilotent.",
     "Les durées en secondes supposent un tempo constant ; une automation de tempo n'est pas "
     "prise en compte.",
-    "Le son réel du projet (effets, instruments virtuels, automations) ne peut pas être "
-    "reproduit depuis le .flp seul : il faudra un rendu par FL Studio (phase 3).",
+    "Le son réel du projet (effets, instruments virtuels, automations) n'est pas dans le .flp : "
+    "Eden le fait produire par FL Studio (« Récupérer le son depuis FL Studio »).",
     "Le format .flp n'est pas documenté par Image-Line ; il a été vérifié sur FL Studio 20.8. "
     "Les versions plus récentes peuvent contenir des informations non décodées (voir les "
     "avertissements).",
@@ -154,7 +153,7 @@ def inspect_project(
     path: str | Path,
     roots: SearchRoots | None = None,
     workspace_home: Path | None = None,
-    keep_snapshot: bool = True,
+    archive_report: bool = True,
     on_step: StepCallback | None = None,
 ) -> InspectionReport:
     path = Path(path)
@@ -295,7 +294,7 @@ def inspect_project(
 
     report = InspectionReport(
         eden_version=__version__,
-        inspected_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        inspected_at=datetime.now(UTC).isoformat(timespec="seconds"),
         file=fp,
         project=project,
         sources=sources,
@@ -305,10 +304,8 @@ def inspect_project(
         limitations=list(LIMITATIONS),
         warnings=warnings,
     )
-    if keep_snapshot:
-        ws = Workspace(path, workspace_home)
-        report.snapshot_path = str(ws.snapshot(data, fp))
-        report_path = ws.new_inspection_path()
+    if archive_report:
+        report_path = Workspace(path, workspace_home).new_inspection_path()
         report.report_path = str(report_path)
         report_path.write_text(report.to_json(), encoding="utf-8")
     return report

@@ -17,7 +17,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
         print(f"[{i + 1}/{total}] {label}…", file=sys.stderr)
 
     try:
-        report = inspect_project(args.project, keep_snapshot=not args.no_snapshot, on_step=progress)
+        report = inspect_project(args.project, on_step=progress)
     except InspectionError as exc:
         print(f"Échec à l'étape « {exc.step} » : {exc.message}", file=sys.stderr)
         return 2
@@ -100,11 +100,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("project", help="Chemin du fichier .flp")
     p.add_argument("--markdown", help="Écrire le rapport lisible dans ce fichier")
     p.add_argument("--json", help="Écrire le rapport complet (JSON) dans ce fichier")
-    p.add_argument("--no-snapshot", action="store_true",
-                   help="Ne pas archiver de copie du projet dans l'espace de travail d'Eden")
     p.set_defaults(func=_cmd_inspect)
 
-    pr = sub.add_parser("fl-probe", help="Tester le pilotage de FL Studio sur ce PC (sur une copie du projet)")
+    pr = sub.add_parser("fl-probe", help="Tester le pilotage de FL Studio sur ce PC")
     pr.add_argument("project", help="Un projet .flp réel (il n'est pas modifié)")
     pr.add_argument("--fl", help="Chemin de FL64.exe si non détecté")
     pr.add_argument("--timeout", type=float, default=600.0, help="Délai maximum par rendu (s)")

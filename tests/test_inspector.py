@@ -1,5 +1,5 @@
 import os
-import shutil
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -69,15 +69,15 @@ def test_original_project_is_untouched(rap_project):
     assert os.stat(rap_project).st_mtime_ns == before_stat.st_mtime_ns
     # Nothing was written in the project folder
     assert sorted(p.name for p in rap_project.parent.rglob("*")) == folder_before
-    assert report.file.sha256 and report.snapshot_path
-    assert open(report.snapshot_path, "rb").read() == before_bytes
-    assert os.environ["EDEN_HOME"] in report.snapshot_path
+    assert report.file.sha256
+    # The project is read, never copied: Eden only keeps its report.
+    eden_files = list(Path(os.environ["EDEN_HOME"]).rglob("*.*"))
+    assert [p.suffix for p in eden_files] == [".json"] and str(eden_files[0]) == report.report_path
 
 
-def test_snapshot_is_deduplicated(rap_project):
+def test_each_inspection_is_archived(rap_project):
     a = _inspect(rap_project)
     b = _inspect(rap_project)
-    assert a.snapshot_path == b.snapshot_path
     assert a.report_path != b.report_path
 
 
@@ -163,7 +163,7 @@ def test_detects_project_saved_during_analysis(rap_project, monkeypatch):
     assert e.value.step == "Vérification de l'intégrité du projet"
 
 
-def test_no_snapshot_option(rap_project):
-    r = _inspect(rap_project, keep_snapshot=False)
-    assert r.snapshot_path is None and r.report_path is None
+def test_inspection_without_archive(rap_project):
+    r = _inspect(rap_project, archive_report=False)
+    assert r.report_path is None
     assert not os.path.exists(os.environ["EDEN_HOME"])
