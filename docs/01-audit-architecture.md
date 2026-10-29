@@ -140,7 +140,7 @@ Règles :
   Eden liste les plugins sur tout le chemin jusqu'au Master avec leur catégorie (correction
   de hauteur, EQ, compression, de-esser, reverb, delay, saturation…) et leur état : actif,
   désactivé (son slot ou les effets de l'insert), ou inaudible (mix à 0 %, insert coupé,
-  insert sans sortie vers le Master). Le moteur de mixage s'en sert : pas d'Auto-Tune
+  volume de l'insert à zéro, insert sans sortie vers le Master). Le moteur de mixage s'en sert : pas d'Auto-Tune
   ajouté si une correction de hauteur est déjà active, pas de reverb supplémentaire si le
   bus vocal en a déjà une, etc.
 - **Master de FL — décision (révisée) : Eden fait le mastering.** Les pistes sont

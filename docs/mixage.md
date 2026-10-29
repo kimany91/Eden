@@ -16,23 +16,24 @@ est marqué :
 
 - **Chaque voix seule**, rendue par FL avec toute sa chaîne (inserts, bus, envois).
 - **Chaque voix sèche** : si sa chaîne FL contient une reverb ou un delay que FL joue
-  vraiment (slot actif avec un dry/wet qui n'est pas à 0, insert et ses effets actifs, insert
-  qui atteint le Master : un retour coupé ou routé nulle part ne compte pas), FL la rend aussi
-  avec ces effets coupés. Un plugin qu'Eden n'identifie pas compte comme reverb ou delay
-  quand il est sur un autre insert que celui de la voix et que le nom de cet insert contient
-  « verb », « delay », « echo », « écho » ou « space » (choix d'Eden) ; Eden le signale.
-  Un retour d'effet est reconnu par la topologie du Mixer (un insert autre que celui de la
-  voix, qui porte une reverb ou un delay, et dont la voix n'a pas besoin pour atteindre le
-  Master) : il est coupé en entier, limiteur ou EQ compris. Quand la voix peut se passer de
-  chacun de ces inserts mais pas de tous à la fois (un bus voix avec un delay en ligne à côté
-  d'un retour de reverb), leur numéro ne compte pas : ceux dont le premier effet (EQ,
-  utilitaires et plugins non identifiés mis à part) est la reverb ou le delay sont les
-  retours, les autres sont le chemin de la voix, car un bus commence par sa dynamique (choix
-  d'Eden) ; si ça ne tranche pas, pas de voix sèche, et Eden dit pourquoi. Sur le chemin
-  propre de la voix, les slots de reverb et de delay sont désactivés un par un.
-  *Voix complète − voix sèche* = exactement ce que tes effets ajoutent. Eden traite la voix
-  sèche, comme un mixeur qui reçoit des pistes sèches et met les effets en envoi, puis remet
-  tes effets **tels quels** par-dessus.
+  vraiment (slot actif avec un dry/wet qui n'est pas à 0, insert et ses effets actifs,
+  volume de l'insert au-dessus de zéro, insert qui atteint le Master : un retour coupé,
+  baissé à zéro ou routé nulle part ne compte pas), FL la rend aussi avec ces effets coupés.
+  Un plugin qu'Eden n'identifie pas compte comme reverb ou delay quand il est sur un autre
+  insert que celui de la voix et que le nom de cet insert contient « verb », « delay »,
+  « echo », « écho » ou « space » (choix d'Eden) ; Eden le signale. Un retour d'effet est
+  reconnu par la topologie du Mixer (un insert autre que celui de la voix, qui porte une
+  reverb ou un delay, et dont la voix n'a pas besoin pour atteindre le Master) : il est
+  coupé en entier, limiteur ou EQ compris. Quand la voix peut se passer de chacun de ces
+  inserts mais pas de tous à la fois (un bus voix avec un delay en ligne à côté d'un retour
+  de reverb), leur numéro ne compte pas : ceux dont le premier effet (EQ, utilitaires et
+  plugins non identifiés mis à part) est la reverb ou le delay sont les retours, les autres
+  sont le chemin de la voix, car un bus commence par sa dynamique (choix d'Eden) ; si ça ne
+  tranche pas, pas de voix sèche, et Eden dit pourquoi. Sur le chemin propre de la voix, les
+  slots de reverb et de delay sont désactivés un par un. *Voix complète − voix sèche* =
+  exactement ce que tes effets ajoutent. Eden traite la voix sèche, comme un mixeur qui
+  reçoit des pistes sèches et met les effets en envoi, puis remet tes effets **tels quels**
+  par-dessus.
 - **Contrôle de la voix sèche** : elle ne doit pas être muette, et FL doit en avoir retiré
   quelque chose : pendant le chant, la part des effets doit dépasser −60 dB sous la voix
   (choix d'Eden), sinon les effets coupés n'ont pas été respectés ou ne s'entendaient pas.

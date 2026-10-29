@@ -16,6 +16,7 @@ from eden.project.inspector import SourceAnalysis, _effects_on, _signal_path, in
 from eden.project.model import FlpProject, MixerInsert, MixerSlot, PluginInfo, Route
 from eden.project.sources import SearchRoots
 from eden.render.fl_studio import FLStudioRenderer, RenderError
+from eden.render.plan import plan_renders
 from eden.render.probe import SLOT_CHECK_TRIES, probe_fl_studio
 from eden.report import _source_lines, render_markdown
 from eden.settings import load_settings
@@ -61,7 +62,7 @@ def _project():
     """Every way an effect can be inactive, and one that is heard."""
     return FlpProject(inserts=[
         MixerInsert(0, "Master", routes=[]),
-        MixerInsert(1, "Lead", routes=[Route(0), Route(2), Route(3), Route(4), Route(5)],
+        MixerInsert(1, "Lead", routes=[Route(0), Route(2), Route(3), Route(4), Route(5), Route(7)],
                     slots=[_slot(0, "Fruity parametric EQ 2"), _slot(1, "Fruity Delay 3", enabled=False),
                            _slot(2, "Fruity Reeverb 2", mix_raw=0)]),
         MixerInsert(2, "Retour coupé", enabled=False, routes=[Route(0)],
@@ -71,6 +72,7 @@ def _project():
         MixerInsert(5, "Effets coupés", effects_enabled=False, routes=[Route(0)],
                     slots=[_slot(0, "Fruity Reeverb 2")]),
         MixerInsert(6, "Bus coupé", enabled=False, routes=[Route(0)]),
+        MixerInsert(7, "Retour à zéro", volume_raw=0, routes=[Route(0)], slots=[_slot(0, "Fruity Reeverb 2")]),
     ])
 
 
@@ -82,7 +84,7 @@ def _lead(project):
 
 def test_an_inactive_effect_says_whether_it_is_switched_off_or_unheard():
     effects = {(e.insert_label, e.plugin): (e.active, e.inactive_reason)
-               for e in _effects_on(_project(), [1, 2, 3, 4, 5])}
+               for e in _effects_on(_project(), [1, 2, 3, 4, 5, 7])}
     assert effects == {
         ("Lead", "Fruity parametric EQ 2"): (True, None),
         ("Lead", "Fruity Delay 3"): (False, "off"),
@@ -92,6 +94,7 @@ def test_an_inactive_effect_says_whether_it_is_switched_off_or_unheard():
         ("Retour sans sortie", "Fruity Reeverb 2"): (False, "no_output"),
         ("Vers un bus coupé", "Fruity Delay 3"): (False, "no_output"),
         ("Effets coupés", "Fruity Reeverb 2"): (False, "off"),
+        ("Retour à zéro", "Fruity Reeverb 2"): (False, "fader_zero"),
     }
 
 
@@ -106,7 +109,8 @@ def test_the_report_names_why_an_effect_is_not_heard():
                   "vers le Master)",
                   "Vers un bus coupé / slot 1 : Fruity Delay 3 [Delay] — inaudible (insert sans sortie "
                   "vers le Master)",
-                  "Effets coupés / slot 1 : Fruity Reeverb 2 [Reverb] — désactivé"):
+                  "Effets coupés / slot 1 : Fruity Reeverb 2 [Reverb] — désactivé",
+                  "Retour à zéro / slot 1 : Fruity Reeverb 2 [Reverb] — inaudible (volume de l'insert à zéro)"):
         assert shown in lines
 
 
@@ -114,7 +118,8 @@ def test_the_report_names_why_an_effect_is_not_heard():
     ({"enabled": False}, "inaudible (insert coupé)"),
     ({"routes": ()}, "inaudible (insert sans sortie vers le Master)"),
     ({"slots": {0: Slot("Fruity Reeverb 2", enabled=False)}}, "désactivé"),
-], ids=["muted", "routed-nowhere", "switched-off"])
+    ({"volume": 0}, "inaudible (volume de l'insert à zéro)"),
+], ids=["muted", "routed-nowhere", "switched-off", "fader-at-zero"])
 def test_a_reverb_return_in_a_real_project_report(tmp_path, reverb_insert, shown):
     project = make_project(tmp_path / "Projet", [
         Insert(routes=()), Insert(name="Lead", routes=(0, 2)),
@@ -134,6 +139,7 @@ def test_the_interface_gets_why_an_effect_is_not_heard():
         ("Retour sans sortie", "Fruity Reeverb 2"): "inaudible (insert sans sortie vers le Master)",
         ("Vers un bus coupé", "Fruity Delay 3"): "inaudible (insert sans sortie vers le Master)",
         ("Effets coupés", "Fruity Reeverb 2"): "désactivé",
+        ("Retour à zéro", "Fruity Reeverb 2"): "inaudible (volume de l'insert à zéro)",
     }
 
 
@@ -199,11 +205,12 @@ def renders(monkeypatch):
 
 
 def test_a_slot_that_changes_nothing_is_followed_by_another(tmp_path):
-    # The reverb return's fader is at the bottom: bypassing its reverb changes nothing, though FL
-    # bypasses it. The back's delay then shows that FL does bypass a slot.
+    # The reverb return's fader is all but at the bottom (about −82 dB): bypassing its reverb changes
+    # the render by less than −60 dB, though FL bypasses it. The back's delay then shows that FL does
+    # bypass a slot.
     project = make_project(tmp_path / "Projet", [
         Insert(routes=()), Insert(name="Lead", routes=(0, 2)),
-        Insert(name="Reverb", routes=(0,), volume=0, slots={0: Slot("Fruity Reeverb 2")}),
+        Insert(name="Reverb", routes=(0,), volume=1, slots={0: Slot("Fruity Reeverb 2")}),
         Insert(name="Back", routes=(0,), slots={0: Slot("Fruity Delay 3")}),
         Insert(name="Instru", routes=(0,))], [("Lead", 1), ("Back", 3)])
     res, settings = _probe(project, tmp_path)
@@ -331,3 +338,11 @@ def test_a_failed_render_is_followed_by_another_slot(tmp_path, monkeypatch):
                         "de fichier WAV) ✘")
     assert "le rendu change" in lines[1] and len(lines) == 2
     assert res.isolation_slots_ok is True and res.ok and settings.render_args
+
+
+def test_a_return_with_its_fader_at_the_bottom_gets_no_dry_render(tmp_path):
+    project = make_project(tmp_path / "Projet", [
+        Insert(routes=()), Insert(name="Lead", routes=(0, 2)),
+        Insert(name="Reverb", routes=(0,), volume=0, slots={0: Slot("Fruity Reeverb 2")}),
+        Insert(name="Instru", routes=(0,))], [("Lead", 1)])
+    assert not [j for j in plan_renders(_report(project)).jobs if j.kind == "vocal_dry"]

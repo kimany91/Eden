@@ -92,18 +92,18 @@ Fait (détails, seuils et sources : `docs/mixage.md`) :
 - chaîne vocale complète par rôle, dans l'ordre des chaînes pro documentées, chaque étape
   déclenchée par une mesure et plafonnée ;
 - voix sèche quand FL joue vraiment une reverb ou un delay sur la chaîne de la voix : un
-  effet désactivé ou inaudible (mix à 0 %, insert coupé, insert sans sortie vers le Master)
-  ne compte pas, et l'inspection dit lequel des deux il est ; un plugin non identifié
-  compte comme reverb ou delay quand il est sur un autre insert que celui de la voix et que
-  le nom de cet insert contient « verb », « delay », « echo », « écho » ou « space » (choix
-  d'Eden) ; un retour d'effet est reconnu par la topologie du Mixer, pas par son numéro. La
-  voix sèche rendue par FL n'est gardée que si elle passe le contrôle : pas muette, FL en a
-  retiré quelque chose (pendant le chant, part des effets au-dessus de −60 dB sous la
-  voix), calée sur la voix complète à 2 échantillons près, part des effets sans copie de la
-  voix et pas plus forte qu'elle. Eden traite alors la voix sèche et remet tes effets tels
-  quels ; sinon (état d'un slot non enregistré par FL, retours impossibles à distinguer,
-  plugin non identifié sur le chemin de la voix, voix sèche écartée) la voix est traitée en
-  compression « prudente » ;
+  effet désactivé ou inaudible (mix à 0 %, insert coupé, volume de l'insert à zéro, insert
+  sans sortie vers le Master) ne compte pas, et l'inspection dit lequel des deux il est ; un
+  plugin non identifié compte comme reverb ou delay quand il est sur un autre insert que
+  celui de la voix et que le nom de cet insert contient « verb », « delay », « echo »,
+  « écho » ou « space » (choix d'Eden) ; un retour d'effet est reconnu par la topologie du
+  Mixer, pas par son numéro. La voix sèche rendue par FL n'est gardée que si elle passe le
+  contrôle : pas muette, FL en a retiré quelque chose (pendant le chant, part des effets
+  au-dessus de −60 dB sous la voix), calée sur la voix complète à 2 échantillons près, part
+  des effets sans copie de la voix et pas plus forte qu'elle. Eden traite alors la voix
+  sèche et remet tes effets tels quels ; sinon (état d'un slot non enregistré par FL,
+  retours impossibles à distinguer, plugin non identifié sur le chemin de la voix, voix
+  sèche écartée) la voix est traitée en compression « prudente » ;
 - niveaux (voix principale au-dessus de l'instru pendant le chant, autres voix par rapport
   à elle), suivi phrase par phrase, espace en quatre envois pour les voix qui n'en ont pas,
   placement stéréo, place pour les paroles (bandes pondérées par leur importance pour

@@ -18,6 +18,7 @@ INACTIVE_LABELS_FR = {
     "off": "désactivé",
     "mix_zero": "inaudible (mix à 0 %)",
     "insert_muted": "inaudible (insert coupé)",
+    "fader_zero": "inaudible (volume de l'insert à zéro)",
     "no_output": "inaudible (insert sans sortie vers le Master)",
 }
 

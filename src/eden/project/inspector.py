@@ -156,10 +156,11 @@ def _signal_path(project: FlpProject, start: int) -> tuple[list[int], bool]:
 
 def _effects_on(project: FlpProject, inserts: list[int]) -> list[ExistingEffect]:
     """The effects of ``inserts``. One is active only when FL plays it: its slot is on with its
-    dry/wet not at 0 (when stored), its insert and the insert's effects are on, and the insert's
-    output reaches the Master (a muted return, or one routed nowhere, is not heard). Otherwise
-    ``inactive_reason`` says why, the first that applies of: switched off (its slot or its
-    insert's effects), dry/wet at 0, insert muted, insert output that never reaches the Master."""
+    dry/wet not at 0 (when stored), its insert and the insert's effects are on, the insert's
+    fader is not at the bottom, and the insert's output reaches the Master (a muted return, or
+    one routed nowhere, is not heard). Otherwise ``inactive_reason`` says why, the first that
+    applies of: switched off (its slot or its insert's effects), dry/wet at 0, insert muted,
+    insert fader at the bottom, insert output that never reaches the Master."""
     out = []
     for idx in inserts:
         ins = project.insert(idx)
@@ -167,6 +168,8 @@ def _effects_on(project: FlpProject, inserts: list[int]) -> list[ExistingEffect]
             continue
         if ins.enabled is False:
             insert_reason = "insert_muted"
+        elif ins.volume_raw == 0:  # FL's fader at the bottom is silence
+            insert_reason = "fader_zero"
         elif idx != MASTER_INSERT and not _signal_path(project, idx)[1]:
             insert_reason = "no_output"
         else:
