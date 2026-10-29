@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from eden.mix import dsp
-from eden.mix.analysis import active_frames, sibilance
+from eden.mix.analysis import active_frames, vowel_level
 from eden.mix.loudness import integrated_loudness
 from eden.mix.saturation import saturate
 
@@ -55,7 +55,7 @@ IDLE_DB = 0.3  # a dynamic stage that never reduces more than this did nothing w
 
 def _vowel_level(y: np.ndarray, fs: float) -> float:
     level, active, _ = active_frames(y, fs)
-    return sibilance(y, fs, level, active)[0]
+    return vowel_level(y, fs, level, active)
 
 
 def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarray | None = None

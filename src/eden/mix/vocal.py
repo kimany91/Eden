@@ -22,7 +22,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from eden.mix import dsp
-from eden.mix.analysis import VocalMeasure
+from eden.mix.analysis import VocalMeasure, deess_band_low_hz
 from eden.mix.riding import felt_quarter, phrases_of
 from eden.mix.treatments import Treatment
 
@@ -47,6 +47,8 @@ PROFILES = {
     "adlib": RoleProfile(130.0, 3.0, 8.0, 0.1, 0.2, -1.5),
 }
 TAIL_SAFE_MAX_REDUCTION_DB = 3.0
+HIGHPASS_TRIGGER_DB = -32.0  # energy an octave under the planned cut, re. the whole voice (Eden's choice)
+LOW_MID_MIN_DB = 2.5  # lift of the harmonics over 1/3 octave that makes a low-mid bump (Eden's choice)
 
 
 def tail_hold(m: VocalMeasure, x: np.ndarray, fs: float, tempo_bpm: float | None = None) -> np.ndarray:
@@ -82,19 +84,22 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
     if k <= 0 or not math.isfinite(m.loudness_lufs):
         return []
     profile = PROFILES.get(role, PROFILES["vocal"])
-    lead = role in LEAD_ROLES
     out: list[Treatment] = []
 
-    # 1. high-pass: never above the lowest sustained note of the voice
+    # 1. high-pass: never above the lowest sustained note of the voice, and only when something sounds
+    #    an octave under the planned cut, where the filter takes 12 dB or more: rumble or plosives.
+    #    Just under the cut the voice itself still sounds (notes below its 5th percentile, the
+    #    syllables' onsets around its fundamental), so the trigger is not read there
     hp = profile.highpass_hz
     if m.lowest_f0_hz:
         hp = min(hp, 0.9 * m.lowest_f0_hz)
-    lows = m.low_energy_db if lead else m.low_120_db
-    if lows > -25.0:
+    lows = m.energy_below_db(hp / 2)
+    if lows > HIGHPASS_TRIGGER_DB:
         freq = max(20.0, hp * k)
         out.append(Treatment(
             "highpass", f"Coupe-bas {freq:.0f} Hz",
-            f"Grondement ou plosives sous {70 if lead else 120} Hz ({lows:.0f} dB de l'énergie de la voix)"
+            f"Grondement ou plosives : {lows:.0f} dB de l'énergie de la voix sous {hp / 2:.0f} Hz "
+            f"(une octave sous {hp:.0f} Hz, la coupe à 100 %)"
             + (f" ; note la plus grave {m.lowest_f0_hz:.0f} Hz" if m.lowest_f0_hz else ""),
             {"freq_hz": freq, "q": 0.7071}))
 
@@ -106,27 +111,30 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
             f"Pic étroit {r.excess_db:.1f} dB au-dessus du spectre voisin",
             {"freq_hz": r.freq_hz, "q": 6.0, "gain_db": cut * k}))
 
-    # 3. low-mid build-up (proximity effect, boxiness): only a real bump of the voice's envelope,
-    #    not a general tilt (blind low-mid cuts are not supported by expert practice)
-    if m.mud_db > 6.0 and m.low_mid_excess_db >= 2.0:
+    # 3. low-mid build-up (proximity effect, boxiness): only a real bump of the voice's harmonics,
+    #    not a general tilt (blind low-mid cuts are not supported by expert practice), and not where
+    #    a resonance cut already acts
+    cut_there = any(abs(math.log2(r.freq_hz / m.low_mid_hz)) <= 1 / 3 for r in m.resonances)
+    if m.mud_db > 6.0 and m.low_mid_excess_db >= LOW_MID_MIN_DB and not cut_there:
         cut = -min(4.0, 1.0 + 0.75 * m.low_mid_excess_db)
         out.append(Treatment(
             "eq", f"Bas-médiums {m.low_mid_hz:.0f} Hz {cut * k:.1f} dB",
-            f"Bosse de {m.low_mid_excess_db:.1f} dB à {m.low_mid_hz:.0f} Hz dans l'enveloppe de la voix, "
+            f"Bosse de {m.low_mid_excess_db:.1f} dB à {m.low_mid_hz:.0f} Hz : sur un tiers d'octave, les "
+            "harmoniques de la voix dépassent d'autant la droite de leurs voisines (±1 octave) ; "
             f"bas-médiums {min(m.mud_db, 30.0):.0f} dB{'+' if m.mud_db > 30 else ''} au-dessus de la présence",
             {"freq_hz": m.low_mid_hz, "q": 1.2, "gain_db": cut * k}))
 
     # 4. light de-esser before compression, on the strongest 's' only (louder than the vowels − 2 dB);
-    #    both de-essers set their threshold on the vowels of the signal they receive
-    deess_low = 4500.0
-    where = " ; pic des « s » non mesuré, bande dès 4,5 kHz"
-    if m.sibilant_peak_hz:
-        deess_low = min(8000.0, max(3500.0, 0.7 * m.sibilant_peak_hz))
-        where = f" ; ils culminent vers {m.sibilant_peak_hz:.0f} Hz"
+    #    both de-essers set their threshold on the vowels of the signal they receive, and the 's' are
+    #    measured in their band: the level the de-essers compare with that threshold
+    deess_low = deess_band_low_hz(m.sibilant_peak_hz)
+    where = (f" ; ils culminent vers {m.sibilant_peak_hz:.0f} Hz, bande dès {deess_low / 1000:.1f} kHz"
+             if m.sibilant_peak_hz else " ; pic des « s » non mesuré, bande dès 4,5 kHz")
     if m.sibilant_excess_db > -1.0:
         out.append(Treatment(
             "deesser", f"De-esser léger (max {profile.deess_first_db * k:.0f} dB)",
-            f"Les « s » les plus forts montent à {m.sibilant_excess_db:+.1f} dB par rapport aux voyelles{where}",
+            f"Dans la bande du de-esser, les « s » les plus forts montent à {m.sibilant_excess_db:+.1f} dB "
+            f"par rapport aux voyelles{where}",
             {"below_vowels_db": 2.0, "max_reduction_db": profile.deess_first_db * k, "low_hz": deess_low}))
 
     # 5. leveling compressor (slow, low ratio, program-dependent release) then 6. peak compressor
@@ -185,8 +193,8 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
         depth = min(profile.deess_main_db, max(2.0, m.sibilant_excess_db + 6.0))
         out.append(Treatment(
             "deesser", f"De-esser principal (max {depth * k:.1f} dB)",
-            f"Les « s » montent à {m.sibilant_excess_db:+.1f} dB par rapport aux voyelles "
-            f"({m.sibilant_share * 100:.1f} % du chant){where}",
+            f"Dans la bande du de-esser, les « s » montent à {m.sibilant_excess_db:+.1f} dB par rapport aux "
+            f"voyelles ({m.sibilant_share * 100:.1f} % du chant){where}",
             {"below_vowels_db": 6.0, "max_reduction_db": depth * k, "low_hz": deess_low}))
 
     # 11. make-up: the compressors and de-essers took level; it is given back, so the balance of the

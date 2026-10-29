@@ -3,6 +3,11 @@
 All values are measured on FL Studio's renders (the voice *with* its FL
 effects), so Eden reacts to what the voice really sounds like after the
 user's own chain, and does not correct what is already right.
+
+Levels and spectra are taken channel by channel and their powers averaged,
+like the loudness meter does: a voice widened in FL (one side delayed,
+opposite polarity) is measured as it is heard, not through a mono fold that
+would comb-filter it.
 """
 
 from __future__ import annotations
@@ -11,13 +16,19 @@ import math
 from dataclasses import dataclass, field
 
 import numpy as np
-from scipy.signal import stft, welch
+from scipy import fft
+from scipy.signal import get_window, resample_poly, welch
 
 from eden.mix.dsp import autocorrelation, band_levels_db, frame_matrix, split_band
 from eden.mix.loudness import block_loudness, gated_loudness, loudness_of_blocks
 
 ACTIVE_RANGE_DB = 35.0  # 1 ms frames this close to the loud parts count as "singing"
+SILENCE_DB = -90.0  # quieter 1 ms frames are digital silence or dither, however low the voice was rendered
 ANALYSIS_LOW_HZ, ANALYSIS_HIGH_HZ = 150.0, 8000.0
+HARMONIC_HIGH_HZ = 2000.0  # resonances below are read on the sung harmonics, above on the LPC envelope
+RESONANCE_MIN_DB = 4.5  # how far a resonance must stick out (strict: a missed one costs less than a wrong cut)
+FREQUENT_NOTE_SHARE = 0.3  # a semitone holding this share of the pitched frames is a note the voice dwells on
+LOW_SPECTRUM_HZ = 100.0  # the high-pass is decided on the spectrum below this (half its highest cut)
 
 
 @dataclass
@@ -43,12 +54,10 @@ def level_of(x: np.ndarray, fs: float) -> Level:
 class VocalMeasure:
     loudness_lufs: float
     active_share: float  # fraction of the song where the voice sounds
-    low_energy_db: float  # energy below 70 Hz relative to the whole voice
-    low_120_db: float  # energy below 120 Hz relative to the whole voice
     mud_db: float  # 200–500 Hz relative to 1–4 kHz
     resonances: list[Resonance] = field(default_factory=list)
     vowel_level_db: float = -math.inf  # typical level of the voiced parts (1 ms frames)
-    sibilant_excess_db: float = -math.inf  # loud 's' sounds relative to the vowels
+    sibilant_excess_db: float = -math.inf  # loud 's' in the de-esser's band relative to the vowels
     sibilant_share: float = 0.0  # share of sung time where 's' sounds dominate
     dynamic_spread_db: float = 0.0  # P90 − P10 of the 400 ms loudness inside phrases (rests excluded)
     crest_db: float = 0.0  # peak to RMS while singing
@@ -56,35 +65,49 @@ class VocalMeasure:
     lowest_f0_hz: float | None = None  # lowest sustained pitch of the voice
     sibilant_peak_hz: float | None = None  # where the 's' sounds have their energy
     low_mid_hz: float = 300.0  # centre of the low-mid build-up (proximity, boxiness)
-    low_mid_excess_db: float = 0.0  # how much that region sticks out of the voice's envelope
+    low_mid_excess_db: float = 0.0  # how much the harmonics there stick out of their neighbours' line
     air_db: float = -math.inf  # energy above 8 kHz relative to 2–5 kHz, on vowels only
+    low_hz: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)  # about 1 Hz apart
+    low_share: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)  # of the energy, per low_hz
     active_blocks: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool), repr=False)
 
+    def energy_below_db(self, hz: float) -> float:
+        """Energy of the voice below ``hz`` (at most LOW_SPECTRUM_HZ) relative to the whole voice (dB)."""
+        share = float(self.low_share[self.low_hz < hz].sum())
+        return 10 * math.log10(share) if share > 0 else -math.inf
 
-def mono(x: np.ndarray) -> np.ndarray:
-    return x.mean(axis=1) if x.ndim == 2 else x
+
+def _channels(x: np.ndarray) -> np.ndarray:
+    return x if x.ndim == 2 else x[:, None]
 
 
 def active_frames(x: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray, int]:
+    """Level of each 1 ms frame (dB, channels' powers averaged), which frames are sung, frame size.
+
+    Sung = within ACTIVE_RANGE_DB of the loud parts; the absolute floor only
+    excludes digital silence, so the same voice rendered quieter is measured
+    the same way.
+    """
     level, size = band_levels_db(x, fs)
     if level.size == 0:
         return level, np.zeros(0, dtype=bool), size
     top = np.percentile(level, 95)
-    return level, level > max(-60.0, top - ACTIVE_RANGE_DB), size
+    return level, level > max(SILENCE_DB, top - ACTIVE_RANGE_DB), size
 
 
 def sung_samples(x: np.ndarray, active: np.ndarray, size: int) -> np.ndarray:
-    """The voice with its silences removed (mono)."""
-    sig = mono(x)
+    """The voice with its silences removed (samples × channels)."""
+    sig = _channels(x)
     mask = np.repeat(active, size)
     sung = sig[: mask.size][mask]
-    return sung if sung.size >= 4096 else sig
+    return sung if sung.shape[0] >= 4096 else sig
 
 
 def _psd_db(sung: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
-    nper = min(8192, max(256, 1 << int(math.log2(max(sung.size, 256)))))
-    freqs, psd = welch(sung, fs=fs, nperseg=nper)
-    return freqs, 10 * np.log10(np.maximum(psd, 1e-30))
+    """Welch spectrum (dB) of every channel, their powers averaged."""
+    nper = min(8192, max(256, 1 << int(math.log2(max(sung.shape[0], 256)))))
+    freqs, psd = welch(sung, fs=fs, nperseg=nper, axis=0)
+    return freqs, 10 * np.log10(np.maximum(psd.mean(axis=1), 1e-30))
 
 
 def _band_db(freqs: np.ndarray, psd_db: np.ndarray, lo: float, hi: float) -> float:
@@ -92,6 +115,22 @@ def _band_db(freqs: np.ndarray, psd_db: np.ndarray, lo: float, hi: float) -> flo
     if not sel.any():
         return -math.inf
     return 10 * math.log10(np.sum(10 ** (psd_db[sel] / 10)) + 1e-30)
+
+
+def _low_spectrum(sung: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
+    """(frequencies about 1 Hz apart below LOW_SPECTRUM_HZ, share of the voice's energy at each).
+
+    Fine enough that the energy under a high-pass set just below the lowest
+    note (0.9 × its pitch) does not include that note.
+    """
+    down = max(1, int(fs // 1000))
+    low = resample_poly(sung, 1, down, axis=0)
+    rate = fs / down
+    nper = min(1 << int(math.ceil(math.log2(rate))), low.shape[0])
+    freqs, psd = welch(low, fs=rate, nperseg=nper, axis=0)
+    keep = freqs < LOW_SPECTRUM_HZ
+    total = max(float(np.mean(sung ** 2)), 1e-30)
+    return freqs[keep], psd.mean(axis=1)[keep] * (freqs[1] - freqs[0]) / total
 
 
 def _excess_over_octave(f: np.ndarray, p: np.ndarray) -> np.ndarray:
@@ -121,22 +160,27 @@ def _levinson(r: np.ndarray, order: int) -> np.ndarray:
 MAX_ENVELOPE_FRAMES = 2000  # evenly spread over the song: plenty for an average
 
 
+def _evenly_spread(count: int, most: int) -> np.ndarray:
+    """Indices of at most ``most`` of ``count`` items, evenly spread."""
+    return np.arange(count) if count <= most else np.linspace(0, count - 1, most).astype(int)
+
+
 def spectral_envelope(sung: np.ndarray, fs: float, frame_s: float = 0.03, nfft: int = 2048
                       ) -> tuple[np.ndarray, np.ndarray]:
     """Average LPC envelope of the voice (dB): the shape of the sound, without the notes.
 
-    Linear prediction follows the resonances of the voice and of the room,
-    not the harmonics of the sung pitch; averaging over many syllables then
-    flattens the moving vowel formants and keeps what never moves.
+    Linear prediction follows the resonances of the voice and of the room;
+    averaging over many syllables then flattens the moving vowel formants
+    and keeps what never moves. The channels' autocorrelations are added
+    (their powers, not their mono fold). At this order the low frequencies
+    stay blurred: Eden reads it above HARMONIC_HIGH_HZ only.
     """
     order = int(fs / 1000) + 4
     n = int(frame_s * fs)
     freqs = np.linspace(0, fs / 2, nfft, endpoint=False)
-    frames = frame_matrix(sung, n, n)
-    if frames.shape[0] > MAX_ENVELOPE_FRAMES:
-        frames = frames[np.linspace(0, frames.shape[0] - 1, MAX_ENVELOPE_FRAMES).astype(int)]
-    frames = frames * np.hanning(n)
-    r = autocorrelation(frames, order)
+    pick = _evenly_spread(sung.shape[0] // n, MAX_ENVELOPE_FRAMES)
+    window = np.hanning(n)
+    r = sum(autocorrelation(frame_matrix(sung[:, c], n, n)[pick] * window, order) for c in range(sung.shape[1]))
     r = r[r[:, 0] >= 1e-10]
     if r.shape[0] == 0:
         return freqs, np.zeros(nfft)
@@ -149,53 +193,177 @@ def spectral_envelope(sung: np.ndarray, fs: float, frame_s: float = 0.03, nfft: 
     return freqs, np.mean(env - env.max(axis=1, keepdims=True), axis=0)
 
 
-def find_resonances(freqs: np.ndarray, env: np.ndarray, min_excess_db: float = 4.5,
-                    max_count: int = 3) -> list[Resonance]:
-    """Fixed bumps in the voice's average envelope (room or microphone resonances).
+PITCH_FRAME_S = 0.04
+MAX_PITCH_FRAMES = 1500  # evenly spread over the song: plenty for percentiles and averages
+PITCH_MIN_HZ, PITCH_MAX_HZ = 60.0, 1000.0
 
-    The threshold is strict on purpose: a missed resonance costs less than
-    notching notes the artist wants (Auto-Tune holding the same notes can
-    leave small bumps of its own).
+
+def pitch_frames(sung: np.ndarray, fs: float) -> np.ndarray:
+    """40 ms frames of the sung voice, at most MAX_PITCH_FRAMES evenly spread (frames × samples × channels)."""
+    n = int(PITCH_FRAME_S * fs)
+    count = sung.shape[0] // n
+    return sung[: count * n].reshape(count, n, sung.shape[1])[_evenly_spread(count, MAX_PITCH_FRAMES)]
+
+
+def frame_pitches(frames: np.ndarray, fs: float) -> np.ndarray:
+    """Pitch of each frame (Hz), NaN where it is not clearly periodic (autocorrelation peak ≤ 0.6).
+
+    The channels' autocorrelations are added, so a widened voice keeps its pitch.
     """
-    sel = (freqs >= ANALYSIS_LOW_HZ) & (freqs <= ANALYSIS_HIGH_HZ)
-    f = freqs[sel]
-    excess = _excess_over_octave(f, env[sel])
-    found: list[Resonance] = []
-    for i in np.argsort(excess)[::-1]:
-        if excess[i] < min_excess_db or len(found) >= max_count:
-            break
-        if all(abs(math.log2(f[i] / r.freq_hz)) > 1 / 3 for r in found):
-            found.append(Resonance(float(f[i]), float(excess[i])))
-    return sorted(found, key=lambda r: r.freq_hz)
-
-
-def lowest_f0(sung: np.ndarray, fs: float, fmin: float = 60.0, fmax: float = 500.0,
-              frame_s: float = 0.04) -> float | None:
-    """Lowest sustained pitch (5th percentile of the clearly periodic frames), in Hz."""
-    n = int(frame_s * fs)
-    lag_min, lag_max = int(fs / fmax), int(fs / fmin)
-    if sung.size < 10 * n or lag_max >= n:
-        return None
-    frames = frame_matrix(sung, n, n)
-    frames = frames - frames.mean(axis=1, keepdims=True)
-    ac = autocorrelation(frames, lag_max)
-    ac = ac[ac[:, 0] >= 1e-10]
-    if ac.shape[0] == 0:
-        return None
-    ac = ac / ac[:, :1]
-    region = ac[:, lag_min:lag_max + 1]
+    lag_min, lag_max = int(fs / PITCH_MAX_HZ), int(fs / PITCH_MIN_HZ)
+    if frames.shape[0] == 0 or lag_max >= frames.shape[1]:
+        return np.full(frames.shape[0], np.nan)
+    centred = frames - frames.mean(axis=1, keepdims=True)
+    ac = sum(autocorrelation(centred[:, :, c], lag_max) for c in range(frames.shape[2]))
+    sounding = ac[:, 0] >= 1e-10
+    region = ac[:, lag_min:lag_max + 1] / np.where(sounding, ac[:, 0], 1.0)[:, None]
     lags = lag_min + np.argmax(region, axis=1)
-    clear = region.max(axis=1) > 0.6
-    found = fs / lags[clear]
+    return np.where(sounding & (region.max(axis=1) > 0.6), fs / lags, np.nan)
+
+
+def lowest_f0(pitches: np.ndarray) -> float | None:
+    """Lowest sustained pitch (5th percentile of the clearly periodic frames), in Hz."""
+    found = pitches[np.isfinite(pitches)]
     return float(np.percentile(found, 5)) if found.size >= 10 else None
 
 
+def frequent_pitches(pitches: np.ndarray) -> list[float]:
+    """Notes the voice dwells on (Hz): semitones holding more than FREQUENT_NOTE_SHARE of the pitched frames."""
+    found = pitches[np.isfinite(pitches)]
+    if found.size == 0:
+        return []
+    semitones, counts = np.unique(np.round(12 * np.log2(found / 440.0)), return_counts=True)
+    return [float(440.0 * 2 ** (s / 12)) for s in semitones[counts > FREQUENT_NOTE_SHARE * found.size]]
+
+
+def near_sung_notes(hz: float, notes: list[float]) -> bool:
+    """Within 1/6 octave of a note the voice dwells on, or of that note's 2nd harmonic."""
+    return any(abs(math.log2(hz / (k * note))) <= 1 / 6 for note in notes for k in (1, 2))
+
+
+HARMONIC_TOP_HZ = 4000.0  # harmonics are read up to here (the neighbours of those near 2 kHz)
+BANDS_PER_OCTAVE = 24
+MIN_SAMPLES = 20  # harmonics a band needs before it is judged
+NARROW = np.ones(3)  # the band and its neighbours: 1/8 octave
+RING = np.r_[np.ones(5), np.zeros(7), np.ones(5)]  # the bands 1/6 to 1/3 octave away, on both sides
+THIRD = np.r_[0.5, np.ones(7), 0.5]  # 1/3 octave (8 bands, half of each end band)
+
+
+@dataclass
+class HarmonicProfile:
+    """How much the voice's harmonics stick out of their neighbours, pooled in 1/24-octave bands."""
+    centres: np.ndarray
+    sums: np.ndarray  # dB, summed over the harmonics that fell in each band
+    counts: np.ndarray
+
+    def mean(self, kernel: np.ndarray) -> np.ndarray:
+        """Mean over the bands ``kernel`` covers around each band (NaN with too few harmonics)."""
+        total = np.convolve(self.sums, kernel, mode="same")
+        count = np.convolve(self.counts, kernel, mode="same")
+        return np.where(count >= MIN_SAMPLES, total / np.maximum(count, 1), np.nan)
+
+
+def harmonic_profile(frames: np.ndarray, pitches: np.ndarray, fs: float) -> HarmonicProfile:
+    """Level of every harmonic of the pitched frames relative to the straight line (dB against log
+    frequency) through the other harmonics of the same frame, up to one octave away on each side.
+
+    A fixed resonance lifts the harmonics near it on every note, every time;
+    a vowel formant moves from syllable to syllable. A fundamental has no
+    harmonic below it and is never judged, so the sung notes themselves
+    cannot pass for resonances.
+    """
+    edges = 75.0 * 2 ** (np.arange(int(math.log2(HARMONIC_TOP_HZ / 75.0) * BANDS_PER_OCTAVE) + 1)
+                         / BANDS_PER_OCTAVE)
+    centres = np.sqrt(edges[:-1] * edges[1:])
+    pitched = np.isfinite(pitches)
+    if not pitched.any():
+        return HarmonicProfile(centres, np.zeros(centres.size), np.zeros(centres.size))
+    frames, f0 = frames[pitched], pitches[pitched]
+    n = frames.shape[1]
+    nfft = 1 << int(math.ceil(math.log2(2 * n)))
+    window = np.hanning(n)
+    power = sum(np.abs(np.fft.rfft(frames[:, :, c] * window, nfft, axis=1)) ** 2
+                for c in range(frames.shape[2])) / frames.shape[2]
+    step = fs / nfft
+    top = min(HARMONIC_TOP_HZ, 0.45 * fs)
+    order = np.arange(1, int(top / f0.min()) + 1)
+    freq = f0[:, None] * order
+    valid = freq < top
+    # each harmonic's level: the strongest bin within a quarter of the pitch around it
+    reach = np.maximum(1, np.round(0.25 * f0 / step)).astype(int)
+    offsets = np.arange(-reach.max(), reach.max() + 1)
+    bins = np.clip(np.round(freq / step).astype(int)[:, :, None] + offsets, 0, power.shape[1] - 1)
+    peak = np.where(np.abs(offsets) <= reach[:, None, None],
+                    power[np.arange(f0.size)[:, None, None], bins], 0.0).max(axis=2)
+    level = 10 * np.log10(np.maximum(peak, 1e-30))
+    # least-squares line through the neighbours (same weights for each), read at the harmonic itself
+    octaves = np.log2(order[None, :] / order[:, None])  # [i, j]: where harmonic j sits seen from harmonic i
+    near = ((np.abs(octaves) <= 1.0) & (octaves != 0)).astype(float)
+    w = valid.astype(float)
+    wy = w * np.where(valid, level, 0.0)
+    s0, s1, s2 = w @ near.T, w @ (near * octaves).T, w @ (near * octaves ** 2).T
+    sy, sxy = wy @ near.T, wy @ (near * octaves).T
+    below, above = w @ (near * (octaves < 0)).T, w @ (near * (octaves > 0)).T
+    det = s0 * s2 - s1 * s1
+    judged = valid & (below >= 1) & (above >= 1) & (det > 1e-12)
+    line = (s2 * sy - s1 * sxy) / np.where(judged, det, 1.0)
+    band = np.searchsorted(edges, freq) - 1
+    keep = judged & (band >= 0) & (band < centres.size)
+    sums = np.bincount(band[keep], (level - line)[keep], centres.size)
+    counts = np.bincount(band[keep], None, centres.size).astype(float)
+    return HarmonicProfile(centres, sums, counts)
+
+
+def find_resonances(profile: HarmonicProfile, envelope: tuple[np.ndarray, np.ndarray], notes: list[float],
+                    max_count: int = 3) -> list[Resonance]:
+    """Fixed narrow bumps of the voice (room or microphone resonances), at least 1/3 octave apart.
+
+    150–2000 Hz: harmonics standing RESONANCE_MIN_DB above their neighbours'
+    line (over 1/8 octave), and as much above the bands 1/6 to 1/3 octave
+    away (a vowel formant spreads wider). 2–8 kHz: the LPC envelope
+    RESONANCE_MIN_DB above its one-octave average. Nothing within 1/6
+    octave of a note the voice dwells on or of its octave. The thresholds
+    are strict on purpose: a missed resonance costs less than notching notes
+    the artist wants.
+    """
+    narrow = profile.mean(NARROW)
+    with np.errstate(invalid="ignore"):
+        low = ((profile.centres >= ANALYSIS_LOW_HZ) & (profile.centres < HARMONIC_HIGH_HZ)
+               & (narrow >= RESONANCE_MIN_DB) & (narrow - profile.mean(RING) >= RESONANCE_MIN_DB))
+    freqs, env = envelope
+    sel = (freqs >= HARMONIC_HIGH_HZ / 2 ** 0.5) & (freqs <= ANALYSIS_HIGH_HZ)
+    f, excess = freqs[sel], _excess_over_octave(freqs[sel], env[sel])
+    high = (f >= HARMONIC_HIGH_HZ) & (excess >= RESONANCE_MIN_DB)
+    cand_hz = np.concatenate([profile.centres[low], f[high]])
+    cand_db = np.concatenate([narrow[low], excess[high]])
+    found: list[Resonance] = []
+    for i in np.argsort(cand_db)[::-1]:
+        if len(found) >= max_count:
+            break
+        if not near_sung_notes(cand_hz[i], notes) and all(
+                abs(math.log2(cand_hz[i] / r.freq_hz)) > 1 / 3 for r in found):
+            found.append(Resonance(float(cand_hz[i]), float(cand_db[i])))
+    return sorted(found, key=lambda r: r.freq_hz)
+
+
+def low_mid_buildup(profile: HarmonicProfile, notes: list[float]) -> tuple[float, float]:
+    """(centre, excess dB) of the strongest bump between 150 and 500 Hz: the harmonics' lift over
+    their neighbours' line, averaged over 1/3 octave (a broad bump: proximity effect, boxiness).
+    Bands within 1/6 octave of a note the voice dwells on, or of its octave, are left out."""
+    third = profile.mean(THIRD)
+    zone = (profile.centres >= 150) & (profile.centres <= 500) & np.isfinite(third)
+    zone &= np.array([not near_sung_notes(c, notes) for c in profile.centres])
+    if not zone.any():
+        return 300.0, 0.0
+    i = int(np.argmax(np.where(zone, third, -math.inf)))
+    return float(profile.centres[i]), float(max(third[i], 0.0))
+
+
 def _frames_psd(x: np.ndarray, fs: float, frames: np.ndarray, size: int) -> tuple[np.ndarray, np.ndarray]:
-    """Welch spectrum (dB) of the 1 ms frames selected by ``frames``."""
-    sig = mono(x)
+    """Welch spectrum (dB, channels' powers averaged) of the 1 ms frames selected by ``frames``."""
     mask = np.repeat(frames, size)
-    chosen = sig[: mask.size][mask]
-    if chosen.size < 4096:
+    chosen = _channels(x)[: mask.size][mask]
+    if chosen.shape[0] < 4096:
         return np.zeros(0), np.zeros(0)
     return _psd_db(chosen, fs)
 
@@ -209,6 +377,12 @@ def sibilant_peak(x: np.ndarray, fs: float, s_frames: np.ndarray, size: int) -> 
     return float(freqs[sel][np.argmax(psd[sel])])
 
 
+def deess_band_low_hz(sibilant_peak_hz: float | None) -> float:
+    """Lower edge of the de-esser's band: 0.7 × the 's' peak, kept within 3.5–8 kHz (4.5 kHz when the
+    peak is unknown). The measure that triggers a de-esser and the de-esser itself both use it."""
+    return min(8000.0, max(3500.0, 0.7 * sibilant_peak_hz)) if sibilant_peak_hz else 4500.0
+
+
 def air(x: np.ndarray, fs: float, vowel_frames: np.ndarray, size: int) -> float:
     """Energy above 8 kHz relative to 2–5 kHz on the vowels (negative: dull top end)."""
     freqs, psd = _frames_psd(x, fs, vowel_frames, size)
@@ -217,52 +391,53 @@ def air(x: np.ndarray, fs: float, vowel_frames: np.ndarray, size: int) -> float:
     return _band_db(freqs, psd, 8000, min(16000, fs / 2)) - _band_db(freqs, psd, 2000, 5000)
 
 
-def low_mid_buildup(freqs: np.ndarray, env: np.ndarray) -> tuple[float, float]:
-    """(centre, excess dB) of the strongest bump of the envelope between 150 and 500 Hz."""
-    sel = (freqs >= 100) & (freqs <= 1000)
-    excess = _excess_over_octave(freqs[sel], env[sel])
-    f = freqs[sel]
-    zone = (f >= 150) & (f <= 500)
-    i = int(np.argmax(np.where(zone, excess, -math.inf)))
-    return float(f[i]), float(max(excess[i], 0.0))
-
-
-def sibilance(x: np.ndarray, fs: float, level: np.ndarray, active: np.ndarray
-              ) -> tuple[float, float, float]:
-    """(vowel level, loud 's' minus vowels, share of 's') from 1 ms frames.
-
-    A frame is an 's' when the band above 4.5 kHz carries most of its energy,
-    a vowel when that band is far below. Piercing sibilants are 's' sounds
-    nearly as loud as the vowels or louder.
-    """
-    s_frames, vowels = sibilant_frames(x, fs, level, active)
-    full = level[: s_frames.size]
-    if not vowels.any():
-        return -math.inf, -math.inf, 0.0
-    vowel = float(np.percentile(full[vowels], 75))
-    if not s_frames.any():
-        return vowel, -math.inf, 0.0
-    return vowel, float(np.percentile(full[s_frames], 90)) - vowel, \
-        float(s_frames.sum() / active[: s_frames.size].sum())
-
-
 def sibilant_frames(x: np.ndarray, fs: float, level: np.ndarray, active: np.ndarray
                     ) -> tuple[np.ndarray, np.ndarray]:
-    """('s' frames, vowel frames) among the active 1 ms frames."""
-    high, _ = split_band(mono(x), fs, 4500.0, None)
+    """('s' frames, vowel frames) among the active 1 ms frames.
+
+    A frame is an 's' when the band above 4.5 kHz carries most of its energy,
+    a vowel when that band is far below (both levels are the channels'
+    powers averaged).
+    """
+    high, _ = split_band(x, fs, 4500.0, None)
     hlevel, _ = band_levels_db(high, fs)
     n = min(hlevel.size, level.size)
     full, hi, act = level[:n], hlevel[:n], active[:n]
     return act & (hi - full > -3.0), act & (hi - full < -15.0)
 
 
+def _vowel_db(level: np.ndarray, vowels: np.ndarray) -> float:
+    return float(np.percentile(level[: vowels.size][vowels], 75)) if vowels.any() else -math.inf
+
+
+def vowel_level(x: np.ndarray, fs: float, level: np.ndarray, active: np.ndarray) -> float:
+    """Typical level of the vowels (75th percentile of their 1 ms frames): the de-essers' reference."""
+    return _vowel_db(level, sibilant_frames(x, fs, level, active)[1])
+
+
+def sibilant_excess(x: np.ndarray, fs: float, s_frames: np.ndarray, vowel_db: float, low_hz: float) -> float:
+    """Loud 's' minus the vowels (dB): 90th percentile of the 's' frames' level in the de-esser's
+    band (above ``low_hz``), the level the de-esser compares with its threshold (vowels − N dB)."""
+    if not s_frames.any() or not math.isfinite(vowel_db):
+        return -math.inf
+    band, _ = split_band(x, fs, low_hz, None)
+    blevel, _ = band_levels_db(band, fs)
+    n = min(blevel.size, s_frames.size)
+    return float(np.percentile(blevel[:n][s_frames[:n]], 90)) - vowel_db
+
+
 def _inside_phrases(active: np.ndarray, size: int, fs: float, count: int) -> np.ndarray:
-    """400 ms loudness blocks (100 ms apart) whose 1 ms frames are at least 90 % sung."""
+    """400 ms loudness blocks (100 ms apart) whose 1 ms frames are at least 90 % sung.
+
+    The blocks are placed in samples, exactly like ``block_loudness``: at
+    44.1 kHz a 1 ms frame is 44 samples, and counting in frames would drift
+    by half a second over a song.
+    """
     cumulative = np.concatenate([[0], np.cumsum(active)])
-    block, step = int(round(0.4 * fs / size)), int(round(0.1 * fs / size))
-    starts = np.arange(count) * step
-    ends = np.minimum(starts + block, active.size)
-    starts = np.minimum(starts, active.size)
+    block = int(round(0.4 * fs))
+    step = max(1, int(round(block * 0.25)))
+    starts = np.minimum(np.arange(count) * step // size, active.size)
+    ends = np.minimum((np.arange(count) * step + block) // size, active.size)
     sung = (cumulative[ends] - cumulative[starts]) / np.maximum(ends - starts, 1)
     return sung >= 0.9
 
@@ -270,20 +445,27 @@ def _inside_phrases(active: np.ndarray, size: int, fs: float, count: int) -> np.
 def measure_vocal(x: np.ndarray, fs: float) -> VocalMeasure:
     level, active, size = active_frames(x, fs)
     if not active.any():
-        return VocalMeasure(-math.inf, 0.0, -math.inf, -math.inf, 0.0)
+        return VocalMeasure(-math.inf, 0.0, 0.0)
     sung = sung_samples(x, active, size)
     freqs, psd = _psd_db(sung, fs)
-    total = _band_db(freqs, psd, 20, fs / 2)
     blocks = block_loudness(x, fs)
     lufs = gated_loudness(blocks)
     active_blocks = np.isfinite(blocks) & (blocks > lufs - 10)
     sung_blocks = blocks[active_blocks & _inside_phrases(active, size, fs, blocks.size)]
 
-    vowel_level, sib_excess, sib_share = sibilance(x, fs, level, active)
     s_frames, vowel_frames = sibilant_frames(x, fs, level, active)
-    long_enough = sung.size >= 4 * fs
-    envelope = spectral_envelope(sung, fs) if long_enough else None
-    low_mid_hz, low_mid_excess = low_mid_buildup(*envelope) if envelope else (300.0, 0.0)
+    vowel = _vowel_db(level, vowel_frames)
+    peak = sibilant_peak(x, fs, s_frames, size)
+    frames = pitch_frames(sung, fs)
+    pitches = frame_pitches(frames, fs)
+    resonances: list[Resonance] = []
+    low_mid_hz, low_mid_excess = 300.0, 0.0
+    if sung.shape[0] >= 4 * fs:
+        notes = frequent_pitches(pitches)
+        profile = harmonic_profile(frames, pitches, fs)
+        resonances = find_resonances(profile, spectral_envelope(sung, fs), notes)
+        low_mid_hz, low_mid_excess = low_mid_buildup(profile, notes)
+    low_hz, low_share = _low_spectrum(sung, fs)
 
     sung_level = level[active]
     rms_db = 10 * math.log10(np.mean(10 ** (sung_level / 10)))
@@ -291,22 +473,22 @@ def measure_vocal(x: np.ndarray, fs: float) -> VocalMeasure:
     return VocalMeasure(
         loudness_lufs=lufs,
         active_share=float(active.mean()),
-        low_energy_db=_band_db(freqs, psd, 20, 70) - total,
-        low_120_db=_band_db(freqs, psd, 20, 120) - total,
         mud_db=_band_db(freqs, psd, 200, 500) - _band_db(freqs, psd, 1000, 4000),
-        resonances=find_resonances(*envelope) if envelope else [],
-        vowel_level_db=vowel_level,
-        sibilant_excess_db=sib_excess,
-        sibilant_share=sib_share,
+        resonances=resonances,
+        vowel_level_db=vowel,
+        sibilant_excess_db=sibilant_excess(x, fs, s_frames, vowel, deess_band_low_hz(peak)),
+        sibilant_share=float(s_frames.sum() / active[: s_frames.size].sum()),
         dynamic_spread_db=float(np.percentile(sung_blocks, 90) - np.percentile(sung_blocks, 10))
         if sung_blocks.size >= 4 else 0.0,
         crest_db=peak_db - rms_db,
         sung_p70_db=float(np.percentile(sung_level, 70)),
-        lowest_f0_hz=lowest_f0(sung, fs),
-        sibilant_peak_hz=sibilant_peak(x, fs, s_frames, size),
+        lowest_f0_hz=lowest_f0(pitches),
+        sibilant_peak_hz=peak,
         low_mid_hz=low_mid_hz,
         low_mid_excess_db=low_mid_excess,
         air_db=air(x, fs, vowel_frames, size),
+        low_hz=low_hz,
+        low_share=low_share,
         active_blocks=active_blocks,
     )
 
@@ -332,18 +514,38 @@ class BandMasking:
     weight: float  # importance of the band for the words (SII)
 
 
+MASKING_FFT, MASKING_HOP = 4096, 1024
+MASKING_CHUNK = 256  # STFT frames transformed at once (about 6 s at 44.1 kHz)
+
+
 def _band_power(x: np.ndarray, fs: float, mask: np.ndarray, edges: list[tuple[float, float]]
                 ) -> np.ndarray:
-    """Mean power per band over the STFT frames that fall in the selected 400 ms blocks."""
-    two_d = x if x.ndim == 2 else x[:, None]
-    nper = 4096
-    freqs, times, z = stft(two_d, fs=fs, nperseg=nper, noverlap=nper - nper // 4, axis=0, boundary=None)
-    power = np.sum(np.abs(z) ** 2, axis=1)  # (bins, frames), channels added like BS.1770
+    """Mean power per band over the STFT frames that fall in the selected 400 ms blocks.
+
+    The STFT (Hann, 4096 points, hop 1024, end zero-padded) is computed one
+    channel and a few seconds at a time, in single precision, for the
+    selected frames only, and the channels' powers are added (like BS.1770):
+    a whole-song stereo STFT would hold gigabytes.
+    """
+    two_d = _channels(x)
+    count = (max(two_d.shape[0], MASKING_FFT) - MASKING_FFT + MASKING_HOP - 1) // MASKING_HOP + 1
+    times = (np.arange(count) * MASKING_HOP + MASKING_FFT / 2) / fs
     block = np.clip(np.round((times - 0.2) / 0.1).astype(int), 0, max(mask.size - 1, 0))
-    chosen = mask[block] if mask.size else np.zeros(times.size, dtype=bool)
-    if not chosen.any():
+    chosen = np.flatnonzero(mask[block]) if mask.size else np.zeros(0, dtype=int)
+    if chosen.size == 0:
         return np.full(len(edges), np.nan)
-    mean = power[:, chosen].mean(axis=1)
+    window = get_window("hann", MASKING_FFT)
+    window = (window / window.sum()).astype(np.float32)
+    total = np.zeros(MASKING_FFT // 2 + 1)
+    for c in range(two_d.shape[1]):
+        sig = np.zeros((count - 1) * MASKING_HOP + MASKING_FFT, dtype=np.float32)
+        sig[: two_d.shape[0]] = two_d[:, c]
+        frames = frame_matrix(sig, MASKING_FFT, MASKING_HOP)
+        for start in range(0, chosen.size, MASKING_CHUNK):
+            z = fft.rfft(frames[chosen[start:start + MASKING_CHUNK]] * window, axis=1)
+            total += (z.real ** 2 + z.imag ** 2).sum(axis=0, dtype=np.float64)
+    mean = total / chosen.size
+    freqs = fft.rfftfreq(MASKING_FFT, 1 / fs)
     return np.array([mean[(freqs >= lo) & (freqs < hi)].sum() for lo, hi in edges])
 
 

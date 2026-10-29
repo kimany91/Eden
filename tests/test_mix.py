@@ -224,7 +224,7 @@ def test_intensity_scales_the_treatments():
 # -- the whole mix on synthetic parts ----------------------------------------------------
 
 def _parts(lead_level=0.25, adlib_level=0.6, with_dry=False):
-    lead = voice(seed=11, phrase_spread_db=10) * lead_level  # phrases up to ±5 dB apart: riding has work
+    lead = voice(seed=11, phrase_spread_db=12) * lead_level  # phrases up to ±6 dB apart: riding has work
     adlib, instru = voice(seed=12, notes=[220, 247]) * adlib_level, beat()
     space = 0.3 * np.roll(lead, int(0.25 * FS), axis=0) if with_dry else None
     lead_full = lead + space if with_dry else lead
