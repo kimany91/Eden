@@ -8,8 +8,10 @@ Every processor leaves the signal untouched when its amount is zero, so that
 * compressor: feed-forward, linked stereo, gain computed on 1 ms frames
   then interpolated, with look-ahead (possible because Eden works offline),
   program-dependent release, an optional cap on the reduction and an
-  optional "hold" mask that freezes the gain (used on the tails of effects
-  FL Studio already printed, so make-up gain never lifts them);
+  optional "hold" mask for voices that carry effects FL Studio already
+  printed: the gain never comes back above the phrase's mean reduction and
+  is frozen there in the rests, so after make-up gain the tails keep about
+  their level relative to the voice (see ``_smooth``);
 * de-esser and vocal-space dip: the signal is split into a band and its
   exact complement (zero-phase filter, band + rest == input), and only the
   band's gain moves.
@@ -93,42 +95,57 @@ def _frames(x: np.ndarray, fs: float) -> tuple[np.ndarray, int]:
 
 def _smooth(gain_db: np.ndarray, attack_frames: float, release_frames: float,
             slow_release_frames: float | None = None, slow_after_frames: float = 0.0,
-            hold: np.ndarray | None = None) -> np.ndarray:
+            hold: np.ndarray | None = None, power: np.ndarray | None = None) -> np.ndarray:
     """Attack/release smoothing of a gain-reduction curve (negative dB values).
 
     With ``slow_release_frames`` the release gets slower once the reduction
     has lasted ``slow_after_frames`` (program-dependent, like an opto
-    compressor). Where ``hold`` is true the gain is frozen at the mean
-    reduction of the stretch just before: an effect tail then keeps the same
-    level relative to its phrase as before compression (frozen at the
-    phrase's last value, near 0 dB, the tail would come up by the phrase's
-    reduction).
+    compressor).
+
+    ``hold`` (tail-safe mode, with ``power``, the detector's power per frame)
+    marks the rests between phrases. A phrase is the stretch between two
+    rests, and its mean reduction is the power-weighted mean of the gain the
+    compressor would apply without ``hold``, 10·log10(Σ p·10^(g/10) / Σ p),
+    over the phrase so far: how much a compressor without ``hold`` would take
+    from the phrase's loudness. Inside a
+    phrase the gain releases toward that mean instead of 0 dB, and over a
+    rest it is frozen at the mean of the phrase before. Everything quieter
+    than the threshold (an effect tail, an echo) then goes down by about the
+    phrase's loudness reduction, which make-up gain gives back: the tail
+    keeps about its level relative to its phrase. It still comes up a little,
+    because the phrase's loud moments get more reduction than the mean, so
+    the phrase loses a little more than its tail. The mean is taken on the
+    gain without ``hold``, not on the output, which would only ever go down.
     """
     att = math.exp(-1 / max(attack_frames, 1e-9))
     rel = math.exp(-1 / max(release_frames, 1e-9))
     slow = math.exp(-1 / max(slow_release_frames, 1e-9)) if slow_release_frames else rel
     out = np.empty_like(gain_db)
-    state = 0.0
+    free = 0.0  # the gain without ``hold``
     busy = 0.0  # frames spent under reduction
-    phrase_sum, phrase_n, held = 0.0, 0, False
+    state = 0.0  # the gain with ``hold``
+    weight, weighted, held = 0.0, 0.0, False  # Σ p and Σ p·10^(g/10) over the phrase so far
     for i, target in enumerate(gain_db):
-        if hold is not None and hold[i]:
-            if not held:
-                state = phrase_sum / phrase_n if phrase_n else state
-                held = True
+        coef = att if target < free else (slow if busy > slow_after_frames else rel)
+        free = coef * free + (1 - coef) * target
+        # how long reduction was asked for; remembered until the gain has recovered
+        busy = busy + 1 if target < -0.1 else (busy if free < -0.1 else 0.0)
+        if hold is None:
+            out[i] = free
+            continue
+        if hold[i]:
+            if not held and weight > 0:
+                state = 10 * math.log10(weighted / weight)
+            held = True
             out[i] = state
             continue
         if held:
-            phrase_sum, phrase_n, held = 0.0, 0, False
-        if target < state:  # going down = more reduction = attack
-            coef = att
-        else:
-            coef = slow if busy > slow_after_frames else rel
-        state = coef * state + (1 - coef) * target
-        # how long reduction was asked for; remembered until the gain has recovered
-        busy = busy + 1 if target < -0.1 else (busy if state < -0.1 else 0.0)
-        phrase_sum += state
-        phrase_n += 1
+            weight, weighted, held = 0.0, 0.0, False
+        weight += power[i]
+        weighted += power[i] * 10 ** (free / 10)
+        goal = min(target, 10 * math.log10(weighted / weight)) if weight > 0 else target
+        coef = att if goal < state else (slow if busy > slow_after_frames else rel)
+        state = coef * state + (1 - coef) * goal
         out[i] = state
     return out
 
@@ -145,18 +162,27 @@ def _apply_gain(x: np.ndarray, gain: np.ndarray) -> np.ndarray:
     return x * (gain[:, None] if x.ndim == 2 else gain)
 
 
+def detector_power(x: np.ndarray, fs: float, detector_ms: float = 5.0) -> tuple[np.ndarray, int]:
+    """Power per 1 ms frame as the compressor's detector sees it (one-pole smoothing over
+    ``detector_ms``), and the frame size in samples."""
+    ms, size = _frames(x, fs)
+    coef = math.exp(-1 / max(detector_ms / (FRAME_S * 1000), 1e-9))
+    return lfilter([1 - coef], [1, -coef], ms), size
+
+
 def compressor_gain_db(x: np.ndarray, fs: float, threshold_db: float, ratio: float,
                        attack_ms: float = 8.0, release_ms: float = 140.0, knee_db: float = 6.0,
                        detector_ms: float = 5.0, slow_release_ms: float | None = None,
                        slow_after_ms: float = 200.0, max_reduction_db: float | None = None,
                        hold: np.ndarray | None = None) -> tuple[np.ndarray, int]:
-    """Gain reduction per 1 ms frame (dB, ≤ 0) and the frame size in samples."""
-    ms, size = _frames(x, fs)
-    if ms.size == 0 or ratio <= 1:
-        return np.zeros(ms.size), size
-    coef = math.exp(-1 / max(detector_ms / (FRAME_S * 1000), 1e-9))
-    smoothed = lfilter([1 - coef], [1, -coef], ms)
-    level = 10 * np.log10(np.maximum(smoothed, 1e-20))
+    """Gain reduction per 1 ms frame (dB, ≤ 0) and the frame size in samples.
+
+    ``hold``: 1 ms frames of the rests between phrases, for tail-safe mode (see ``_smooth``).
+    """
+    power, size = detector_power(x, fs, detector_ms)
+    if power.size == 0 or ratio <= 1:
+        return np.zeros(power.size), size
+    level = 10 * np.log10(np.maximum(power, 1e-20))
     over = level - threshold_db
     slope = 1 - 1 / ratio
     gr = np.where(over > 0, -slope * over, 0.0)
@@ -169,11 +195,14 @@ def compressor_gain_db(x: np.ndarray, fs: float, threshold_db: float, ratio: flo
     lookahead = int(round(attack_ms / frame_ms))
     if hold is not None:
         # the curve is moved ``lookahead`` frames earlier below: frame i of the smoothing acts on
-        # frame i − lookahead of the signal, so the mask is moved the other way
+        # frame i − lookahead of the signal, so the mask and the power weighing the phrase mean
+        # are moved the other way
         hold = np.concatenate([np.zeros(lookahead, dtype=bool), hold[: max(gr.size - lookahead, 0)]])
         hold = np.pad(hold, (0, max(gr.size - hold.size, 0)))
+        power = np.concatenate([np.zeros(lookahead), power[: max(gr.size - lookahead, 0)]])
     gr = _smooth(gr, attack_ms / frame_ms, release_ms / frame_ms,
-                 slow_release_ms / frame_ms if slow_release_ms else None, slow_after_ms / frame_ms, hold)
+                 slow_release_ms / frame_ms if slow_release_ms else None, slow_after_ms / frame_ms, hold,
+                 power if hold is not None else None)
     if lookahead:
         gr = np.concatenate([gr[lookahead:], np.zeros(lookahead)])
     return gr, size

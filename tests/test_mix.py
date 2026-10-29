@@ -123,12 +123,14 @@ def test_compressor_cap_and_tail_hold():
 
 
 def test_tail_hold_freezes_at_the_phrase_mean():
-    # frozen at the phrase's last value (near 0 dB) a tail would come up by the phrase's reduction
+    # frozen at the phrase's last value (near 0 dB) a tail would come up by the phrase's reduction;
+    # the mean is weighted by power, like the loudness the make-up gives back
     g = np.concatenate([np.full(500, -4.0), np.zeros(200), np.full(300, -2.0)])
     hold = np.zeros(g.size, dtype=bool)
     hold[500:700] = True
-    out = dsp._smooth(g, 1.0, 50.0, hold=hold)
-    assert out[600] == pytest.approx(out[:500].mean())
+    out = dsp._smooth(g, 1.0, 50.0, hold=hold, power=np.ones(g.size))
+    free = dsp._smooth(g[:500], 1.0, 50.0)
+    assert out[600] == pytest.approx(10 * np.log10(np.mean(10 ** (free / 10))))
 
 
 def test_program_dependent_release_is_slower_after_long_reduction():
@@ -224,7 +226,8 @@ def test_intensity_scales_the_treatments():
 # -- the whole mix on synthetic parts ----------------------------------------------------
 
 def _parts(lead_level=0.25, adlib_level=0.6, with_dry=False):
-    lead = voice(seed=11, phrase_spread_db=10) * lead_level  # phrases up to ±5 dB apart: riding has work
+    # phrases up to ±8 dB apart: after the leveling and peak compressors riding still has work
+    lead = voice(seed=11, phrase_spread_db=16) * lead_level
     adlib, instru = voice(seed=12, notes=[220, 247]) * adlib_level, beat()
     space = 0.3 * np.roll(lead, int(0.25 * FS), axis=0) if with_dry else None
     lead_full = lead + space if with_dry else lead
