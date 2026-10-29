@@ -78,7 +78,7 @@ Card {
                     filled: modelData.categoryKey === "pitch_correction"
                     dim: !modelData.active
                     ToolTip.visible: chipHover.hovered
-                    ToolTip.text: modelData.category + " · " + modelData.where + (modelData.active ? "" : " (désactivé)")
+                    ToolTip.text: modelData.category + " · " + modelData.where + (modelData.active ? "" : " · " + modelData.inactive)
                     HoverHandler { id: chipHover }
                 }
             }

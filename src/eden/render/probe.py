@@ -9,8 +9,11 @@ test renders):
   5. is a bypassed effect slot really bypassed? One source with a reverb or
      delay whose on/off state FL stored is rendered alone, with and without
      that slot: the two renders must differ by more than SLOT_BYPASS_MIN_DB.
-     Not checked when the project has no such slot (the dry voices rely on
-     these bypasses).
+     A slot can leave the render unchanged for a reason of its own (a plugin
+     set to let the sound through, a return fader at the bottom), so when it
+     does, other slots are tried, up to SLOT_CHECK_TRIES in all: the check
+     fails only when no slot tried changes the render. Not checked when the
+     project has no such slot (the dry voices rely on these bypasses).
 The working syntax is saved in Eden's settings only if every check that could run passes.
 """
 
@@ -40,6 +43,8 @@ from eden.settings import load_settings, save_settings
 Log = Callable[[str], None]
 # A bypassed slot must change the render by more than this (the null test's threshold).
 SLOT_BYPASS_MIN_DB = -60.0
+# Slots tried before deciding that FL does not bypass a slot (choix d'Eden).
+SLOT_CHECK_TRIES = 3
 
 
 @dataclass
@@ -49,7 +54,7 @@ class ProbeResult:
     isolation_channels_ok: bool | None = None
     isolation_inserts_ok: bool | None = None
     isolation_routes_ok: bool | None = None
-    isolation_slots_ok: bool | None = None  # None: the project has no slot to check it with
+    isolation_slots_ok: bool | None = None  # None: no slot to check it with, or only silent renders
     audio_format: str | None = None
     lines: list[str] = field(default_factory=list)
 
@@ -59,9 +64,13 @@ class ProbeResult:
                     and self.isolation_routes_ok and self.isolation_slots_ok is not False)
 
 
-def _space_slot(project: FlpProject, sources: list[SourceAnalysis]) -> tuple[SourceAnalysis, ExistingEffect] | None:
-    """A source played in the playlist and one of its active reverbs or delays whose on/off state
-    FL stored (the record a dry-voice render rewrites)."""
+def _space_slots(project: FlpProject, sources: list[SourceAnalysis]) -> list[tuple[SourceAnalysis, ExistingEffect]]:
+    """Up to SLOT_CHECK_TRIES pairs of a source played in the playlist and one of its active
+    reverbs or delays whose on/off state FL stored (the record a dry-voice render rewrites), in
+    the order to try them. Each next pair is, in project order, the first one on an insert and
+    with a source not picked yet, else the first on a new insert, else the first with a new
+    source, else the first left."""
+    pairs = []
     for s in sources:
         if not s.clip_count:
             continue
@@ -69,8 +78,14 @@ def _space_slot(project: FlpProject, sources: list[SourceAnalysis]) -> tuple[Sou
             ins = project.insert(e.insert)
             slot = next((sl for sl in ins.slots if sl.index == e.slot), None) if ins else None
             if e.active and e.category in SPACE_CATEGORIES and slot is not None and slot.enabled is not None:
-                return s, e
-    return None
+                pairs.append((s, e))
+    picked: list[tuple[SourceAnalysis, ExistingEffect]] = []
+    while pairs and len(picked) < SLOT_CHECK_TRIES:
+        best = max(range(len(pairs)), key=lambda i: (
+            all(pairs[i][1].insert != e.insert for _, e in picked),
+            all(pairs[i][0].channel != s.channel for s, _ in picked)))
+        picked.append(pairs.pop(best))
+    return picked
 
 
 def probe_fl_studio(
@@ -200,39 +215,48 @@ def probe_fl_studio(
             say(f"Test d'isolation ({label}) : " + ("silence obtenu ✔" if ok else
                 f"le son reste présent (crête {check.peak_db:.1f} dBFS) ✘"))
 
-        found = _space_slot(report.project, sources)
-        if found is None:
+        found = _space_slots(report.project, sources)
+        if not found:
             say("Test d'isolation (slot d'effet contourné) : non vérifié sur ce projet (aucune piste de la "
                 "playlist ne passe par une reverb ou un delay actif dont FL a enregistré l'état "
                 "activé/désactivé)")
-        else:
-            s, fx = found
-            what = f"slot d'effet contourné : « {fx.plugin} » sur « {fx.insert_label} », {s.label} seule"
 
-            def alone(ed: FlpEditor) -> None:
+        def alone(s: SourceAnalysis, bypassed: ExistingEffect | None = None) -> Callable[[FlpEditor], None]:
+            def edits(ed: FlpEditor) -> None:
                 for other in sources:
                     if other.channel != s.channel:
                         ed.set_channel_enabled(other.channel, False)
+                if bypassed is not None:
+                    ed.set_slot_enabled(bypassed.insert, bypassed.slot, False)
+            return edits
 
-            def alone_bypassed(ed: FlpEditor) -> None:
-                alone(ed)
-                ed.set_slot_enabled(fx.insert, fx.slot, False)
-
+        alone_renders: dict[int, Path] = {}  # channel → its render alone, every effect on
+        for n, (s, fx) in enumerate(found, 1):
+            what = (f"slot d'effet contourné, essai {n} sur {len(found)} : « {fx.plugin} » sur "
+                    f"« {fx.insert_label} », {s.label} seule")
             try:
-                with_fx = working.render(copy_with(alone, "isolation-slot-actif"), timeout_s)
-                without = working.render(copy_with(alone_bypassed, "isolation-slot-contourne"), timeout_s)
-            except RenderError as exc:
-                say(f"Test d'isolation ({what}) : échec du rendu ({exc})")
-                result.isolation_slots_ok = False
-            else:
+                if s.channel not in alone_renders:
+                    alone_renders[s.channel] = working.render(copy_with(alone(s), f"isolation-slot-{n}-actif"),
+                                                              timeout_s)
+                with_fx = alone_renders[s.channel]
                 if check_audio(with_fx).silent:
-                    say(f"Test d'isolation ({what}) : non vérifié sur ce projet (rendu silencieux)")
-                else:
-                    gap = null_test(with_fx, [without], SLOT_BYPASS_MIN_DB)  # the two must not null
-                    result.isolation_slots_ok = not gap.passed
-                    say(f"Test d'isolation ({what}) : " + (
-                        f"le rendu change (écart de {gap.residual_db:.1f} dB) ✔" if result.isolation_slots_ok else
-                        f"le rendu ne change pas (écart sous {SLOT_BYPASS_MIN_DB:.0f} dB) ✘"))
+                    say(f"Test d'isolation ({what}) : non vérifié (rendu silencieux)")
+                    continue
+                without = working.render(copy_with(alone(s, fx), f"isolation-slot-{n}-contourne"), timeout_s)
+            except RenderError as exc:
+                say(f"Test d'isolation ({what}) : échec du rendu ({exc}) ✘")
+                result.isolation_slots_ok = False
+                continue
+            gap = null_test(with_fx, [without], SLOT_BYPASS_MIN_DB)  # the two must not null
+            if not gap.passed:
+                result.isolation_slots_ok = True
+                say(f"Test d'isolation ({what}) : le rendu change (écart de {gap.residual_db:.1f} dB) ✔")
+                break
+            result.isolation_slots_ok = False
+            say(f"Test d'isolation ({what}) : le rendu ne change pas (écart sous {SLOT_BYPASS_MIN_DB:.0f} dB) ✘")
+        if len(found) > 1 and result.isolation_slots_ok is False:
+            say(f"Test d'isolation (slot d'effet contourné) : aucun des {len(found)} essais ne montre que "
+                "FL Studio contourne un slot désactivé ✘")
 
         if result.ok:
             if exe is not None:

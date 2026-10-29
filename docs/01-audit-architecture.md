@@ -98,7 +98,12 @@ bus). Deux modes :
   delay : l'écart entre les deux rendus doit dépasser −60 dB), avant d'activer le rendu
   automatique. Ce dernier test demande, dans le projet testé, une piste de la playlist qui
   passe par une reverb ou un delay actif dont FL a enregistré l'état activé/désactivé ; sans
-  elle, il est noté « non vérifié sur ce projet ».
+  elle, il est noté « non vérifié sur ce projet ». Un slot peut ne rien changer pour une
+  raison qui lui est propre (plugin réglé pour laisser passer le son, fader du retour en
+  bas) : Eden essaie alors jusqu'à deux autres slots, de préférence sur un autre insert,
+  puis avec une autre piste (3 essais au plus, choix d'Eden), note chaque essai dans le
+  compte rendu, et ne conclut que FL ne respecte pas un slot désactivé que si aucun essai ne
+  change le rendu.
 - Plan B si la ligne de commande ne marche pas sur ta version : export guidé
   (« Split mixer tracks ») surveillé par Eden.
 
@@ -132,9 +137,11 @@ Règles :
   compression de bus).
 - **Inventaire des traitements existants** (déjà fait en phase 2) : pour chaque voix,
   Eden liste les plugins sur tout le chemin jusqu'au Master avec leur catégorie (correction
-  de hauteur, EQ, compression, de-esser, reverb, delay, saturation…) et leur état. Le moteur
-  de mixage s'en sert : pas d'Auto-Tune ajouté si une correction de hauteur est déjà
-  active, pas de reverb supplémentaire si le bus vocal en a déjà une, etc.
+  de hauteur, EQ, compression, de-esser, reverb, delay, saturation…) et leur état : actif,
+  désactivé (son slot ou les effets de l'insert), ou inaudible (mix à 0 %, insert coupé,
+  insert sans sortie vers le Master). Le moteur de mixage s'en sert : pas d'Auto-Tune
+  ajouté si une correction de hauteur est déjà active, pas de reverb supplémentaire si le
+  bus vocal en a déjà une, etc.
 - **Master de FL — décision (révisée) : Eden fait le mastering.** Les pistes sont
   récupérées avant le Master (effets du Master contournés dans les copies) ; Eden mixe puis
   masterise lui-même (graves, bus, clip doux, limiteur true-peak, volume cible rap

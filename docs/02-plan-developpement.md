@@ -49,8 +49,16 @@ Fait :
 - **test de reconstruction** : somme des groupes = rendu pré-Master (seuil −60 dB) ;
 - reprise après interruption (manifeste, rendus déjà faits réutilisés) ;
 - `eden fl-probe` : sur ton PC, essaie les syntaxes connues de FL Studio, puis vérifie que
-  couper un canal, un insert et un envoi donne bien du silence ; enregistre la syntaxe qui
-  marche ;
+  couper un canal, un insert et un envoi donne bien du silence, et qu'un slot d'effet
+  désactivé l'est vraiment : une piste rendue seule avec et sans une de ses reverbs ou un de
+  ses delays (dont FL a enregistré l'état activé/désactivé), l'écart entre les deux rendus
+  doit dépasser −60 dB. Un slot peut ne rien changer pour une raison qui lui est propre
+  (plugin réglé pour laisser passer le son, fader du retour en bas) : jusqu'à deux autres
+  slots sont alors essayés, de préférence sur un autre insert, puis avec une autre piste
+  (3 essais au plus, choix d'Eden), chaque essai noté dans le compte rendu, et le test
+  n'échoue que si aucun ne change le rendu ; sans reverb ni delay de ce genre dans le
+  projet, ou si tous les rendus essayés sont muets, il est noté « non vérifié ». La syntaxe
+  qui marche n'est enregistrée que si tout ce qui a pu être vérifié passe ;
 - `eden render` et bouton « Récupérer le son depuis FL Studio » ;
 - tests avec un simulateur de FL Studio (effets non linéaires sur bus et Master), y compris
   la détection d'un découpage faux.
@@ -60,9 +68,11 @@ Critères restant à valider **avec ton FL Studio** :
 - [ ] sur 3 projets réels, test de reconstruction < −60 dB, durées identiques ;
 - [ ] aucune fenêtre bloquante de FL pendant les rendus (plugins manquants, etc.).
 
-Rendu « voix sèche » : pour chaque voix dont la chaîne FL contient une reverb ou un delay,
-une copie supplémentaire est rendue avec ces effets contournés (slots désactivés, retours
-d'effets coupés) ; voix complète − voix sèche = exactement ce que tes effets ajoutent.
+Rendu « voix sèche » : pour chaque voix dont la chaîne FL contient une reverb ou un delay
+que FL joue vraiment (slot actif avec un dry/wet qui n'est pas à 0, insert et ses effets
+actifs, insert qui atteint le Master), une copie supplémentaire est rendue avec ces effets
+contournés (slots désactivés sur le chemin de la voix, retours d'effets coupés) ; voix
+complète − voix sèche = exactement ce que tes effets ajoutent.
 
 Mastering : c'est Eden qui le fait (décision : « Eden fait tout le mastering »). Les
 effets de ton Master FL ne servent qu'à ton écoute dans FL Studio.
@@ -79,8 +89,20 @@ Fait (détails, seuils et sources : `docs/mixage.md`) :
   edma, 808 pour départager les relatives), tempo du projet et pulsation ressentie, notes du 808 et accord avec la
   gamme, collisions kick / 808, stéréo des graves ;
 - chaîne vocale complète par rôle, dans l'ordre des chaînes pro documentées, chaque étape
-  déclenchée par une mesure et plafonnée ; voix sèche quand FL a une reverb ou un delay
-  (effets remis tels quels), sinon compression « prudente » ;
+  déclenchée par une mesure et plafonnée ;
+- voix sèche quand FL joue vraiment une reverb ou un delay sur la chaîne de la voix : un
+  effet désactivé ou inaudible (mix à 0 %, insert coupé, insert sans sortie vers le Master)
+  ne compte pas, et l'inspection dit lequel des deux il est ; un plugin non identifié
+  compte comme reverb ou delay quand il est sur un autre insert que celui de la voix et que
+  le nom de cet insert contient « verb », « delay », « echo », « écho » ou « space » (choix
+  d'Eden) ; un retour d'effet est reconnu par la topologie du Mixer, pas par son numéro. La
+  voix sèche rendue par FL n'est gardée que si elle passe le contrôle : pas muette, FL en a
+  retiré quelque chose (pendant le chant, part des effets au-dessus de −60 dB sous la
+  voix), calée sur la voix complète à 2 échantillons près, part des effets sans copie de la
+  voix et pas plus forte qu'elle. Eden traite alors la voix sèche et remet tes effets tels
+  quels ; sinon (état d'un slot non enregistré par FL, retours impossibles à distinguer,
+  plugin non identifié sur le chemin de la voix, voix sèche écartée) la voix est traitée en
+  compression « prudente » ;
 - niveaux (voix principale au-dessus de l'instru pendant le chant, autres voix par rapport
   à elle), suivi phrase par phrase, espace en quatre envois pour les voix qui n'en ont pas,
   placement stéréo, place pour les paroles (bandes pondérées par leur importance pour
