@@ -135,7 +135,9 @@ HARMONY_FMIN_HZ = 200.0
 def _sum_of(groups: list[Part], role: str) -> np.ndarray | None:
     """All the groups of one role added up (FL often gives each drum, or each 808 layer, its own insert)."""
     audio = [g.audio for g in groups if g.role == role]
-    return sum(audio[1:], audio[0].astype(np.float64)) if audio else None
+    if len(audio) < 2:  # none, or the group itself: no copy
+        return audio[0] if audio else None
+    return sum(audio[1:], audio[0].astype(np.float64))
 
 
 def analyse_song(parts: Parts, tempo_bpm: float | None) -> tuple[SongAnalysis, lowend.LowEndReport]:
@@ -261,11 +263,9 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         if g.role != "bass":
             groups += g.audio
     basses = [g for g in parts.groups if g.role == "bass"]
-    kicks = _sum_of(parts.groups, "drums")
     hits = None
-    if basses and kicks is not None and low.kick_overlap > 0.5 and low.existing_duck_db < 2.0:
-        _, _, hits = lowend.kick_808_interaction(_sum_of(parts.groups, "bass"), kicks, fs)
-    del kicks
+    if low.kick_overlap > 0.5 and low.existing_duck_db < 2.0:  # measured only with drums and bass groups
+        _, _, hits = lowend.kick_808_interaction(_sum_of(parts.groups, "bass"), _sum_of(parts.groups, "drums"), fs)
     if basses:
         say("Basses et 808")
     for g in basses:  # every bass group ducks on the same kicks: the ones measured against all of them
@@ -365,19 +365,26 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
     for together in _sing_together(sung, {v.key: chained[v.key][2] for v in sung}):
         if len(together) == 1:
             current = balance_against(chained[together[0].key][2], beat, fs)
-            what = f"voix {current:+.1f} dB par rapport à l'instru pendant qu'elle chante ; {target}"
-        else:  # takes sung at the same moments add up: they are set as one, their balance kept
-            stack = sum((chained[v.key][0] for v in together), np.zeros(shape))
-            current = balance_against(level_of(stack, fs), beat, fs)
-            del stack
-            what = (" + ".join(f"« {v.label} »" for v in together) + f", qui chantent ensemble : {current:+.1f} dB "
-                    f"par rapport à l'instru pendant qu'elles chantent, réglées d'un même gain ; {target}")
+            change = _level_change(current, LEAD_BALANCE, k)
+            set_level(together[0], change, f"voix {current:+.1f} dB par rapport à l'instru pendant qu'elle chante ; "
+                      f"{target}")
+            continue
+        # takes sung at the same moments add up: they are set as one, their balance kept
+        stack = sum((chained[v.key][0] for v in together), np.zeros(shape))
+        current = balance_against(level_of(stack, fs), beat, fs)
+        del stack
         change = _level_change(current, LEAD_BALANCE, k)
+        copied = {v.key: _copied(v, [o for o in together if o is not v], fs) for v in together} if change > 0 else {}
+        kept = [f"« {v.label} »" for v in together if copied.get(v.key)]
+        s = "s" if len(kept) > 1 else ""
+        what = (" + ".join(f"« {v.label} »" for v in together) + f", qui chantent ensemble : {current:+.1f} dB "
+                "par rapport à l'instru pendant qu'elles chantent, réglées d'un même gain"
+                + (f" sauf {', '.join(kept)} (copie{s}, jamais montée{s})" if kept else "") + f" ; {target}")
         for v in together:
-            copied = _copied(v, [o for o in together if o is not v], fs) if change > 0 and len(together) > 1 else None
-            if copied:
+            if copied.get(v.key):
+                label, corr = copied[v.key]
                 results[v.key].treatments.append(Treatment(
-                    "gain", "Niveau gardé", f"Copie de « {copied[0]} » (corrélation {copied[1]:.2f}) : une copie "
+                    "gain", "Niveau gardé", f"Copie de « {label} » (corrélation {corr:.2f}) : une copie "
                     "n'est jamais montée (filtrage en peigne)", {"gain_db": 0.0}))
             else:
                 set_level(v, change, what)

@@ -43,7 +43,7 @@ est marqué :
 | Quoi | Comment | Sert à |
 |---|---|---|
 | Accordage | écart de l'instru au La 440 Hz, mode d'un histogramme au cent près des pics spectraux, mesuré **avant** le chroma (sourcé : méthode d'Essentia) ; ramené au demi-ton le plus proche, de −50 à +50 cents (choix d'Eden : Essentia replie de −35 à +65 cents, ce qui lit une instru à 430 Hz un demi-ton trop bas) | lire les notes sur la bonne grille (une instru en 432 Hz est lue juste) |
-| Tonalité | chroma des pics au-dessus de **200 Hz** (kick, 808 et lignes de basse brouillent le chroma ; Faraldo, sourcé) des parties harmoniques : instru complète, éléments musicaux, effets, inconnus et reste du mix, sans les groupes batterie et 808 (sans aucune de ces parties : tout le beat) ; corrélation avec trois profils (Krumhansl-Kessler, Shaath, edma ; valeurs sourcées sur Essentia) ; Temperley écarté (penche vers le majeur relatif, sourcé). Quand majeur et mineur relatifs sont proches (scores à moins de 0,1), le 808 tranche s'il joue vraiment une des deux toniques : au moins 10 % de son énergie grave et 1,5 fois plus que l'autre (choix d'Eden) ; sinon les deux sont affichées | affichage, contrôle des notes du 808 |
+| Tonalité | chroma des pics au-dessus de **200 Hz** (kick, 808 et lignes de basse brouillent le chroma ; Faraldo, sourcé) des parties harmoniques : instru complète, éléments musicaux, effets, inconnus et reste du mix, sans les groupes batterie et 808 (quand tous les groupes sont batterie ou 808 : tout le beat) ; corrélation avec trois profils (Krumhansl-Kessler, Shaath, edma ; valeurs sourcées sur Essentia) ; Temperley écarté (penche vers le majeur relatif, sourcé). Quand majeur et mineur relatifs sont proches (scores à moins de 0,1), le 808 tranche s'il joue vraiment une des deux toniques : au moins 10 % de son énergie grave et 1,5 fois plus que l'autre (choix d'Eden) ; sinon les deux sont affichées | affichage, contrôle des notes du 808 |
 | Tempo | tempo du projet FL ; pulsation « ressentie » ramenée entre 65 et 135 BPM (corpus MCFlow de rap : 79–124 BPM, non vérifié ; la trap écrite à 140 se ressent à 70) | delays, pré-delay, relâchements, phrases |
 | Notes du 808 | NSDF (McLeod & Wyvill) sur la bande < 200 Hz décimée de tous les groupes basse / 808 réunis, notes de 25 à 150 Hz, affinage parabolique ; les trames d'un glissando (> 30 cents en 60 ms) sont ignorées : les hauteurs qu'un slide traverse ne sont pas des notes | note principale, notes hors gamme (averties, jamais corrigées ; ≥ 0,5 s et ≥ 3 % du jeu du 808), désaccord > 25 cents |
 | Kick / 808 | attaques du kick sous 150 Hz, sur tous les groupes batterie réunis (FL rend souvent chaque élément sur son propre insert) : montée de 4 dB en 20 ms, à moins de 12 dB des plus forts (ghost kicks compris) ; part des kicks qui tombent sur une note de 808, et de combien le 808 baisse déjà après le kick, mesuré contre sa propre décroissance | décider d'un ducking |
@@ -92,9 +92,10 @@ dépassent.
 - **Voix principales qui chantent ensemble** (prises empilées d'un refrain, piste dupliquée) :
   deux voix chantent ensemble quand celle qui chante le moins partage au moins la moitié de
   ses blocs chantés avec l'autre (choix d'Eden), de proche en proche. Leur somme est réglée
-  contre l'instru comme une seule voix, avec la même cible, et elles reçoivent le même gain :
-  leur équilibre entre elles ne change pas. Seule exception : une voix principale qui copie
-  une autre (corrélation > 0,8 à ±40 ms) n'est jamais montée.
+  contre l'instru comme une seule voix, avec la même cible, et elles reçoivent le même gain
+  statique : ce réglage ne change pas leur équilibre entre elles (le suivi phrase par phrase,
+  ensuite, se fait voix par voix). Seule exception : une voix principale qui copie une autre
+  (corrélation > 0,8 à ±40 ms) n'est jamais montée.
 - **Suivi phrase par phrase** (« vocal riding », pratique d'expert sourcée : Pestana & Reiss
   2014) : phrases = plages de chant d'au moins 0,3 s séparées d'au moins une croche du tempo
   ressenti ; référence = l'équilibre médian de la voix sur tout le morceau (pas une valeur
@@ -131,8 +132,8 @@ synthèse de la recherche ; niveaux : choix d'Eden) :
   jamais touchés.
 - Tes effets FL ne comptent que s'ils ont été rendus à part. Quand la reverb ou le delay FL
   d'une voix reste dans sa voix (voix « prudente »), la reverb du morceau ne peut pas être
-  mesurée : Eden n'ajoute alors d'espace à **aucune** voix, et l'indique sur chacune en
-  nommant la voix en cause.
+  mesurée : Eden n'ajoute alors d'espace à **aucune** voix, et l'indique sur chaque voix qui
+  en aurait reçu, en nommant la voix en cause.
 
 ## 5. Stéréo
 
@@ -141,9 +142,11 @@ synthèse de la recherche ; niveaux : choix d'Eden) :
   deux qui chante le moins partage au moins la moitié de ses blocs chantés avec l'autre
   (choix d'Eden). Les paires qui partagent la plus grande part de leur chant se forment
   d'abord ; une voix n'est que dans une paire.
-- Doublages : une paire de vraies prises → ±85 % ; un doublage qui ne chante avec aucun
-  autre → centre ; une copie de la voix principale → centre.
-- Chœurs : ±55 % en paires ; un chœur qui ne chante avec aucun autre → 40 % à droite.
+- Doublages : une paire de vraies prises → ±85 % ; un doublage sans partenaire (aucune autre
+  vraie prise ne chante avec lui, ou celles qui chantent avec lui sont déjà en paire) →
+  centre ; une copie de la voix principale → centre.
+- Chœurs : ±55 % en paires ; un chœur sans partenaire (aucun autre ne chante avec lui, ou
+  ceux qui chantent avec lui sont déjà en paire) → 40 % à droite.
   Ad-libs : ±50 %, **chaque phrase change de côté** au milieu du silence (fondu 50 ms),
   jamais au centre pendant la voix principale.
 - Une voix déjà élargie ou placée dans FL (side > −20 dB du mid) est laissée telle quelle.

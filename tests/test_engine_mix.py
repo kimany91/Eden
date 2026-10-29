@@ -129,6 +129,11 @@ def test_kicks_come_from_every_drum_insert_and_every_808_layer_ducks(monkeypatch
         assert duck.label == f"808 baissé de 3.0 dB sous 100 Hz à chaque kick ({ducked[0]} kicks)"
 
 
+def test_a_single_drum_or_808_group_is_read_without_a_copy():
+    kick = Part("g1", "Kick", "drums", np.zeros((10, 2), np.float32), [100])
+    assert engine._sum_of([kick], "drums") is kick.audio and engine._sum_of([kick], "bass") is None
+
+
 def _riser(seconds: float) -> np.ndarray:
     n, length = int(seconds * FS), int(3 * FS)
     rng = np.random.default_rng(9)
@@ -198,13 +203,28 @@ def test_doubles_and_backs_pair_up_only_with_a_voice_that_sings_with_them():
               ("b1", "Chœur couplet", "back_vocal", _sung_only(voice(seconds, seed=31, level=0.1), 0, 5)),
               ("b2", "Chœur refrain", "back_vocal", _sung_only(voice(seconds, seed=32, level=0.1), 10, 15))]
     placed = {p.key: p for p in stereo.plan_placement(voices, {}, FS, 1.0)}
-    assert placed["dv"].position == 0.0 and "aucune autre double" in placed["dv"].reason
+    assert placed["dv"].position == 0.0 and "aucune autre vraie prise de double" in placed["dv"].reason
     assert placed["dh1"].position == -placed["dh2"].position == pytest.approx(0.85)
     assert "« Double refrain 2 »" in placed["dh1"].reason and "85 % à droite" in placed["dh1"].reason
     assert placed["b1"].position == placed["b2"].position == pytest.approx(0.4)  # never together: no pair
     together = [("b1", "Chœur 1", "back_vocal", voices[3][3]), ("b2", "Chœur 2", "back_vocal", 0.8 * voices[3][3])]
     placed = {p.key: p for p in stereo.plan_placement(together, {}, FS, 0.5)}
     assert placed["b1"].position == -placed["b2"].position == pytest.approx(0.275)
+
+
+def test_a_third_voice_that_sings_with_a_pair_says_why_it_has_no_partner():
+    seconds = 10.0
+    voices = [(f"d{i}", f"Double {i}", "double", voice(seconds, seed=40 + i, level=0.1)) for i in range(3)]
+    voices += [(f"b{i}", f"Chœur {i}", "back_vocal", voice(seconds, seed=50 + i, level=0.1)) for i in range(3)]
+    placed = {p.key: p for p in stereo.plan_placement(voices, {}, FS, 1.0)}
+    assert placed["d0"].position == -placed["d1"].position == pytest.approx(0.85)
+    assert placed["d2"].position == 0.0 and placed["d2"].reason == (
+        "les autres vraies prises de double qui chantent en même temps sont déjà en paire : au centre, sous la "
+        "voix principale")
+    assert placed["b0"].position == -placed["b1"].position == pytest.approx(0.55)
+    assert placed["b2"].position == pytest.approx(0.4) and placed["b2"].reason == (
+        "les autres chœurs qui chantent en même temps sont déjà en paire : 40 % à droite, à côté de la voix "
+        "principale")
 
 
 def _fl_reverb(x: np.ndarray, level_db: float) -> np.ndarray:
@@ -271,6 +291,8 @@ def test_a_lead_that_copies_another_is_never_raised():
     out = mix(parts, 1.0, 95.0, {"ch0": "none", "ch1": "none"})
     res = {p.key: p for p in out.parts}
     assert _gain_db(res["ch0"]) > 0
+    raised = next(t.reason for t in res["ch0"].treatments if t.kind == "gain")
+    assert "réglées d'un même gain sauf « Voix (copie) » (copie, jamais montée) ;" in raised
     kept = next(t for t in res["ch1"].treatments if t.kind == "gain")
     assert kept.label == "Niveau gardé" and "Copie de « Voix »" in kept.reason and res["ch1"].level_change_db == 0
 

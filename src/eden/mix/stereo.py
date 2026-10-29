@@ -216,20 +216,25 @@ def _side(position: float) -> str:
     return f"{abs(position) * 100:.0f} % à {'droite' if position > 0 else 'gauche'}"
 
 
-def _partners(voices: list[tuple[str, str, np.ndarray]], fs: float) -> dict[int, int]:
-    """For each (key, label, audio) voice that sings with another one (``pair_up``), that one's index."""
+def _partners(voices: list[tuple[str, str, np.ndarray]], fs: float) -> tuple[dict[int, int], set[int]]:
+    """For each (key, label, audio) voice that sings with another one (``pair_up``), that one's index;
+    and the voices left without a pair although others sing with them (those are all paired already)."""
+    blocks = [level_of(audio, fs).active_blocks for _, _, audio in voices]
     partner: dict[int, int] = {}
-    for i, j in pair_up([level_of(audio, fs).active_blocks for _, _, audio in voices]):
+    for i, j in pair_up(blocks):
         partner[i], partner[j] = j, i
-    return partner
+    left = {i for i, a in enumerate(blocks) if i not in partner
+            and any(together(a, b) >= TOGETHER for j, b in enumerate(blocks) if j != i)}
+    return partner, left
 
 
 def plan_placement(voices: list[tuple[str, str, str, np.ndarray]], copies: dict[str, float], fs: float,
                    k: float) -> list[Placement]:
     """Pan positions for (key, label, role, audio) voices; mono renders only, leads untouched.
     ``copies``: how much each double copies the lead (``copy_correlation``). Doubles and backs
-    go in pairs only with a voice that sings at the same time; one that sings alone stays by
-    the lead (a double in the centre, a back slightly to the right)."""
+    go in pairs only with a voice that sings at the same time; one left without a partner (none
+    sings with it, or those that do are paired already) stays by the lead (a double in the
+    centre, a back slightly to the right)."""
     out: list[Placement] = []
     if k <= 0:
         return out
@@ -244,17 +249,18 @@ def plan_placement(voices: list[tuple[str, str, str, np.ndarray]], copies: dict[
                                  "laissée au centre, l'écarter créerait un filtrage en peigne"))
         else:
             takes.append((key, label, audio))
-    partner = _partners(takes, fs)
+    partner, left = _partners(takes, fs)
     for i, (key, label, _) in enumerate(takes):
         if i in partner:
             pos = (0.85 if i < partner[i] else -0.85) * k
             out.append(Placement(key, label, pos, reason=f"double en paire avec « {takes[partner[i]][1]} », qui "
                                  f"chante en même temps : {_side(pos)}, l'autre à l'opposé"))
         else:
-            out.append(Placement(key, label, 0.0, reason="aucune autre double ne chante en même temps : "
-                                 "au centre, sous la voix principale"))
+            alone = ("les autres vraies prises de double qui chantent en même temps sont déjà en paire" if i in left
+                     else "aucune autre vraie prise de double ne chante en même temps")
+            out.append(Placement(key, label, 0.0, reason=f"{alone} : au centre, sous la voix principale"))
     backs = [(key, label, audio) for key, label, role, audio in mono if role == "back_vocal"]
-    partner = _partners(backs, fs)
+    partner, left = _partners(backs, fs)
     for i, (key, label, _) in enumerate(backs):
         if i in partner:
             pos = (0.55 if i < partner[i] else -0.55) * k
@@ -262,7 +268,9 @@ def plan_placement(voices: list[tuple[str, str, str, np.ndarray]], copies: dict[
                       f"{_side(pos)}, l'autre à l'opposé, de part et d'autre de la voix principale")
         else:
             pos = 0.4 * k
-            reason = f"aucun autre chœur ne chante en même temps : {_side(pos)}, à côté de la voix principale"
+            alone = ("les autres chœurs qui chantent en même temps sont déjà en paire" if i in left
+                     else "aucun autre chœur ne chante en même temps")
+            reason = f"{alone} : {_side(pos)}, à côté de la voix principale"
         out.append(Placement(key, label, pos, reason=reason))
     for key, label, role, _ in mono:
         if role == "adlib":
