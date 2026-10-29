@@ -1,4 +1,5 @@
-"""Command-line entry point: ``eden inspect``, ``eden gui``, ``eden update``."""
+"""Command-line entry point: ``eden inspect``, ``eden fl-probe``, ``eden render``, ``eden mix``,
+``eden gui``, ``eden update``."""
 
 from __future__ import annotations
 
@@ -105,6 +106,45 @@ def _cmd_render(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def _print_treatments(treatments) -> None:
+    from eden.gui.viewmodel import reduction_text
+
+    for t in treatments:
+        print(f"  - {t.label} ({t.reason})")
+        measured = reduction_text(t.kind, t.measured)
+        if measured:
+            print(f"    {measured}")
+
+
+def _print_version(version) -> None:
+    """What ``eden mix`` reports: every decision with its reason and, for the compressors and
+    de-essers, the reduction they really applied; then the master's checks."""
+    song = version.song
+    print(f"Morceau : {song.key or 'tonalité inconnue'}"
+          + (f" (confiance {song.key_confidence})" if song.key_confidence else "")
+          + (f", {song.tempo_bpm:g} BPM" if song.tempo_bpm else "")
+          + (f", 808 sur {song.bass_root}" if song.bass_root else ""))
+    for part in version.parts:
+        print(f"{part.label} :")
+        _print_treatments(part.treatments)
+        for line in part.space:
+            print(f"  - {line}")
+        if part.placement:
+            print(f"  - {part.placement}")
+        if not part.treatments and not part.space:
+            print("  - laissé tel quel")
+    print("Mastering Eden :")
+    _print_treatments(version.master)
+    c = version.checks
+    print(f"Export FL : {version.original.loudness_lufs:.1f} LUFS, crête {version.original.true_peak_db:.1f} dBTP")
+    print(f"Eden      : {c.integrated_lufs:.1f} LUFS, crête {c.true_peak_dbtp:.1f} dBTP, "
+          f"plage {c.loudness_range_lu:.1f} LU, crête/volume {c.plr_db:.1f} dB")
+    for p in c.platforms:
+        print(f"  {p.name} : {p.gain_db:+.1f} dB à la lecture → {p.heard_lufs:.1f} LUFS")
+    for w in version.warnings:
+        print(f"Avertissement : {w}")
+
+
 def _cmd_mix(args: argparse.Namespace) -> int:
     from eden.mix.export import ExportError, export_wav
     from eden.mix.session import MixError, mix_project
@@ -122,32 +162,7 @@ def _cmd_mix(args: argparse.Namespace) -> int:
     except (InspectionError, RenderError, MixError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    song = version.song
-    print(f"Morceau : {song.key or 'tonalité inconnue'}"
-          + (f" (confiance {song.key_confidence})" if song.key_confidence else "")
-          + (f", {song.tempo_bpm:g} BPM" if song.tempo_bpm else "")
-          + (f", 808 sur {song.bass_root}" if song.bass_root else ""))
-    for part in version.parts:
-        print(f"{part.label} :")
-        for t in part.treatments:
-            print(f"  - {t.label} ({t.reason})")
-        for line in part.space:
-            print(f"  - {line}")
-        if part.placement:
-            print(f"  - {part.placement}")
-        if not part.treatments and not part.space:
-            print("  - laissé tel quel")
-    print("Mastering Eden :")
-    for t in version.master:
-        print(f"  - {t.label} ({t.reason})")
-    c = version.checks
-    print(f"Export FL : {version.original.loudness_lufs:.1f} LUFS, crête {version.original.true_peak_db:.1f} dBTP")
-    print(f"Eden      : {c.integrated_lufs:.1f} LUFS, crête {c.true_peak_dbtp:.1f} dBTP, "
-          f"plage {c.loudness_range_lu:.1f} LU, crête/volume {c.plr_db:.1f} dB")
-    for p in c.platforms:
-        print(f"  {p.name} : {p.gain_db:+.1f} dB à la lecture → {p.heard_lufs:.1f} LUFS")
-    for w in version.warnings:
-        print(f"Avertissement : {w}")
+    _print_version(version)
     if args.export:
         try:
             result = export_wav(Path(version.final_wav), Path(args.export), args.frequence, args.bits)
@@ -183,7 +198,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="Continuer même si des fichiers audio sont introuvables")
     r.set_defaults(func=_cmd_render)
 
-    m = sub.add_parser("mix", help="Mixer automatiquement puis passer dans le Master FL Studio")
+    m = sub.add_parser("mix", help="Mixer les voix puis masteriser avec Eden "
+                                   "(les effets du Master FL Studio ne sont pas utilisés)")
     m.add_argument("project", help="Chemin du fichier .flp")
     m.add_argument("--intensite", type=float, default=100.0, help="Intensité des corrections, 0 à 100")
     m.add_argument("--export", help="Fichier WAV à écrire (sans écraser un fichier existant)")

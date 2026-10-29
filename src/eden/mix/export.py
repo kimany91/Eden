@@ -1,6 +1,7 @@
 """Export of the final WAV: destination, name, sample rate and bit depth.
 
-* the file is never written over an existing one unless asked;
+* the file is never written over an existing one unless asked; ".wav" is
+  added to the name typed, whatever dots it holds ("Vol. 2", "prod.");
 * sample-rate conversion, only when another rate is requested, uses a
   polyphase filter flat to 91 % of the lower Nyquist frequency (20 kHz at
   44.1 kHz) with 100 dB of rejection above it. A conversion can raise the
@@ -55,7 +56,8 @@ def export_wav(source: Path, destination: Path, sample_rate: int | None = None,
                bit_depth: int = 24, overwrite: bool = False) -> ExportResult:
     if bit_depth not in BIT_DEPTHS:
         raise ExportError(f"Profondeur de bits non prise en charge : {bit_depth}")
-    destination = destination.with_suffix(".wav")
+    if destination.suffix.lower() != ".wav":  # added, never replacing: "Beat v1.2 - Eden" keeps its ".2 - Eden"
+        destination = destination.with_name(destination.name + ".wav")
     if destination.exists() and not overwrite:
         raise ExportError(f"« {destination.name} » existe déjà dans ce dossier")
     if not destination.parent.is_dir():

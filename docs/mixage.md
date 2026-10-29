@@ -224,7 +224,8 @@ mesurée (moyenne quand elles agissent, et maximum).
 - Chaque mixage est gardé : WAV final 32 bits flottant, et toutes les décisions avec leurs
   raisons (le morceau, le mastering et ses contrôles). Il peut être réaffiché puis exporté.
 - L'export choisit le dossier, le nom, la fréquence et la profondeur : 16 bits avec dither
-  TPDF, 24 bits, ou 32 bits flottant.
+  TPDF, 24 bits, ou 32 bits flottant. « .wav » est ajouté au nom tel que tu l'as tapé, points
+  compris : « Beat v1.2 - Eden » donne « Beat v1.2 - Eden.wav ».
 - Il n'y a pas de conversion si tu gardes la fréquence de FL. Sinon, le filtre est plat
   jusqu'à 91 % de la fréquence de Nyquist la plus basse (20 kHz à 44,1 kHz) et rejette
   100 dB au-dessus : rien ne se replie dans l'audible.

@@ -311,6 +311,15 @@ EdenPage {
                                                 color: Theme.textMuted
                                                 font.family: Theme.fontFamily; font.pixelSize: 12
                                             }
+                                            Text {
+                                                visible: modelData.measured !== ""
+                                                width: parent.width
+                                                leftPadding: 12
+                                                wrapMode: Text.WordWrap
+                                                text: modelData.measured
+                                                color: Theme.textDim
+                                                font.family: Theme.fontFamily; font.pixelSize: 12
+                                            }
                                         }
                                     }
                                     Repeater {
@@ -351,6 +360,15 @@ EdenPage {
                                         wrapMode: Text.WordWrap
                                         text: modelData.reason
                                         color: Theme.textMuted
+                                        font.family: Theme.fontFamily; font.pixelSize: 12
+                                    }
+                                    Text {
+                                        visible: modelData.measured !== ""
+                                        width: parent.width
+                                        leftPadding: 12
+                                        wrapMode: Text.WordWrap
+                                        text: modelData.measured
+                                        color: Theme.textDim
                                         font.family: Theme.fontFamily; font.pixelSize: 12
                                     }
                                 }

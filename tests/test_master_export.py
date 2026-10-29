@@ -1,18 +1,24 @@
-"""Eden's mastering, checked by measurement: true peak, limiter, peak-reduction budget, low band,
-checks and gain search."""
+"""Eden's mastering and export, checked by measurement: true peak, limiter, peak-reduction budget,
+low band, checks, gain search, export names, and how the measured reductions are reported."""
 
 import math
 import re
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import soundfile as sf
 from scipy.signal import butter, sosfilt
 
+from eden import cli
+from eden.gui import viewmodel
 from eden.mix import dsp
 from eden.mix import master as M
+from eden.mix.export import export_wav
 from eden.mix.limiter import gain_for, limit
 from eden.mix.loudness import integrated_loudness
 from eden.mix.oversampling import PEAK_CONTEXT, PEAK_CORE, _continuous_max, peak_envelope, true_peak
+from eden.mix.treatments import Treatment
 from synth_voice import FS, beat, voice
 
 
@@ -328,3 +334,74 @@ def test_a_polarity_flipped_part_is_a_mono_hole():
     holes = M.mono_holes(song, FS)
     third = 2 ** (1 / 6)
     assert holes and all(float(h.split()[0]) / third < 900 and float(h.split()[0]) * third > 250 for h in holes)
+
+
+# -- export ----------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name, expected", [
+    ("Beat v1.2 - Eden", "Beat v1.2 - Eden.wav"),
+    ("Freestyle (prod. Kabe) - Eden", "Freestyle (prod. Kabe) - Eden.wav"),
+    ("Vol. 2 - Eden", "Vol. 2 - Eden.wav"),
+    ("Song.wav", "Song.wav"),
+])
+def test_export_keeps_every_dot_of_the_name(tmp_path, name, expected):
+    src = tmp_path / "final.wav"
+    sf.write(src, np.zeros((4410, 2)), FS, subtype="FLOAT")
+    result = export_wav(src, tmp_path / name, None, 24)
+    assert result.path == str(tmp_path / expected)
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(["final.wav", expected])
+
+
+def test_export_names_that_differ_after_a_dot_do_not_collide(tmp_path):
+    src = tmp_path / "final.wav"
+    sf.write(src, np.zeros((4410, 2)), FS, subtype="FLOAT")
+    export_wav(src, tmp_path / "Beat v1.2 - Eden", None, 24)
+    export_wav(src, tmp_path / "Beat v1.3 - Eden", None, 24)
+    assert (tmp_path / "Beat v1.2 - Eden.wav").is_file() and (tmp_path / "Beat v1.3 - Eden.wav").is_file()
+
+
+# -- what the user is shown ------------------------------------------------------------------
+
+def test_measured_reductions_are_shown():
+    comp = Treatment("compressor", "Compression des crêtes 4.0:1", "Facteur de crête 14 dB",
+                     measured={"reduction_mean_db": 1.24, "reduction_max_db": 3.46})
+    eq = Treatment("eq", "Résonance 3150 Hz -2.0 dB", "Bosse de 5 dB", measured={})
+    text = "Réduction mesurée : 1.2 dB en moyenne quand il agit, 3.5 dB au plus"
+    assert viewmodel.reduction_text(comp.kind, comp.measured) == text
+    assert viewmodel.reduction_text(eq.kind, eq.measured) == ""
+    assert viewmodel.reduction_text("loudness", {"clip_db": 6.0}) == ""
+    version = {
+        "id": "v", "created_at": "2026-01-01T00:00:00+00:00", "intensity": 1.0, "final_wav": "f.wav",
+        "parts": [{"label": "Lead", "role": "lead_vocal", "treatments": [vars(comp), vars(eq)],
+                   "loudness_before": -20.0, "loudness_after": -19.0}],
+        "master": [vars(comp)], "checks": None,
+        "original": {"loudness_lufs": -12.0, "true_peak_db": -1.0},
+        "final": {"loudness_lufs": -9.0, "true_peak_db": -3.0, "sample_rate": 44100},
+    }
+    view = viewmodel.mix_view(version)
+    assert [t["measured"] for t in view["parts"][0]["treatments"]] == [text, ""]
+    assert view["master"][0]["measured"] == text
+
+
+def test_eden_mix_prints_the_measured_reductions(capsys):
+    comp = Treatment("deesser", "De-esser principal (max 4.0 dB)", "Les « s » montent à -2.0 dB",
+                     measured={"reduction_mean_db": 2.04, "reduction_max_db": 3.96})
+    checks = SimpleNamespace(integrated_lufs=-9.0, true_peak_dbtp=-3.0, loudness_range_lu=4.0, plr_db=6.0,
+                             platforms=[])
+    version = SimpleNamespace(
+        song=SimpleNamespace(key=None, key_confidence=None, tempo_bpm=None, bass_root=None),
+        parts=[SimpleNamespace(label="Lead", treatments=[comp], space=[], placement=None)],
+        master=[comp], checks=checks, original=SimpleNamespace(loudness_lufs=-12.0, true_peak_db=-1.0),
+        warnings=[])
+    cli._print_version(version)
+    out = capsys.readouterr().out
+    assert out.count("    Réduction mesurée : 2.0 dB en moyenne quand il agit, 4.0 dB au plus") == 2
+
+
+def test_cli_describes_what_eden_mix_does(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["--help"])
+    text = " ".join(capsys.readouterr().out.split())  # argparse wraps the help to the terminal
+    assert "Mixer les voix puis masteriser avec Eden (les effets du Master FL Studio ne sont pas utilisés)" in text
+    for command in ("inspect", "fl-probe", "render", "mix", "gui", "update"):
+        assert f"``eden {command}``" in cli.__doc__
