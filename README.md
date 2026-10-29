@@ -12,7 +12,7 @@ ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 | 2. Inspection en lecture seule | ✅ testée sur projets de test (FL 20.8) — à valider sur tes projets |
 | 3. Pilotage de FL Studio et récupération du son | ✅ implémenté et testé avec un simulateur — à valider avec ton FL Studio (`eden fl-probe`) |
 | 4. Moteur de mixage + export WAV | ⏳ |
-| 5. Interface complète, installateur | ⏳ (une première fenêtre d'inspection existe) |
+| 5. Interface et installateur | ✅ interface animée (QML), installateur Windows construit et testé automatiquement — reste : lecteur A/B, réglages de mixage |
 | 6. Tests et amélioration | ⏳ |
 
 Plan détaillé et critères de validation : [docs/02-plan-developpement.md](docs/02-plan-developpement.md).
@@ -27,37 +27,40 @@ Ensuite, **Eden pilote FL Studio lui-même** : il crée des copies de travail du
 (certaines pistes coupées, chemins audio réparés), ouvre FL Studio en arrière-plan pour
 rendre chaque groupe de pistes avec tous ses effets, puis vérifie que la somme des pistes
 récupérées redonne exactement le mix d'origine. Ces pistes alimenteront le moteur de
-mixage d'Eden. **Le moteur de mixage et l'export du WAV final ne sont pas encore faits.**
+mixage d'Eden. **Ton mastering reste dans FL Studio** : Eden sait déjà repasser un mix
+dans ton propre Master FL (il le vérifie à chaque rendu). **Le moteur de mixage et
+l'export du WAV final ne sont pas encore faits.**
 
-## Installation (Windows, depuis le code source)
+## Installation (Windows)
 
-Prérequis : [Python 3.12](https://www.python.org/downloads/windows/) (cocher « Add to PATH »).
+1. Télécharge **`Eden-Setup-x.y.z.exe`** (page *Releases* du dépôt, ou l'artefact du
+   dernier passage de « Installateur Windows » dans l'onglet *Actions*).
+2. Double-clique dessus : l'installation se fait sans droits administrateur, crée les
+   raccourcis Menu Démarrer et Bureau (icône : l'arbre jaune d'Eden) et lance Eden.
+3. Dans Eden : glisse ton projet `.flp`, l'analyse démarre ; clique ensuite sur
+   « Récupérer le son depuis FL Studio ». La première fois, Eden apprend tout seul à
+   piloter ton FL Studio (FL doit être fermé).
+
+Aucune ligne de commande, et Python n'est pas nécessaire. Les mises à jour s'installent
+ensuite automatiquement à la fermeture d'Eden.
+
+Chaque installateur est vérifié automatiquement sur une machine Windows avant d'être
+publié : construction, démarrage de l'application, installation silencieuse,
+raccourcis, démarrage de la version installée, désinstallation.
+
+## Utilisation avancée (développeurs)
 
 ```powershell
-git clone https://github.com/kimany91/eden.git
-cd eden
-py -m venv .venv
-.venv\Scripts\activate
 pip install -e ".[gui]"
-```
-
-## Utilisation
-
-```powershell
-eden                                   # ouvre l'interface
 eden inspect "C:\...\Mon son.flp"      # rapport dans le terminal
-eden inspect "C:\...\Mon son.flp" --markdown rapport.md --json rapport.json
-eden fl-probe "C:\...\Mon son.flp"     # 1re fois : apprend à piloter ton FL Studio (FL fermé)
-eden render "C:\...\Mon son.flp"       # FL Studio rend toutes les pistes, Eden les vérifie
-eden update                            # rechercher une mise à jour maintenant
+eden fl-probe "C:\...\Mon son.flp"     # test du pilotage de FL Studio
+eden render "C:\...\Mon son.flp"       # rendu de toutes les pistes
 ```
-
-Dans l'interface : « Analyser le projet » puis « Récupérer le son depuis FL Studio »
-(le test de pilotage se lance tout seul la première fois).
 
 Eden ne modifie jamais le projet : il le lit une fois, vérifie son empreinte SHA-256 avant
-et après, et range ses propres fichiers (copie du projet, rapports) dans
-`%LOCALAPPDATA%\Eden\projects\`, jamais dans le dossier du projet.
+et après, et range ses propres fichiers (copies, rendus, rapports) dans
+`%LOCALAPPDATA%\Eden\`, jamais dans le dossier du projet. La désinstallation ne
+supprime pas ces fichiers.
 
 ## Mises à jour automatiques
 
