@@ -2,6 +2,7 @@
 
     inspection → render plan → working copies → FL Studio renders → checks
     → null test (sum of stems == pre-master mix)
+    → Master checks (a mix re-injected into FL's Master gives back the song)
 
 Everything is written under Eden's workspace; the original project and its
 folder are never modified. A manifest is updated after every render so an
@@ -20,6 +21,7 @@ from eden.flp.edit import FlpEditor
 from eden.project.inspector import InspectionReport, inspect_project
 from eden.project.model import MASTER_INSERT
 from eden.render.fl_studio import RenderError, Renderer
+from eden.render.master import Calibration, measure_gain, prepare_mix_for_master, reinjection_copy
 from eden.render.plan import RenderJob, RenderPlan, plan_renders
 from eden.render.verify import AudioCheck, NullTest, check_audio, null_test
 from eden.safety import Workspace, read_project_bytes, verify_unchanged
@@ -48,11 +50,22 @@ class RenderResult:
     null_test: NullTest | None
     repairs: list[str]
     warnings: list[str] = field(default_factory=list)
+    calibration: Calibration | None = None  # gain of a channel re-injected into the Master
+    master_test: NullTest | None = None  # original mix through the Master == original render
+
+    @property
+    def stems_ok(self) -> bool:
+        return all(j.status in ("done", "resumed") for j in self.jobs) and bool(
+            self.null_test and self.null_test.passed)
+
+    @property
+    def master_ok(self) -> bool:
+        return bool(self.calibration and self.calibration.passed
+                    and self.master_test and self.master_test.passed)
 
     @property
     def ok(self) -> bool:
-        return all(j.status in ("done", "resumed") for j in self.jobs) and bool(
-            self.null_test and self.null_test.passed)
+        return self.stems_ok and self.master_ok
 
     def wav(self, name: str) -> Path | None:
         j = next((j for j in self.jobs if j.job.name == name), None)
@@ -136,11 +149,12 @@ def render_project(
         repairs=[f"canal {c} → {p}" for c, p in repairs.items()],
         warnings=list(plan.notes),
     )
-    total = len(plan.jobs) + 1
-    for i, job in enumerate(plan.jobs):
+    total = len(plan.jobs) + 3
+
+    def run(job: RenderJob, copy_bytes: bytes, step: int) -> JobResult:
+        """Render one working copy (or reuse it when an identical one was rendered)."""
         if on_step:
-            on_step(i, total, f"Rendu FL Studio : {job.description}")
-        copy_bytes = build_copy(original, job, repairs)
+            on_step(step, total, f"Rendu FL Studio : {job.description}")
         job_dir = folder / job.name
         job_dir.mkdir(exist_ok=True)
         copy_path = job_dir / f"{job.name}.flp"
@@ -154,7 +168,7 @@ def render_project(
             jr.wav_path, jr.status = prev["wav_path"], "resumed"
             jr.check = check_audio(Path(jr.wav_path))
             _write_manifest(manifest, result)
-            continue
+            return jr
 
         copy_path.write_bytes(copy_bytes)
         try:
@@ -174,13 +188,40 @@ def render_project(
             _write_manifest(manifest, result)
             raise RenderError(f"Échec du rendu « {job.description} » : {exc}") from exc
         _write_manifest(manifest, result)
+        return jr
+
+    for i, job in enumerate(plan.jobs):
+        run(job, build_copy(original, job, repairs), i)
 
     if on_step:
-        on_step(total - 1, total, "Vérification : la somme des pistes reproduit-elle le mix ?")
+        on_step(len(plan.jobs), total, "Vérification : la somme des pistes reproduit-elle le mix ?")
     premaster = result.wav("premaster")
     stems = [Path(j.wav_path) for j in result.jobs if j.job.kind == "stem" and j.wav_path]
     if premaster and stems:
         result.null_test = null_test(premaster, stems, threshold_db)
+
+    # Master chain kept in FL Studio: check that Eden can play a mix through it.
+    if premaster and result.null_test and result.null_test.passed:
+        check_job = RenderJob("controle-master", "control",
+                              "Contrôle : réinjection dans le Master (effets contournés)")
+        jr = run(check_job, reinjection_copy(original, report, repairs, premaster, True),
+                 len(plan.jobs) + 1)
+        result.calibration = measure_gain(premaster, Path(jr.wav_path), threshold_db)
+        if result.calibration.passed:
+            control_dir = folder / "controle-eden-0"
+            control_dir.mkdir(exist_ok=True)
+            feed = prepare_mix_for_master(premaster, result.calibration,
+                                          control_dir / "controle-eden-0-entree.wav")
+            zero_job = RenderJob("controle-eden-0", "control",
+                                 "Contrôle : mix d'origine repassé dans ton Master")
+            jr0 = run(zero_job, reinjection_copy(original, report, repairs, feed, False),
+                      len(plan.jobs) + 2)
+            original_wav = result.wav("original")
+            if original_wav:
+                result.master_test = null_test(original_wav, [Path(jr0.wav_path)], threshold_db)
+        else:
+            result.warnings.append(result.calibration.message)
+
     checks = [j.check for j in result.jobs if j.check]
     if len({(c.sample_rate, c.channels) for c in checks}) > 1:
         result.warnings.append("Les rendus n'ont pas tous le même format audio")

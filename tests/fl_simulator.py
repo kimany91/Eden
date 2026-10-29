@@ -3,9 +3,12 @@
 Usage, like FL Studio:  python fl_simulator.py /R /Ewav <project.flp>
                     or  python fl_simulator.py /R /Ewav /F<folder>
 
-It reads the project with Eden's parser and renders a deterministic signal
-per channel through the mixer graph: insert enable/effects flags, routes,
-send levels and volumes are honoured, and any insert with effects applies a
+It reads the project with Eden's parser and renders each channel (its audio
+file when it has one, else a deterministic tone) through the mixer graph.
+Channel volume is applied as raw/12800, so FL's default 10000 is NOT unity
+gain: Eden has to measure it, as it would with real FL Studio. Insert
+enable/effects flags, routes, send levels and volumes are honoured, and any
+insert with effects applies a
 *non-linear* curve (like a compressor or saturation would), so a wrong
 stem split fails the null test exactly as it would with real FL Studio.
 
@@ -13,6 +16,7 @@ Environment switches used by tests:
   EDEN_SIM_IGNORE_MUTE=1   behave as if FL ignored mute flags
   EDEN_SIM_NO_OUTPUT=1     exit without writing anything
   EDEN_SIM_ACCEPT=<flag>   only accept this syntax ("project" or "folder")
+  EDEN_SIM_DISTORT_MIX=1   colour the channel Eden adds (as a stray envelope would)
 """
 
 from __future__ import annotations
@@ -46,12 +50,25 @@ def render(project_path: Path) -> np.ndarray:
     frames = int((p.ticks_to_seconds(end) or 2.0) * SR) or SR
     inserts = {i.index: i for i in p.inserts}
 
+    def source(ch) -> np.ndarray:
+        if ch.sample_path and Path(ch.sample_path).is_file():
+            data, _ = sf.read(ch.sample_path, dtype="float64", always_2d=True)
+            if data.shape[1] == 1:
+                data = np.repeat(data, 2, axis=1)
+            data = data[:frames]
+            return np.pad(data, ((0, frames - data.shape[0]), (0, 0)))
+        return channel_signal(ch.index, frames)
+
     inputs: dict[int, np.ndarray] = {}
     for ch in p.channels:
         if ch.kind not in ("sampler", "instrument") or (ch.enabled is False and not ignore_mute):
             continue
         target = ch.insert or 0
-        inputs[target] = inputs.get(target, 0) + channel_signal(ch.index, frames)
+        gain = (ch.volume_raw if ch.volume_raw is not None else 10000) / 12800
+        sig = source(ch) * gain
+        if os.environ.get("EDEN_SIM_DISTORT_MIX") == "1" and ch.name == "Eden - mix":
+            sig = np.tanh(3 * sig) / 3
+        inputs[target] = inputs.get(target, 0) + sig
 
     @lru_cache(maxsize=None)
     def output(idx: int) -> np.ndarray:

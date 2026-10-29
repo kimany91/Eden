@@ -47,9 +47,11 @@ def make_session(tmp_path):
     """Lead + adlib into a vocal bus with reverb, an 808 also sent to that bus,
     a beat played straight into the Master, and a limiter on the Master."""
     d = tmp_path / "Session"
-    for name in ("Lead.wav", "Adlib.wav", "Beat.wav", "808.wav"):
-        d.mkdir(exist_ok=True)
-        sf.write(d / name, np.zeros((4410, 2)), 44100)
+    d.mkdir(exist_ok=True)
+    t = np.arange(int(4.0 * 22050)) / 22050
+    for k, name in enumerate(("Lead.wav", "Adlib.wav", "Beat.wav", "808.wav")):
+        tone = 0.25 * np.sin(2 * np.pi * (140 + 90 * k) * t) * (0.6 + 0.4 * np.sin(2 * np.pi * (k + 1) * t))
+        sf.write(d / name, tone if k < 2 else np.stack([tone, 0.8 * tone], axis=1), 22050)
     inserts = [
         Insert(routes=(), slots={0: Slot("Fruity Limiter")}),
         Insert(name="Voix lead", routes=(3,), slots={0: Slot("Fruity parametric EQ 2")}),
@@ -152,7 +154,12 @@ def test_render_pipeline_reproduces_the_mix(session, tmp_path):
     result = render_project(session, renderer, timeout_s=120, workspace_home=None)
     assert result.ok, (result.null_test, [j.error for j in result.jobs])
     assert result.null_test.residual_db < -100
-    assert renderer.calls == len(result.plan.jobs) == 7
+    assert len(result.plan.jobs) == 7
+    assert renderer.calls == 7 + 2  # + the two Master controls
+    # Master kept in FL: the re-injected channel's gain is measured and compensated...
+    assert abs(result.calibration.gain - 10000 / 12800) < 1e-4
+    # ...so the original pre-master mix through the user's Master gives back the song.
+    assert result.master_test.passed and result.master_test.residual_db < -100
     # the Master limiter is in the original render but not in the pre-master one
     a, _ = sf.read(result.wav("original"))
     b, _ = sf.read(result.wav("premaster"))
@@ -170,6 +177,29 @@ def test_render_pipeline_reproduces_the_mix(session, tmp_path):
     result2 = render_project(session, again, timeout_s=120)
     assert again.calls == 0
     assert {j.status for j in result2.jobs} == {"resumed"} and result2.ok
+
+
+def test_unfaithful_reinjection_is_refused(session, monkeypatch):
+    monkeypatch.setenv("EDEN_SIM_DISTORT_MIX", "1")
+    result = render_project(session, sim_renderer(), timeout_s=120)
+    assert result.stems_ok  # the stems themselves are fine
+    assert not result.calibration.passed and not result.master_ok and not result.ok
+    assert any("réinjection" in w for w in result.warnings)
+
+
+def test_reinjection_copy_structure(session, tmp_path):
+    from eden.render.master import MIX_CHANNEL_NAME, reinjection_copy
+
+    report = _report(session)
+    mix = session.parent / "Beat.wav"
+    p = parse_bytes(reinjection_copy(session.read_bytes(), report, {}, mix, False))
+    new = p.channels[-1]
+    assert (new.name, new.insert, new.enabled, new.sample_path) == (MIX_CHANNEL_NAME, 0, True, str(mix))
+    assert len(p.channels) == 5 and all(c.enabled is False for c in p.channels[:4])
+    clip = next(c for c in p.arrangements[0].clips if c.source_index == new.index)
+    assert clip.position_ticks == 0 and clip.track == 500
+    assert clip.length_seconds >= 4.0
+    assert p.insert(0).effects_enabled is True and p.insert(0).slots  # Master chain intact
 
 
 def test_wrong_stem_split_is_caught(session, monkeypatch):
@@ -265,3 +295,19 @@ def test_cli_render_requires_probe(session, capsys):
 
     assert main(["render", str(session)]) == 2
     assert "fl-probe" in capsys.readouterr().err
+
+
+def test_add_mix_channel_on_real_project(real_flp):
+    ed = FlpEditor(real_flp.read_bytes())
+    assert ed.audio_channel_templates() == [11]  # "22in Kick", the only plain audio channel
+    new = ed.add_audio_channel(r"C:\Eden\mix.wav", "Eden - mix")
+    track = ed.add_playlist_clip(new, 0, 96 * 4 * 8)
+    p = parse_bytes(ed.to_bytes())
+    assert new == 19 and len(p.channels) == 20 == p.header_channel_count
+    ch = p.channel(19)
+    assert (ch.name, ch.sample_path, ch.insert, ch.volume_raw) == ("Eden - mix", r"C:\Eden\mix.wav", 0, 10000)
+    assert p.channel(11).sample_path.endswith("22in Kick.wav")  # template untouched
+    clips = [c for c in p.arrangements[0].clips if c.source == "channel" and c.source_index == 19]
+    assert len(clips) == 1 and clips[0].track == track == 500
+    assert len(p.arrangements[0].clips) == 23
+    assert not p.warnings
