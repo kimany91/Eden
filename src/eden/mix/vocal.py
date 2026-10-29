@@ -49,7 +49,11 @@ PROFILES = {
 }
 TAIL_SAFE_MAX_REDUCTION_DB = 3.0
 HIGHPASS_TRIGGER_DB = -32.0  # energy an octave under the planned cut, re. the whole voice (Eden's choice)
-LOW_MID_MIN_DB = 2.5  # lift of the harmonics over 1/3 octave that makes a low-mid bump (Eden's choice)
+HIGHPASS_REST_TRIGGER_DB = -40.0  # power under the planned cut in the rests, re. the sung voice (Eden's choice)
+# lift of the harmonics over 1/3 octave that makes a low-mid bump (Eden's choice): +6 dB bumps at 200–400 Hz
+# read 2.97 dB or more on the test voices (seeds 1–8); clean voices whose lowest notes are 220–250 Hz, with
+# mud over 6 dB, read 2.76 dB at most (docs/mixage.md: on another seed they can read 3.6 dB)
+LOW_MID_MIN_DB = 2.85
 
 
 def tail_hold(m: VocalMeasure, x: np.ndarray, fs: float, tempo_bpm: float | None = None) -> np.ndarray:
@@ -88,21 +92,30 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
     out: list[Treatment] = []
 
     # 1. high-pass: never above the lowest sustained note of the voice, and only when something sounds
-    #    an octave under the planned cut, where the filter takes 12 dB or more: rumble or plosives.
-    #    Just under the cut the voice itself still sounds (notes below its 5th percentile, the
-    #    syllables' onsets around its fundamental), so the trigger is not read there
+    #    under the planned cut. While the voice sings, it is read an octave under the cut, where the
+    #    filter takes 12 dB or more (rumble, plosives): just under the cut the voice itself still
+    #    sounds (notes below its 5th percentile, the syllables' onsets around its fundamental). In the
+    #    rests between phrases the voice is silent, so whatever sounds under the cut is noise (rumble,
+    #    handling): read up to the cut, it catches a rumble too weak to stand out of the voice's own
+    #    attacks while it sings
     hp = profile.highpass_hz
     if m.lowest_f0_hz:
         hp = min(hp, 0.9 * m.lowest_f0_hz)
-    lows = m.energy_below_db(hp / 2)
-    if lows > HIGHPASS_TRIGGER_DB:
+    sung_lows, rest_lows = m.energy_below_db(hp / 2), m.rest_energy_below_db(hp)
+    found = []
+    if sung_lows > HIGHPASS_TRIGGER_DB:
+        found.append(f"grondement ou plosives pendant le chant : {sung_lows:.0f} dB de l'énergie de la voix "
+                     f"sous {hp / 2:.0f} Hz (une octave sous {hp:.0f} Hz, la coupe à 100 %)")
+    if rest_lows > HIGHPASS_REST_TRIGGER_DB:
+        found.append(f"bruit grave dans les silences entre les phrases (grondement, manipulation du micro) : "
+                     f"{rest_lows:.0f} dB sous {hp:.0f} Hz (la coupe à 100 %) par rapport à la voix chantée")
+    if found:
         freq = max(20.0, hp * k)
-        out.append(Treatment(
-            "highpass", f"Coupe-bas {freq:.0f} Hz",
-            f"Grondement ou plosives : {lows:.0f} dB de l'énergie de la voix sous {hp / 2:.0f} Hz "
-            f"(une octave sous {hp:.0f} Hz, la coupe à 100 %)"
-            + (f" ; note la plus grave {m.lowest_f0_hz:.0f} Hz" if m.lowest_f0_hz else ""),
-            {"freq_hz": freq, "q": 0.7071}))
+        if m.lowest_f0_hz:
+            found.append(f"note la plus grave {m.lowest_f0_hz:.0f} Hz")
+        reason = " ; ".join(found)
+        out.append(Treatment("highpass", f"Coupe-bas {freq:.0f} Hz", reason[0].upper() + reason[1:],
+                             {"freq_hz": freq, "q": 0.7071}))
 
     # 2. fixed resonances (room, microphone)
     for r in m.resonances:
