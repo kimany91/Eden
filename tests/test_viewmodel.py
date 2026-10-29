@@ -47,9 +47,10 @@ def test_mix_view_and_versions(tmp_path):
     lead = next(p for p in view["parts"] if p["label"] == "Lead")
     assert lead["role"] == "Voix principale" and all(t["reason"] for t in lead["treatments"])
     assert any("gardés tels quels" in n for n in lead["notes"])  # FL reverb rendered apart
-    # the 808 is also sent to the vocal bus: that part of the beat sits in the rest of the mix, carved too
-    assert [p["roleKey"] for p in view["parts"][2:]] == ["bass", "beat", "residual"]
-    assert view["parts"][-1]["role"] == "Reste du mix" and view["parts"][-1]["treatments"]
+    # the 808 is also sent to the vocal bus, but the toy beat's tones cover the voices by more than 12 dB, where
+    # a dip uncovers nothing: nothing is carved, so the rest of the mix has no line (a carved one is shown:
+    # test_engine_mix.test_a_beat_that_shares_a_bus_with_the_voices_is_carved_and_shown)
+    assert [p["roleKey"] for p in view["parts"][2:]] == ["bass", "beat"]
     assert any(line.startswith("Tempo : 120") for line in view["song"])
     assert view["master"] and view["platforms"][0]["heard"].endswith("LUFS") and len(view["checks"]) == 3
     versions = viewmodel.versions_view(list_versions(project))
