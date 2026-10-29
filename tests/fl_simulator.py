@@ -18,6 +18,10 @@ Environment switches used by tests:
   EDEN_SIM_ACCEPT=<flag>   only accept this syntax ("project" or "folder")
   EDEN_SIM_CUT_TAIL=1      stop exactly at the last clip (FL's "cut remainder"), instead
                            of leaving one second for echoes and reverbs to ring out
+  EDEN_SIM_IGNORE_SLOTS=1  behave as if FL ignored the slot on/off records (a bypassed
+                           effect still plays)
+  EDEN_SIM_WET_REVERB=1    reverb slots give their tail only (100 % wet, as set on an
+                           effect return)
 """
 
 from __future__ import annotations
@@ -55,13 +59,15 @@ def effect(slot, x: np.ndarray) -> np.ndarray:
     if category == "delay":
         return x + sum(0.5 ** k * shifted(x, 0.25 * k) for k in (1, 2, 3))
     if category == "reverb":
-        return x + sum(0.3 * 0.7 ** k * shifted(x, 0.031 * k) for k in range(1, 12))
+        tail = sum(0.3 * 0.7 ** k * shifted(x, 0.031 * k) for k in range(1, 12))
+        return tail if os.environ.get("EDEN_SIM_WET_REVERB") == "1" else x + tail
     return np.tanh(1.5 * x) / 1.5  # stands for any non-linear plugin
 
 
 def render(project_path: Path) -> np.ndarray:
     p = parse_bytes(project_path.read_bytes())
     ignore_mute = os.environ.get("EDEN_SIM_IGNORE_MUTE") == "1"
+    ignore_slots = os.environ.get("EDEN_SIM_IGNORE_SLOTS") == "1"
     end = max((c.position_ticks + c.length_ticks for a in p.arrangements for c in a.clips), default=0)
     remainder = 0.0 if os.environ.get("EDEN_SIM_CUT_TAIL") == "1" else 1.0
     frames = int(((p.ticks_to_seconds(end) or 2.0) + remainder) * SR)
@@ -96,7 +102,7 @@ def render(project_path: Path) -> np.ndarray:
             return np.zeros((frames, 2))
         if ins.effects_enabled is not False:
             for slot in ins.slots:
-                if slot.enabled is not False:
+                if slot.enabled is not False or ignore_slots:
                     x = effect(slot, x)
         return x * ((ins.volume_raw if ins.volume_raw is not None else 12800) / 12800)
 

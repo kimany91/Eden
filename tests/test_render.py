@@ -216,14 +216,15 @@ def test_dry_edits_mute_a_whole_return_and_need_every_slot_state():
         MixerInsert(1, "Lead", slots=[tune], routes=[Route(0), Route(2, 6400)]),
         MixerInsert(2, "Rev", routes=[Route(0)], slots=[MixerSlot(0, PluginInfo("Fruity Reeverb 2"), enabled=True),
                                                         MixerSlot(1, PluginInfo("Fruity Limiter"), enabled=True)])])
-    assert _dry_edits(ducked, lead(ducked)) == ([2], [], True)
+    assert _dry_edits(ducked, lead(ducked)) == ([2], [], None)
     # a reverb whose on/off state FL did not store cannot be bypassed: no dry render is trusted
     unknown = FlpProject(inserts=[
         MixerInsert(0, "Master", routes=[]),
         MixerInsert(1, "Lead", routes=[Route(0)], slots=[
             tune, MixerSlot(1, PluginInfo("Fruity Reeverb 2"), enabled=None),
             MixerSlot(2, PluginInfo("Fruity Delay 3"), enabled=True)])])
-    assert _dry_edits(unknown, lead(unknown)) == ([], [(1, 2)], False)
+    returns, slots, left_in = _dry_edits(unknown, lead(unknown))
+    assert (returns, slots) == ([], [(1, 2)]) and "« Fruity Reeverb 2 »" in left_in
 
 
 def test_editor_bypasses_one_slot(tmp_path):

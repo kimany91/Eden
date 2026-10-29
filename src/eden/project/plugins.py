@@ -22,9 +22,13 @@ _RULES: list[tuple[str, tuple[str, ...]]] = [
     ("de_esser", ("de-?ess", "pro-ds", "sibilance")),
     ("reverb", (
         "reverb", "reeverb", "valhalla(?!.*delay)", "verb", "raum", "pro-r", "room", "plate",
-        "convolver", "seventh heaven", "h-reverb",
+        "convolver", "seventh heaven", "h-reverb", "blackhole", r"emt ?\d", "lexicon", r"\bpcm\b",
+        "chamber", "shimmer", "spring", r"\brev\b", r"\bir-?1\b",
     )),
-    ("delay", ("delay", "echo", "echoboy", "timeless", "h-delay", "manny marroquin delay")),
+    ("delay", (
+        "delay", "echo", "echoboy", "timeless", "h-delay", "manny marroquin delay", "primaltap",
+        "supertap", "replika", "crystallizer", "tal-dub", "ohmboyz", "cla epic",
+    )),
     ("compressor", (
         "compressor", "comp", "limiter", "cla-76", "cla-2a", "1176", "la-2a", "rcompressor",
         "pro-c", "pro-l", "maxim", "multiband", r"\bott\b", "vulf", "rvox", "renaissance vox",

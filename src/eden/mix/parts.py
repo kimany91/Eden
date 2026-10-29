@@ -31,6 +31,7 @@ from eden.project.inspector import InspectionReport
 from eden.render.pipeline import RenderResult
 
 VOCAL_ROLES = {"lead_vocal", "vocal", "double", "back_vocal", "adlib"}
+DRY_LAG_SEARCH_S = 0.1  # how far FL's delay compensation may have moved the dry voice (choix d'Eden)
 
 
 class PartsError(RuntimeError):
@@ -84,13 +85,38 @@ def _group_role(roles: list[str]) -> str:
     return Counter(roles).most_common(1)[0][0] if roles else "unknown"
 
 
+def _lag_correlation(f: np.ndarray, d: np.ndarray, lag: int) -> np.ndarray:
+    """``sum f[n + k] · d[n]`` for every k from −lag to +lag.
+
+    Computed one block of ``d`` at a time with FFTs a few times ``2·lag`` long,
+    so the memory it takes does not grow with the song.
+    """
+    nf = 1 << max(17, (8 * lag).bit_length())
+    block = nf - 2 * lag
+    out = np.zeros(2 * lag + 1)
+    for start in range(0, d.size, block):
+        db = d[start:start + block]
+        lo = start - lag  # the stretch of f that this block meets: [lo, lo + block + 2·lag)
+        fb = f[max(0, lo):max(0, lo + db.size + 2 * lag)]
+        fb = np.concatenate([np.zeros(max(0, -lo)), fb])
+        out += np.fft.irfft(np.fft.rfft(fb, nf) * np.conj(np.fft.rfft(db, nf)), nf)[:2 * lag + 1]
+    return out
+
+
 def dry_render_problem(full: np.ndarray, dry: np.ndarray, fs: float) -> str | None:
     """Why FL's dry render cannot be trusted as "the voice without its effects", or None.
 
-    On the moments the voice sings, the dry render must line up with the full
-    one (a plugin bypassed in the copy can change FL's delay compensation),
-    and what the effects add must neither be a copy of the voice (a return
-    that let the dry send through, a plugin whose dry/wet knob also lowers the voice) nor louder than the voice itself.
+    FL must have removed something (an effect it did not bypass, or one that
+    was not heard, leaves the dry render equal to the full one). On the
+    moments the voice sings, the dry render must line up with the full one
+    to 2 samples (a plugin bypassed in the copy can change FL's delay
+    compensation, by whole blocks of 32 samples and more): the lag is
+    searched up to ``DRY_LAG_SEARCH_S`` either way, and the dry voice must be
+    found at that lag at no less than half the level of the quieter of the
+    two renders, otherwise it lies further away. What the effects add must
+    neither be a copy of the voice (a return that let the dry send through,
+    a plugin whose dry/wet knob also lowers the voice) nor louder than the
+    voice itself.
     """
     f = full.mean(axis=1) if full.ndim == 2 else full
     d = dry.mean(axis=1) if dry.ndim == 2 else dry
@@ -100,18 +126,21 @@ def dry_render_problem(full: np.ndarray, dry: np.ndarray, fs: float) -> str | No
     active = np.repeat(level > float(np.percentile(level, 95)) - 30.0, size)
     mask = np.pad(active, (0, max(0, d.size - active.size)))[:d.size]
     fm, dm = f * mask, d * mask
-    lag = int(0.01 * fs)
-    nfft = 1 << int(np.ceil(np.log2(2 * d.size)))
-    xc = np.fft.irfft(np.fft.rfft(fm, nfft) * np.conj(np.fft.rfft(dm, nfft)), nfft)
-    near = np.concatenate([xc[-lag:], xc[:lag + 1]])
-    best = int(np.argmax(near)) - lag
-    if abs(best) > 2:  # delay-compensation changes move whole blocks (32 samples and more)
+    e_full, e_dry = float(np.dot(fm, fm)), float(np.dot(dm, dm))
+    if e_dry <= 0:
+        return "elle est muette"
+    window = int(round(DRY_LAG_SEARCH_S * fs))
+    near = _lag_correlation(fm, dm, window + 1)  # one sample further: a lag beyond the window shows
+    best = int(np.argmax(near)) - window - 1
+    if near[best + window + 1] < 0.5 * np.sqrt(e_dry * min(e_dry, e_full)) or abs(best) > window:
+        return f"décalée de plus de {DRY_LAG_SEARCH_S * 1000:.0f} ms"
+    if abs(best) > 2:
         return f"décalée de {abs(best) / fs * 1000:.1f} ms"
     space = fm - dm
-    e_dry, e_space = float(np.dot(dm, dm)), float(np.dot(space, space))
-    if e_dry <= 0:
-        return None
-    corr = float(np.dot(space, dm)) / np.sqrt(e_dry * e_space) if e_space > 0 else 0.0
+    e_space = float(np.dot(space, space))
+    if e_space <= 1e-6 * e_dry:
+        return "FL Studio n'a rien retiré (effets coupés non respectés ou inaudibles)"
+    corr = float(np.dot(space, dm)) / np.sqrt(e_dry * e_space)
     if abs(corr) > 0.5:
         return "la voix elle-même reste dans la part des effets (retour d'effet ou réglage dry/wet d'un plugin)"
     if e_space > e_dry:

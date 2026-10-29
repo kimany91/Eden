@@ -37,7 +37,6 @@ STEPS = (
     "Mastering Eden",
     "Vérification du résultat final",
 )
-SPACE_CATEGORIES = {"reverb", "delay"}
 
 
 class MixError(RuntimeError):
@@ -80,12 +79,16 @@ def stats(path: Path) -> AudioStats:
 
 
 def fl_space_status(report: InspectionReport, parts: Parts) -> dict[str, str]:
-    """Per voice: none (no FL reverb/delay), tracked (rendered apart) or untracked."""
+    """Per voice: none (no FL reverb/delay), tracked (rendered apart) or untracked.
+
+    The reverbs and delays are the source's ``space_effects``: an unidentified plugin on an
+    insert named like an effect return counts, so Eden adds no space of its own on top of it.
+    """
     sources = {f"ch{s.channel}": s for s in report.sources}
     status = {}
     for v in parts.voices:
         s = sources.get(v.key)
-        has_space = bool(s and any(e.active and e.category in SPACE_CATEGORIES for e in s.existing_effects))
+        has_space = bool(s and s.space_effects)
         status[v.key] = "tracked" if v.dry is not None else ("untracked" if has_space else "none")
     return status
 
