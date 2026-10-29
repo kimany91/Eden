@@ -91,22 +91,33 @@ principal → gain de compensation.
 Chaque étape a sa mesure déclencheuse et son plafond. Les étapes dynamiques fixent leur seuil
 **sur le signal qu'elles reçoivent vraiment** (après les étapes d'avant) ; une étape qui ne
 réduirait nulle part plus de 0,3 dB n'est pas appliquée et n'apparaît pas dans le rapport.
-Une voix propre ne reçoit que la saturation, plus la compression des crêtes si ses attaques
-dépassent.
+Une voix propre reçoit la saturation, plus le recul des aigus si c'est un doublage, un chœur ou
+un ad-lib ; si ses attaques dépassent son corps (facteur de crête > 9 dB), la compression des
+crêtes, et au-delà de 12 dB (voix principale et ad-libs) la compression parallèle ; le gain de
+compensation suit dès qu'un compresseur ou un de-esser a agi.
+
+Les mesures se font canal par canal, puissances moyennées (comme la mesure de volume) : une
+voix élargie dans FL (un côté retardé, polarité inversée) est mesurée comme on l'entend, pas
+repliée en mono, ce qui creuserait des trous et des bosses en peigne. « Chant » = les trames
+de 1 ms à moins de 35 dB des passages forts ; seul le silence numérique (sous −90 dBFS) est
+écarté d'office, si bien qu'une voix rendue plus bas est mesurée de la même façon. Les
+« notes tenues » sont les demi-tons qui portent plus de 30 % des trames de 40 ms où la voix
+a une hauteur nette (**choix d'Eden**) : ni résonance ni bosse n'est cherchée à moins
+d'1/6 d'octave d'une note tenue ou de son octave.
 
 | Étape | Mesure | Eden agit si… | Traitement à 100 % | Statut |
 |---|---|---|---|---|
-| Coupe-bas | énergie < 70 Hz (lead) ou < 120 Hz (autres) ; note la plus grave (5ᵉ centile du F0) | > −25 dB de l'énergie | 80 Hz lead, 130 Hz doublages / ad-libs, 160 Hz chœurs, **jamais au-dessus de 0,9 × la note la plus grave** | fréquences non vérifiées (Jaycen Joshua ~50 Hz, Lil Baby ~70 Hz) ; « coupe-bas partout » est une idée fausse (Pestana & Reiss 2014) : d'où le déclencheur ; règle du F0 : choix d'Eden |
-| Résonances fixes | bosses de l'enveloppe LPC moyenne (les notes et l'Auto-Tune ne la déclenchent pas) | ≥ 4,5 dB au-dessus du voisinage | coupes étroites (Q 6), −4 dB max | atténuer les résonances saillantes : sourcé (Pestana & Reiss 2014) ; seuils : choix d'Eden |
-| Bas-médiums | bosse de l'enveloppe entre 150 et 500 Hz, et 200–500 Hz vs 1–4 kHz | bosse ≥ 2 dB et écart > 6 dB | −2,5 à −4 dB, Q 1,2, à la fréquence de la bosse | une coupe aveugle des bas-médiums n'est **pas** une pratique d'expert (Pestana & Reiss 2014, sourcé) : seulement sur une vraie bosse |
-| De-esser léger | niveau des « s » les plus forts vs voyelles ; pic spectral des « s » | « s » à moins de 1 dB sous les voyelles | seuil = voyelles − 2 dB, 3 dB max, bande dès 0,7 × le pic des « s » (3,5–8 kHz), anticipation 5 ms | deux de-essers (avant / après compression) : non vérifié (Senior) |
-| Compression de niveau | écart P90 − P10 des blocs de 400 ms **à l'intérieur des phrases** | > 4 dB | 2:1 à 3:1, attaque 10 ms, relâchement 60 ms puis 800 ms après 200 ms de réduction (type opto), seuil pour 3 dB sur le P90 du chant | chiffres non vérifiés (SOS, LA-2A) ; choix d'Eden |
+| Coupe-bas | énergie **une octave sous la coupe prévue**, là où le filtre retire 12 dB ou plus (spectre au hertz près) ; note la plus grave (5ᵉ centile du F0) | > −32 dB de l'énergie de la voix | 80 Hz lead, 130 Hz doublages / ad-libs, 160 Hz chœurs, **jamais au-dessus de 0,9 × la note la plus grave** | fréquences non vérifiées (Jaycen Joshua ~50 Hz, Lil Baby ~70 Hz) ; « coupe-bas partout » est une idée fausse (Pestana & Reiss 2014) : d'où le déclencheur ; règle du F0, mesure et seuil : choix d'Eden (juste sous la coupe, la voix elle-même sonne encore : notes sous le 5ᵉ centile, attaques des syllabes. Voix de test : propres, −33,9 dB au plus ; avec un grondement à −54 dBFS RMS, −31,5 dB au moins ; un grondement plus faible ne se distingue pas des attaques d'une voix grave) |
+| Résonances fixes | 150–2000 Hz : chaque harmonique du chant comparée à la droite (dB contre log f) de ses voisines au même instant, jusqu'à une octave de chaque côté, en moyenne sur le chant (une fondamentale n'a pas de voisine en dessous : les notes ne sont jamais jugées) ; 2–8 kHz : enveloppe LPC moyenne | 150–2000 Hz : ≥ 4,5 dB sur 1/8 d'octave **et** 4,5 dB au-dessus des bandes à 1/6–1/3 d'octave (un formant de voyelle bouge et s'étale) ; 2–8 kHz : ≥ 4,5 dB au-dessus de la moyenne sur une octave ; pas sur une note tenue | coupes étroites (Q 6), −4 dB max, 3 au plus, à 1/3 d'octave l'une de l'autre au moins | atténuer les résonances saillantes : sourcé (Pestana & Reiss 2014) ; méthode et seuils : choix d'Eden |
+| Bas-médiums | même mesure des harmoniques, moyennée sur un tiers d'octave, entre 150 et 500 Hz, seulement là où des harmoniques ont été mesurées (à 1/16 d'octave près) ; et 200–500 Hz vs 1–4 kHz (spectre moyen) | bosse ≥ 2,5 dB et écart > 6 dB, pas sur une note tenue, ni à moins d'1/3 d'octave d'une coupe de résonance | −2,9 à −4 dB, Q 1,2, à la fréquence de la bosse | une coupe aveugle des bas-médiums n'est **pas** une pratique d'expert (Pestana & Reiss 2014, sourcé) : seulement sur une vraie bosse ; seuils : choix d'Eden |
+| De-esser léger | niveau des « s » les plus forts (90ᵉ centile) **dans la bande du de-esser** vs voyelles (75ᵉ centile) : ce que le de-esser compare à son seuil ; pic spectral des « s » | « s » à moins de 1 dB sous les voyelles | seuil = voyelles − 2 dB, 3 dB max, bande dès 0,7 × le pic des « s » (3,5–8 kHz ; 4,5 kHz sans pic mesuré), anticipation 5 ms | deux de-essers (avant / après compression) : non vérifié (Senior) |
+| Compression de niveau | écart P90 − P10 des blocs de 400 ms **à l'intérieur des phrases** | > 4 dB | 1,5:1 (écart de 4 dB) à 3:1 (10 dB et plus), attaque 10 ms, relâchement 60 ms puis 800 ms après 200 ms de réduction (type opto), seuil pour 3 dB sur le P90 du chant | chiffres non vérifiés (SOS, LA-2A) ; choix d'Eden |
 | Compression des crêtes | facteur de crête | > 9 dB | 4:1, attaque 2 ms, relâchement 80 ms, 6 dB max, 3 dB sur le P97 | non vérifié (1176) ; choix d'Eden |
-| Parallèle | facteur de crête | > 12 dB (jamais sur une voix prudente) | copie 8:1, 100 Hz – 5 kHz, mélangée à 20 % (ad-libs 10 %), alignée à l'échantillon | pratique non vérifiée (bus parallèle des sessions rap) |
+| Parallèle | facteur de crête | > 12 dB, voix principale et ad-libs (jamais sur une voix prudente) | copie 8:1, 100 Hz – 5 kHz, mélangée à 20 % (ad-libs 10 %), alignée à l'échantillon | pratique non vérifiée (bus parallèle des sessions rap) |
 | Saturation | — | toujours | tanh suréchantillonné ×4, de 200 Hz jusqu'au début de la bande des « s », 15 % (ad-libs 20 %, autres 10 %), même couleur quel que soit le volume rendu | non vérifié ; choix d'Eden |
 | Air | > 8 kHz vs 2–5 kHz sur les voyelles | < −25 dB | +1,5 dB au-dessus de 10 kHz | choix d'Eden |
 | Recul | — (doublages, chœurs, ad-libs) | toujours | −1,5 à −2 dB au-dessus de 7 kHz | choix d'Eden |
-| De-esser principal | « s » vs voyelles | « s » à moins de 5 dB sous les voyelles | seuil = voyelles − 6 dB, 2 à 6 dB (lead), jusqu'à 8 dB (autres), même bande | non vérifié (Pro-DS en fin de chaîne) |
+| De-esser principal | « s » dans la bande du de-esser vs voyelles | « s » à moins de 5 dB sous les voyelles | seuil = voyelles − 6 dB, 2 à 6 dB (lead), jusqu'à 8 dB (autres), même bande | non vérifié (Pro-DS en fin de chaîne) |
 | Gain de compensation | volume BS.1770 avant / après la chaîne | dès qu'un compresseur ou un de-esser agit | rend à la voix le volume que la chaîne lui a pris | le niveau de la voix dans le mix est ensuite décidé sur une mesure, à un seul endroit |
 
 ## 3. Niveaux et suivi
