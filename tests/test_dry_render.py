@@ -223,6 +223,16 @@ def test_the_offset_of_a_shifted_dry_render_is_stated_right(shift, problem):
     assert dry_render_problem(full, np.roll(v, shift, axis=0), FS) == problem
 
 
+@pytest.mark.parametrize("kept,echo", [(0.5, 1.0), (0.3, 0.5)])
+def test_a_dry_wet_knob_that_lowers_the_voice_is_not_taken_for_an_offset(kept, echo):
+    # an in-line delay whose mix knob also lowers the voice: the dry render is in place,
+    # but the full one holds the voice at half its level or less
+    v = voice(12, seed=5)
+    full = kept * v + echo * np.roll(v, int(0.25 * FS), axis=0)
+    assert dry_render_problem(full, v, FS) == \
+        "la voix elle-même reste dans la part des effets (retour d'effet ou réglage dry/wet d'un plugin)"
+
+
 def test_a_dry_render_equal_to_the_full_one_is_refused():
     v = voice(6, seed=2)
     full = v + 0.3 * np.roll(v, int(0.25 * FS), axis=0)
@@ -291,5 +301,7 @@ def test_probe_without_reverb_or_delay_cannot_check_slots(tmp_path):
         Insert(name="Instru", routes=(0,))])
     res, settings = _probe(project, tmp_path)
     assert res.isolation_slots_ok is None and res.ok
-    assert any("non vérifié sur ce projet" in line for line in res.lines)
+    assert "Test d'isolation (slot d'effet contourné) : non vérifié sur ce projet (aucune piste de la " \
+           "playlist ne passe par une reverb ou un delay actif dont FL a enregistré l'état " \
+           "activé/désactivé)" in res.lines
     assert settings.render_args

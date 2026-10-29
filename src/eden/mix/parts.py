@@ -111,9 +111,11 @@ def dry_render_problem(full: np.ndarray, dry: np.ndarray, fs: float) -> str | No
     moments the voice sings, the dry render must line up with the full one
     to 2 samples (a plugin bypassed in the copy can change FL's delay
     compensation, by whole blocks of 32 samples and more): the lag is
-    searched up to ``DRY_LAG_SEARCH_S`` either way, and the dry voice must be
-    found at that lag at no less than half the level of the quieter of the
-    two renders, otherwise it lies further away. What the effects add must
+    searched up to ``DRY_LAG_SEARCH_S`` either way. When the best lag is
+    off by more than 2 samples and the dry voice is found there at less
+    than half the level of the quieter of the two renders, it lies further
+    away (within 2 samples, such a weak match means the effects lowered the
+    voice, which the checks below name). What the effects add must
     neither be a copy of the voice (a return that let the dry send through,
     a plugin whose dry/wet knob also lowers the voice) nor louder than the
     voice itself.
@@ -132,9 +134,9 @@ def dry_render_problem(full: np.ndarray, dry: np.ndarray, fs: float) -> str | No
     window = int(round(DRY_LAG_SEARCH_S * fs))
     near = _lag_correlation(fm, dm, window + 1)  # one sample further: a lag beyond the window shows
     best = int(np.argmax(near)) - window - 1
-    if near[best + window + 1] < 0.5 * np.sqrt(e_dry * min(e_dry, e_full)) or abs(best) > window:
-        return f"décalée de plus de {DRY_LAG_SEARCH_S * 1000:.0f} ms"
     if abs(best) > 2:
+        if abs(best) > window or near[best + window + 1] < 0.5 * np.sqrt(e_dry * min(e_dry, e_full)):
+            return f"décalée de plus de {DRY_LAG_SEARCH_S * 1000:.0f} ms"
         return f"décalée de {abs(best) / fs * 1000:.1f} ms"
     space = fm - dm
     e_space = float(np.dot(space, space))

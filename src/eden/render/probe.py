@@ -16,15 +16,11 @@ The working syntax is saved in Eden's settings only if every check that could ru
 
 from __future__ import annotations
 
-import math
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from pathlib import Path
 from collections.abc import Callable
-
-import numpy as np
-import soundfile as sf
 
 from eden.flp.edit import FlpEditor
 from eden.project.inspector import SPACE_CATEGORIES, ExistingEffect, SourceAnalysis, inspect_project
@@ -37,7 +33,7 @@ from eden.render.fl_studio import (
     fl_is_running,
 )
 from eden.render.pipeline import sample_repairs
-from eden.render.verify import check_audio
+from eden.render.verify import check_audio, null_test
 from eden.safety import Workspace, read_project_bytes
 from eden.settings import load_settings, save_settings
 
@@ -75,17 +71,6 @@ def _space_slot(project: FlpProject, sources: list[SourceAnalysis]) -> tuple[Sou
             if e.active and e.category in SPACE_CATEGORIES and slot is not None and slot.enabled is not None:
                 return s, e
     return None
-
-
-def _difference_db(reference: Path, other: Path) -> float:
-    """Level of ``other − reference`` against ``reference``, in dB (−inf when identical)."""
-    a, _ = sf.read(str(reference), dtype="float64", always_2d=True)
-    b, _ = sf.read(str(other), dtype="float64", always_2d=True)
-    n = max(a.shape[0], b.shape[0])
-    a = np.pad(a, ((0, n - a.shape[0]), (0, 0)))
-    b = np.pad(b, ((0, n - b.shape[0]), (0, 0)))
-    diff = float(np.sum((b - a) ** 2))
-    return 10 * math.log10(diff / float(np.sum(a ** 2))) if diff > 0 else -math.inf
 
 
 def probe_fl_studio(
@@ -217,8 +202,9 @@ def probe_fl_studio(
 
         found = _space_slot(report.project, sources)
         if found is None:
-            say("Test d'isolation (slot d'effet contourné) : non vérifié sur ce projet (aucune reverb "
-                "ni aucun delay actif dont FL a enregistré l'état activé/désactivé)")
+            say("Test d'isolation (slot d'effet contourné) : non vérifié sur ce projet (aucune piste de la "
+                "playlist ne passe par une reverb ou un delay actif dont FL a enregistré l'état "
+                "activé/désactivé)")
         else:
             s, fx = found
             what = f"slot d'effet contourné : « {fx.plugin} » sur « {fx.insert_label} », {s.label} seule"
@@ -242,10 +228,10 @@ def probe_fl_studio(
                 if check_audio(with_fx).silent:
                     say(f"Test d'isolation ({what}) : non vérifié sur ce projet (rendu silencieux)")
                 else:
-                    diff = _difference_db(with_fx, without)
-                    result.isolation_slots_ok = diff > SLOT_BYPASS_MIN_DB
+                    gap = null_test(with_fx, [without], SLOT_BYPASS_MIN_DB)  # the two must not null
+                    result.isolation_slots_ok = not gap.passed
                     say(f"Test d'isolation ({what}) : " + (
-                        f"le rendu change (écart de {diff:.1f} dB) ✔" if result.isolation_slots_ok else
+                        f"le rendu change (écart de {gap.residual_db:.1f} dB) ✔" if result.isolation_slots_ok else
                         f"le rendu ne change pas (écart sous {SLOT_BYPASS_MIN_DB:.0f} dB) ✘"))
 
         if result.ok:

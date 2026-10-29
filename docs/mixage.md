@@ -38,15 +38,16 @@ est marqué :
   (choix d'Eden), sinon les effets coupés n'ont pas été respectés ou ne s'entendaient pas.
   Elle doit aussi être calée sur la voix complète à 2 échantillons près (un plugin contourné
   peut changer la compensation de latence de FL) : le décalage est cherché jusqu'à 100 ms de
-  chaque côté (choix d'Eden) ; si la voix sèche ne s'y retrouve qu'au-delà, ou à moins de la
-  moitié du niveau du plus faible des deux rendus (choix d'Eden), Eden la dit « décalée de
-  plus de 100 ms ». La part des effets ne doit contenir ni la voix elle-même (un retour qui
-  laisse passer l'envoi sec, un plugin dont le bouton dry/wet baisse aussi la voix), ni être
-  plus forte que la voix. Sinon la voix sèche est écartée et Eden le dit. En amont,
-  `eden fl-probe` vérifie sur ton PC que FL respecte un slot d'effet désactivé (écart
-  au-dessus de −60 dB entre les rendus avec et sans l'effet), quand le projet testé a une
-  reverb ou un delay dont FL a enregistré l'état ; sinon ce point est noté « non vérifié sur
-  ce projet ».
+  chaque côté (choix d'Eden) ; si le meilleur décalage trouvé dépasse 100 ms, ou s'il
+  dépasse 2 échantillons et que la voix sèche n'y est qu'à moins de la moitié du niveau du
+  plus faible des deux rendus (choix d'Eden), Eden la dit « décalée de plus de 100 ms ».
+  La part des effets ne doit contenir ni la voix elle-même (un retour qui laisse passer
+  l'envoi sec, un plugin dont le bouton dry/wet baisse aussi la voix), ni être plus forte
+  que la voix. Sinon la voix sèche est écartée et Eden le dit. En amont, `eden fl-probe`
+  vérifie sur ton PC que FL respecte un slot d'effet désactivé (écart au-dessus de −60 dB
+  entre les rendus avec et sans l'effet, choix d'Eden), quand une piste de la playlist du
+  projet testé passe par une reverb ou un delay dont FL a enregistré l'état ; sinon ce
+  point est noté « non vérifié sur ce projet ».
 - **Voix « prudente »** : quand la séparation est impossible (état d'un slot non enregistré
   par FL, retours d'effet impossibles à distinguer, plugin non identifié sur le chemin de la
   voix) ou écartée, la réduction est limitée à 3 dB, sans compression parallèle, et le gain

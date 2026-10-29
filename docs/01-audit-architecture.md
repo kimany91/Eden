@@ -96,9 +96,9 @@ bus). Deux modes :
   bien respectées par FL Studio (canaux, inserts, envois vers le Master) et qu'un slot
   d'effet désactivé l'est vraiment (une piste rendue seule avec et sans sa reverb ou son
   delay : l'écart entre les deux rendus doit dépasser −60 dB), avant d'activer le rendu
-  automatique. Ce dernier test demande, dans le projet testé, une reverb ou un delay actif
-  dont FL a enregistré l'état activé/désactivé ; sans lui, il est noté « non vérifié sur ce
-  projet ».
+  automatique. Ce dernier test demande, dans le projet testé, une piste de la playlist qui
+  passe par une reverb ou un delay actif dont FL a enregistré l'état activé/désactivé ; sans
+  elle, il est noté « non vérifié sur ce projet ».
 - Plan B si la ligne de commande ne marche pas sur ta version : export guidé
   (« Split mixer tracks ») surveillé par Eden.
 
