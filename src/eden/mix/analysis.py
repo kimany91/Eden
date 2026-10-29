@@ -106,7 +106,7 @@ def sung_samples(x: np.ndarray, active: np.ndarray, size: int) -> np.ndarray:
 def _psd_db(sung: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray]:
     """Welch spectrum (dB) of every channel, their powers averaged (one channel at a time: Welch's
     overlapping frames take several times the signal's memory)."""
-    nper = min(8192, max(256, 1 << int(math.log2(max(sung.shape[0], 256)))))
+    nper = min(8192, max(256, 1 << int(math.log2(max(sung.shape[0], 256)))), max(sung.shape[0], 1))
     freqs, psd = welch(sung[:, 0], fs=fs, nperseg=nper)
     for c in range(1, sung.shape[1]):
         psd = psd + welch(sung[:, c], fs=fs, nperseg=nper)[1]
