@@ -125,7 +125,7 @@ d'1/6 d'octave d'une note tenue ou de son octave.
 - **Voix principale** : volume K-pondéré de la voix moins celui de l'instru, **pendant
   qu'elle chante** ; cible **+1 dB**, fenêtre −1 à +4 dB (**choix d'Eden**), changement
   statique 10 dB max (**choix d'Eden** : une voix brute posée sur une instru déjà masterisée
-  est souvent 10 dB en dessous). Repères : les experts placent la voix principale à peu près
+  peut se trouver 10 dB en dessous). Repères : les experts placent la voix principale à peu près
   au volume de tout le reste réuni (≈ 0 dB, Pestana & Reiss 2014, sourcé) ; les autres voix
   étant réglées ensuite vers −6 dB sous elle, +1 dB contre l'instru seule retombe près de
   0 dB contre tout le reste. La mesure BS.1770 lit une voix environ 2 LU plus bas qu'on ne
@@ -225,23 +225,26 @@ synthèse de la recherche ; niveaux : choix d'Eden) :
   3 dB sous la voix) à 3 dB (instru 3 dB au-dessus ou plus). Sont écartées celles que
   l'instru couvre de plus de 12 dB (un creux de 3 dB n'y découvre rien) et celles où la
   voix est à plus de 20 dB sous sa bande la plus forte (elle n'y a presque rien) : 12 et
-  20 dB, choix d'Eden. Les 3 bandes gardées sont celles où le creux rend le plus de
-  paroles audibles : importance de la bande pour l'intelligibilité (ANSI S3.5,
+  20 dB, choix d'Eden. Au plus 3 bandes sont gardées : celles où le creux rend le plus de
+  paroles audibles, soit l'importance de la bande pour l'intelligibilité (ANSI S3.5,
   1–4 kHz ≈ 72 % du poids, sourcé ; chaque tiers reçoit le tiers du poids de son octave)
-  × audibilité gagnée, l'audibilité d'une bande valant 0 quand la voix est 15 dB sous
+  × l'audibilité gagnée, l'audibilité d'une bande valant 0 quand la voix est 15 dB sous
   l'instru, 1 à partir de 15 dB au-dessus, et montant en ligne droite entre les deux
-  (ANSI S3.5, non vérifié sur le texte de la norme). Le creux ne joue que quand la voix
-  chante (méthode de Hafezi & Reiss 2015, sourcé). L'instru est creusée là où elle a été
-  mesurée : dans les groupes et dans le reste du mix (une instru qui passe par un bus
-  partagé avec les voix s'y retrouve). Quand des voix sont restées dans le reste du mix
-  (au-delà des 16 voix qu'Eden fait rendre une par une, ou dont le rendu a manqué), seuls
-  les groupes sont mesurés et creusés : creuser le reste baisserait aussi ces voix ; le
-  motif du creux le dit. Le creux est affiché sur les groupes, et sur une ligne « Reste du mix », quand ils
-  portent au moins 25 % de ce qu'il retire (choix d'Eden). Fait **avant** l'équilibre,
-  pour que la voix soit réglée sur l'instru telle qu'on l'entendra. Doublages, chœurs et
-  ad-libs baissent de 2 dB entre 1 et 4 kHz aux mêmes moments (choix d'Eden) : un doublage
-  chante sous la voix principale. Seule la voix baisse : ses reverbs et delays FL restent
-  tels quels.
+  (ANSI S3.5, non vérifié sur le texte de la norme). Dans les bandes retenues (instru de
+  3 dB sous la voix à 12 dB au-dessus), l'audibilité n'atteint jamais 0 ni 1 : l'audibilité
+  gagnée vaut la profondeur du creux divisée par 30, et le classement revient à importance
+  × profondeur. Le creux ne joue que quand la voix chante (méthode de Hafezi & Reiss 2015,
+  sourcé). L'instru est creusée là où elle a été mesurée : dans les groupes et dans le
+  reste du mix (une instru qui passe par un bus partagé avec les voix s'y retrouve). Quand
+  des voix sont restées dans le reste du mix (au-delà des 16 voix qu'Eden fait rendre une
+  par une), seuls les groupes sont mesurés et creusés : creuser le reste baisserait aussi
+  ces voix ; le motif du creux le dit. Le creux est affiché sur les groupes, et sur une
+  ligne « Reste du mix », quand ils portent au moins 25 % de ce qu'il retire (choix
+  d'Eden). Fait **avant** l'équilibre, pour que la voix soit réglée sur l'instru telle
+  qu'on l'entendra. Doublages, chœurs et ad-libs baissent de 2 dB entre 1 et 4 kHz aux
+  mêmes moments (choix d'Eden) : un doublage chante sous la voix principale. Seule la voix
+  baisse : ses reverbs et delays FL rendus à part restent tels quels (sur une voix
+  « prudente », ils sont dans la voix et baissent avec elle).
 - **Kick / 808** : si plus d'un kick sur deux (lus sur tous les groupes batterie réunis)
   tombe sur une note de 808 qui ne baisse pas déjà (< 2 dB), chaque groupe basse / 808 est
   baissé de 3 dB sous 100 Hz à chacun de ces kicks : descente en 5 ms

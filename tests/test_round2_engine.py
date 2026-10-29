@@ -166,6 +166,16 @@ def test_the_carve_skips_bands_a_dip_cannot_uncover_and_bands_without_voice():
     assert _thirds(values)[9].weight > _thirds(values)[12].weight > _thirds(values)[3].weight
 
 
+def test_in_the_bands_carved_the_audibility_gained_is_the_depth_over_30():
+    # instru from 3 dB under the voice to 12 dB over it, a dip of 1 to 3 dB at any intensity: the audibility
+    # never reaches 0 or 1, so the ranking is the band's importance times its depth (docs §6)
+    for masking in np.linspace(-2.99, engine.CARVE_MAX_MASKING_DB, 60):
+        for k in (0.05, 0.5, 1.0):
+            [(_, depth)] = engine._carve_bands([BandMasking(1782.0, 2245.0, masking, 0.0883, 0.0)], k)
+            gained = engine._audibility(-masking + depth) - engine._audibility(-masking)
+            assert gained == pytest.approx(depth / 30)
+
+
 def test_the_carve_reason_says_how_the_bands_were_chosen():
     instru = _keys(SECONDS) + _kicks(SECONDS)[0] + 3 * _hats(SECONDS) + 3 * _snare(SECONDS) + _808(SECONDS)
     lead = _against(voice(SECONDS, seed=11), instru, -2.0)

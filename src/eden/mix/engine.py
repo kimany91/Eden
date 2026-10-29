@@ -66,7 +66,7 @@ RELATIVE_TO_LEAD = {
 }
 MAX_LEVEL_CHANGE_DB = 4.0  # static level change of the other voices against the lead
 # static level change of a lead (or of leads that sing together) against the beat: a raw vocal over an
-# already mastered beat often sits 10 dB under it (choix d'Eden)
+# already mastered beat can sit 10 dB under it (choix d'Eden)
 MAX_LEAD_CHANGE_DB = 10.0
 MAX_CARVE_DB = 3.0  # dip of the beat in one band while the lead sings
 # bands left out of the carve (choix d'Eden): the beat covers the voice there by more than this, so a 1–3 dB
@@ -151,7 +151,8 @@ def _carve_bands(bands: list[BandMasking], k: float) -> list[tuple[BandMasking, 
     from 1 dB (beat 3 dB under the voice) to ``MAX_CARVE_DB`` (beat 3 dB over
     it and more), scaled by ``k``; the ones whose dip makes the most of the
     words audible are kept: the band's importance times the audibility the
-    dip gains (ANSI S3.5).
+    dip gains (ANSI S3.5). Within these bounds the audibility never reaches
+    0 or 1: the gain is the depth / 30.
     """
     candidates = []
     for b in bands:
