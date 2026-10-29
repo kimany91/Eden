@@ -168,7 +168,8 @@ def test_mix_page_flow(ui, tmp_path):
     assert [s["status"] for s in c.mixSteps] == ["done"] * 4
     first = c.mixResult["id"]
     assert c.mixResult["intensity"] == 60
-    assert c.mixResult["parts"][-1]["roleKey"] in ("beat", "bass")
+    # voices, then the groups, then the rest of the mix (the 808's send to the vocal bus), carved too
+    assert [p["roleKey"] for p in c.mixResult["parts"][2:]] == ["bass", "beat", "residual"]
     assert len(c.mixVersions) == 1
 
     c.intensity = 0.0
