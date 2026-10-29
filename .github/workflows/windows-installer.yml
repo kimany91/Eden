@@ -1,0 +1,109 @@
+name: Installateur Windows
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dépendances
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[gui]" pyinstaller pillow
+
+      - name: Version d'Eden
+        id: v
+        shell: pwsh
+        run: |
+          $v = python -c "import eden; print(eden.__version__)"
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Le tag correspond à la version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          if ("v${{ steps.v.outputs.version }}" -ne "${{ github.ref_name }}") {
+            throw "Le tag ${{ github.ref_name }} ne correspond pas à la version ${{ steps.v.outputs.version }}"
+          }
+
+      - name: Visuels de l'installateur et infos de version
+        run: python packaging/make_installer_art.py
+
+      - name: Application autonome (PyInstaller)
+        run: pyinstaller packaging/eden.spec --noconfirm
+
+      - name: Autotest de l'application construite
+        shell: pwsh
+        run: |
+          $log = "$env:RUNNER_TEMP\selftest-app.log"
+          $p = Start-Process -FilePath "dist\Eden\Eden.exe" -ArgumentList "--self-test", "`"$log`"" -Wait -PassThru
+          Get-Content $log
+          if ($p.ExitCode -ne 0) { throw "Autotest de l'application échoué" }
+
+      - name: Installateur (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=${{ steps.v.outputs.version }}" packaging\eden.iss
+          if ($LASTEXITCODE -ne 0) { throw "La création de l'installateur a échoué" }
+
+      - name: Test réel de l'installateur (installation, autotest, désinstallation)
+        shell: pwsh
+        run: |
+          $setup = "dist-installer\Eden-Setup-${{ steps.v.outputs.version }}.exe"
+          $dir = "$env:RUNNER_TEMP\EdenInstall"
+          $p = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOLAUNCH", "/TASKS=desktopicon", "/DIR=`"$dir`"", "/LOG=`"$env:RUNNER_TEMP\install.log`"" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\install.log"; throw "Installation échouée" }
+          if (-not (Test-Path "$dir\Eden.exe")) { throw "Eden.exe absent après installation" }
+          $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Eden.lnk"
+          $desk = [Environment]::GetFolderPath("Desktop") + "\Eden.lnk"
+          if (-not (Test-Path $menu)) { throw "Raccourci du menu Démarrer absent" }
+          if (-not (Test-Path $desk)) { throw "Raccourci du Bureau absent" }
+          $log = "$env:RUNNER_TEMP\selftest-installed.log"
+          $t = Start-Process -FilePath "$dir\Eden.exe" -ArgumentList "--self-test", "`"$log`"" -Wait -PassThru
+          Get-Content $log
+          if ($t.ExitCode -ne 0) { throw "Autotest de la version installée échoué" }
+          $u = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          Start-Sleep -Seconds 3
+          if (Test-Path "$dir\Eden.exe") { throw "La désinstallation n'a pas supprimé Eden" }
+          if (Test-Path $menu) { throw "La désinstallation n'a pas supprimé le raccourci" }
+          Write-Host "Installation, lancement et désinstallation vérifiés."
+
+      - name: Somme de contrôle (utilisée par les mises à jour automatiques)
+        shell: pwsh
+        run: |
+          Set-Location dist-installer
+          $f = Get-ChildItem "Eden-Setup-*.exe" | Select-Object -First 1
+          $h = (Get-FileHash $f.Name -Algorithm SHA256).Hash.ToLower()
+          "$h  $($f.Name)" | Out-File -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+          "{0:N1} Mo" -f ($f.Length / 1MB)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Eden-Setup-${{ steps.v.outputs.version }}
+          path: dist-installer/*
+          retention-days: 30
+
+      - name: Publier la version
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Eden ${{ steps.v.outputs.version }}
+          files: |
+            dist-installer/Eden-Setup-*.exe
+            dist-installer/SHA256SUMS.txt

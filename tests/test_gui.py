@@ -135,3 +135,15 @@ def test_missing_fl_studio_asks_for_its_location(ui, tmp_path, monkeypatch):
     from eden.settings import load_settings
 
     assert load_settings().fl_path == str(fake_fl) and c.needsFlPath is False
+
+
+def test_launcher_self_test(tmp_path):
+    import subprocess
+
+    log = tmp_path / "selftest.log"
+    env = dict(os.environ, EDEN_HOME=str(tmp_path / "home"))
+    proc = subprocess.run([sys.executable, "-m", "eden.launcher", "--self-test", str(log)],
+                          env=env, timeout=120)
+    text = log.read_text(encoding="utf-8")
+    assert proc.returncode == 0, text
+    assert "OK" in text and "libsndfile" in text

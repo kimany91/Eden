@@ -7,3 +7,7 @@ build/
 dist/
 .pytest_cache/
 tests/assets/external/
+dist/
+dist-installer/
+packaging/build-art/
+packaging/version_info.txt
