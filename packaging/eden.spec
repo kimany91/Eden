@@ -15,7 +15,7 @@ a = Analysis(
         "PySide6.QtQml", "PySide6.QtQuick", "PySide6.QtQuickControls2", "PySide6.QtSvg",
         "eden.gui.app", "eden.gui.controller", "eden.render.probe",
     ],
-    excludes=["tkinter", "matplotlib", "scipy", "PIL", "pytest", "PyInstaller"],
+    excludes=["tkinter", "matplotlib", "PIL", "pytest", "PyInstaller"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
