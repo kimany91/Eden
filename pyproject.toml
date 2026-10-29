@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eden"
+dynamic = ["version"]
+description = "Assistant de mixage automatique de voix rap pour projets FL Studio"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "soundfile>=0.12",
+  "packaging>=23",
+]
+
+[project.optional-dependencies]
+gui = ["PySide6-Essentials>=6.6"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+eden = "eden.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "eden.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
