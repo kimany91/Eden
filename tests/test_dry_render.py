@@ -67,14 +67,16 @@ def send_to_return(**reverb_insert):
             Insert(name="Instru", routes=(0,))]
 
 
-@pytest.mark.parametrize("reverb_insert", [{"enabled": False}, {"routes": ()}], ids=["muted", "routed-nowhere"])
-def test_a_reverb_return_fl_never_plays_is_not_a_space_effect(tmp_path, reverb_insert):
+@pytest.mark.parametrize("reverb_insert,shown", [({"enabled": False}, "inaudible (insert coupé)"),
+                                                  ({"routes": ()}, "inaudible (insert sans sortie vers le Master)")],
+                         ids=["muted", "routed-nowhere"])
+def test_a_reverb_return_fl_never_plays_is_not_a_space_effect(tmp_path, reverb_insert, shown):
     project = make_project(tmp_path / "Projet", send_to_return(**reverb_insert))
     report = _report(project)
     lead = report.sources[0]
     assert [(e.plugin, e.active) for e in lead.existing_effects if e.insert == 2] == [("Fruity Reeverb 2", False)]
     assert lead.space_effects == []
-    assert "Fruity Reeverb 2 [Reverb] — désactivé" in render_markdown(report)
+    assert f"Fruity Reeverb 2 [Reverb] — {shown}" in render_markdown(report)
     plan = plan_renders(report)
     assert not any(j.kind == "vocal_dry" for j in plan.jobs)
     result = render_project(project, sim_renderer(), timeout_s=120, report=report)

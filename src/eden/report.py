@@ -13,6 +13,14 @@ _SAMPLE_STATUS_FR = {
     "unreadable": "illisible",
 }
 
+# What the report and the interface say of an effect FL does not play (ExistingEffect.inactive_reason).
+INACTIVE_LABELS_FR = {
+    "off": "désactivé",
+    "mix_zero": "inaudible (mix à 0 %)",
+    "insert_muted": "inaudible (insert coupé)",
+    "no_output": "inaudible (insert sans sortie vers le Master)",
+}
+
 
 def _t(seconds: float | None) -> str:
     if seconds is None:
@@ -53,7 +61,7 @@ def _source_lines(s: SourceAnalysis) -> list[str]:
     if s.existing_effects:
         lines.append("- Effets déjà présents sur le chemin du signal :")
         for fx in s.existing_effects:
-            state = "" if fx.active else " — désactivé"
+            state = "" if fx.active else f" — {INACTIVE_LABELS_FR[fx.inactive_reason]}"
             lines.append(
                 f"  - {fx.insert_label} / slot {fx.slot + 1} : {fx.plugin} "
                 f"[{CATEGORY_LABELS_FR.get(fx.category, fx.category)}]{state}"

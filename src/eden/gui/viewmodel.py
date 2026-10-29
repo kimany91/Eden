@@ -12,6 +12,7 @@ from eden.project.inspector import InspectionReport, SourceAnalysis
 from eden.project.plugins import CATEGORY_LABELS_FR
 from eden.render.pipeline import RenderResult
 from eden.render.plan import RenderPlan
+from eden.report import INACTIVE_LABELS_FR
 
 def _time(seconds: float | None) -> str:
     if seconds is None:
@@ -47,7 +48,8 @@ def source_view(s: SourceAnalysis) -> dict:
         "span": f"{_time(s.first_seconds)} → {_time(s.last_seconds)}" if s.clip_count else "",
         "effects": [
             {"name": fx.plugin, "category": CATEGORY_LABELS_FR.get(fx.category, fx.category),
-             "categoryKey": fx.category, "active": fx.active, "where": fx.insert_label}
+             "categoryKey": fx.category, "active": fx.active, "where": fx.insert_label,
+             "inactive": "" if fx.active else INACTIVE_LABELS_FR[fx.inactive_reason]}
             for fx in s.existing_effects
         ],
     }

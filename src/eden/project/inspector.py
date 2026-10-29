@@ -62,6 +62,9 @@ class ExistingEffect:
     plugin: str
     category: str
     active: bool  # heard: slot on, dry/wet not at 0, insert and its effects on, insert reaching the Master
+    # Why it is not heard (None when active): "off" (its slot or its insert's effects switched off),
+    # "mix_zero" (dry/wet at 0), "insert_muted", "no_output" (the insert's output never reaches the Master).
+    inactive_reason: str | None
 
 
 @dataclass
@@ -154,19 +157,31 @@ def _signal_path(project: FlpProject, start: int) -> tuple[list[int], bool]:
 def _effects_on(project: FlpProject, inserts: list[int]) -> list[ExistingEffect]:
     """The effects of ``inserts``. One is active only when FL plays it: its slot is on with its
     dry/wet not at 0 (when stored), its insert and the insert's effects are on, and the insert's
-    output reaches the Master (a muted return, or one routed nowhere, is not heard)."""
+    output reaches the Master (a muted return, or one routed nowhere, is not heard). Otherwise
+    ``inactive_reason`` says why, the first that applies of: switched off (its slot or its
+    insert's effects), dry/wet at 0, insert muted, insert output that never reaches the Master."""
     out = []
     for idx in inserts:
         ins = project.insert(idx)
         if ins is None:
             continue
-        heard = ins.enabled is not False and ins.effects_enabled is not False and (
-            idx == MASTER_INSERT or _signal_path(project, idx)[1])
+        if ins.enabled is False:
+            insert_reason = "insert_muted"
+        elif idx != MASTER_INSERT and not _signal_path(project, idx)[1]:
+            insert_reason = "no_output"
+        else:
+            insert_reason = None
         for slot in ins.slots:
             category = categorize(slot.plugin)
             slot.plugin.category = category
-            active = heard and slot.enabled is not False and slot.mix_raw != 0
-            out.append(ExistingEffect(idx, ins.label, slot.index, slot.plugin.label, category, active))
+            if slot.enabled is False or ins.effects_enabled is False:
+                reason = "off"
+            elif slot.mix_raw == 0:
+                reason = "mix_zero"
+            else:
+                reason = insert_reason
+            out.append(ExistingEffect(idx, ins.label, slot.index, slot.plugin.label, category,
+                                      reason is None, reason))
     return out
 
 
