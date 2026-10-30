@@ -81,17 +81,26 @@ def stats(path: Path) -> AudioStats:
 
 
 def fl_space_status(report: InspectionReport, parts: Parts) -> dict[str, str]:
-    """Per voice: none (no FL reverb/delay), tracked (rendered apart) or untracked.
+    """Per voice: none (no FL reverb/delay), tracked (rendered apart), untracked (in its FL chain but
+    not rendered apart) or printed (the recording itself rings: a reverb or delay recorded into the
+    take). Eden adds space only to a voice with none, and never measures a printed one as dry.
 
-    The reverbs and delays are the source's ``space_effects``: an unidentified plugin on an
-    insert named like an effect return counts, so Eden adds no space of its own on top of it.
+    The reverbs and delays of the FL chain are the source's ``space_effects``: an unidentified
+    plugin on an insert named like an effect return counts, so Eden adds no space on top of it.
     """
-    sources = {f"ch{s.channel}": s for s in report.sources}
+    from eden.mix.space import RECORDED_RING_DB, recorded_space
+
+    sources = {s.channel: s for s in report.sources}
     status = {}
     for v in parts.voices:
-        s = sources.get(v.key)
-        has_space = bool(s and s.space_effects)
-        status[v.key] = "tracked" if v.dry is not None else ("untracked" if has_space else "none")
+        if v.dry is not None:
+            status[v.key] = "tracked"
+            continue
+        if any(sources[c].space_effects for c in v.channels if c in sources):
+            status[v.key] = "untracked"
+            continue
+        ring = recorded_space(v.audio, parts.sample_rate)
+        status[v.key] = "printed" if ring is not None and ring > RECORDED_RING_DB else "none"
     return status
 
 

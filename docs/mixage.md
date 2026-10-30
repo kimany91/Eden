@@ -132,6 +132,7 @@ d'1/6 d'octave d'une note tenue ou de son octave.
 
 | Étape | Mesure | Eden agit si… | Traitement à 100 % | Statut |
 |---|---|---|---|---|
+| Respirations | segments entre les phrases (lues sur la bande voisée 120 Hz – 3,5 kHz, à 60 ms au moins des phrases), 0,08 à 1,2 s, plus forts que le plancher (chant − 60 dB) et dont la bande de bruit (2–9 kHz) monte au niveau de la bande voisée (médiane ≥ −6 dB) : du souffle, pas une note ni un mot | une respiration détectée dépasse chant − 23 dB | ramenées à 22 dB sous le chant (P95), 15 dB de réduction max, fondus de 20 ms ; les plus douces ne bougent pas ; **avant toute compression**, qui les remonterait | pratique standard (Waves DeBreath, iZotope Breath Control mode Target : les fortes baissées, les douces laissées) ; seuils : choix d'Eden |
 | Coupe-bas | pendant le chant : énergie **une octave sous la coupe prévue**, là où le filtre retire 12 dB ou plus (spectre au hertz près) ; dans les **silences entre les phrases** (au moins 250 ms où la bande de la voix entre 100 et 500 Hz reste à 35 dB sous ses passages forts, silence numérique écarté ; lus par tranches de 250 ms, spectre tous les 4 Hz) : puissance **sous la coupe prévue** par rapport à la voix chantée ; note la plus grave (5ᵉ centile du F0) | > −32 dB de l'énergie de la voix pendant le chant, **ou** > −40 dB dans les silences | 80 Hz lead, 130 Hz doublages / ad-libs, 160 Hz chœurs, **jamais au-dessus de 0,9 × la note la plus grave** | fréquences non vérifiées (Jaycen Joshua ~50 Hz, Lil Baby ~70 Hz) ; « coupe-bas partout » est une idée fausse (Pestana & Reiss 2014) : d'où le déclencheur ; règle du F0, mesures et seuils : choix d'Eden (juste sous la coupe, la voix elle-même sonne encore pendant le chant : notes sous le 5ᵉ centile, attaques des syllabes ; dans les silences, elle se tait. Voix de test : propres, −33,9 dB au plus pendant le chant, et rien dans leurs silences (silence numérique) ; avec un grondement à −54 dBFS RMS, −31,5 dB au moins. Un grondement plus faible ne se distingue pas, pendant le chant, des attaques d'une voix grave : dans les silences (graines 1 à 8, voix normale et grave, lead, doublage et chœur), un grondement à −60 dBFS RMS lit −37,2 à −35,1 dB, coupé ; à −66 dBFS RMS, −43,2 à −41,2 dB, gardé ; un bruit de fond rose à −70 dBFS, −53,1 à −50,9 dB, et à −60 dBFS, −43,1 à −40,9 dB, gardés ; les queues d'une reverb FL de 1,5 s à −12 dB, −58,2 dB au plus) |
 | Résonances fixes | 150–2000 Hz : chaque harmonique du chant comparée à la droite (dB contre log f) de ses voisines au même instant, jusqu'à une octave de chaque côté, en moyenne sur le chant (une fondamentale n'a pas de voisine en dessous : les notes ne sont jamais jugées) ; 2–8 kHz : enveloppe LPC moyenne | 150–2000 Hz : ≥ 4,5 dB sur 1/8 d'octave **et** 4,5 dB au-dessus des bandes à 1/6–1/3 d'octave (un formant de voyelle bouge et s'étale) ; 2–8 kHz : ≥ 4,5 dB au-dessus de la moyenne sur une octave ; pas sur une note tenue | coupes étroites (Q 6), −4 dB max, 3 au plus, à 1/3 d'octave l'une de l'autre au moins | atténuer les résonances saillantes : sourcé (Pestana & Reiss 2014) ; méthode et seuils : choix d'Eden |
 | Bas-médiums | même mesure des harmoniques, moyennée sur un tiers d'octave, entre 150 et 500 Hz, seulement là où des harmoniques ont été mesurées (à 1/16 d'octave près), toutes notes confondues **et note par note** : les trames où la voix a une hauteur nette sont groupées en notes (l'étendue d'un demi-ton qui en réunit le plus forme une note, mise de côté avant de chercher la suivante : une note chantée entre deux demi-tons reste une seule note, avec son vibrato tant qu'il tient dans un demi-ton ; au-delà, elle compte pour deux) ; et 200–500 Hz vs 1–4 kHz (spectre moyen) | bosse ≥ 2,5 dB toutes notes confondues, **vue sur deux notes au moins** : chacune, sur ses propres harmoniques du tiers d'octave (20 au moins), les lève d'au moins 1,5 dB en moyenne et les place au-dessus de la droite de leurs voisines dans 90 % des cas au moins ; et écart > 6 dB ; pas sur une note tenue, ni à moins d'1/3 d'octave d'une coupe de résonance | −2,9 à −4 dB, Q 1,2, à la fréquence de la bosse | une coupe aveugle des bas-médiums n'est **pas** une pratique d'expert (Pestana & Reiss 2014, sourcé) : seulement sur une vraie bosse ; règle des deux notes et seuils : choix d'Eden. Une bosse fixe (effet de proximité, son de boîte) lève les harmoniques de chaque note, à chaque fois ; le premier formant des voyelles bouge d'une syllabe à l'autre. Voix de test, graines 1 à 20 : une bosse de +6 dB à 200, 300 ou 400 Hz lit 2,94 dB au moins, vue sur 2 à 6 notes, dont deux au moins au-dessus de la droite dans 100 % des cas (à 200 Hz, seules les notes de 98 et 110 Hz ont des harmoniques dans le tiers d'octave où elle est lue). Une voix propre dont les notes les plus graves sont entre 220 et 250 Hz, avec ou sans plateau de +1,4 à +3 dB sous 300 Hz, ne montre de bosse sur deux notes nulle part : la 2ᵉ harmonique de ses notes les plus graves tombe sur le premier formant des voyelles, juste sous 500 Hz, et lit jusqu'à 3,6 dB toutes notes confondues (sur la graine 11, huit de ces voix étaient coupées à tort avant cette règle), mais là où la bosse toutes notes confondues atteint 2,5 dB avec plus de 6 dB d'écart, une note n'est au-dessus de la droite que dans 85 % des cas au plus, et la deuxième dans 74 % au plus. Limites : une voix qui ne chante qu'une seule note dont les harmoniques tombent dans la bosse n'est pas corrigée (une coupe manquée coûte moins qu'une coupe à tort) ; sur la graine 11, la bosse de +6 dB à 400 Hz est lue à 456 Hz, où elle monte encore de 4,7 dB, et la coupe y garde 91 % de sa profondeur à 400 Hz ; la règle des 90 % n'est vérifiée que sur des voix de synthèse |
@@ -183,14 +184,23 @@ choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Dou
   est alors mesurée à nouveau pour l'avertissement.
 - **Suivi phrase par phrase** (« vocal riding », pratique d'expert sourcée : Pestana & Reiss
   2014) : phrases = plages de chant d'au moins 0,3 s séparées d'au moins une croche du tempo
-  ressenti ; l'instru est mesurée **au-dessus de 200 Hz**, la bande qui couvre les paroles (le
-  sub d'un 808 les masque à peine ; choix d'Eden) ; référence = l'équilibre médian de la voix
-  sur tout le morceau (pas une valeur fixe) ; une phrase à plus de 1,5 dB de cette référence
-  est ramenée, ±6 dB max (plage par défaut d'un Vocal Rider, non vérifié). La voix n'est
-  **jamais baissée parce que l'instru se retire** : une phrase où l'instru est à plus de 6 dB
-  sous sa phrase médiane (break, filtre, beat coupé pour une punchline) est laissée telle
-  quelle et ne compte pas dans la référence, et une phrase n'est baissée que de ce dont la voix
-  elle-même dépasse sa phrase médiane (6 dB et cette règle : choix d'Eden). Le gain tient
+  ressenti, lues sur la **bande voisée** de la voix (120 Hz – 3,5 kHz, là où vivent les
+  voyelles) : une respiration, la fuite du casque ou une queue d'effet n'y passent pas pour
+  une phrase — la détection de respiration qu'ont les Vocal Riders du commerce, pour ne
+  jamais remonter une respiration (choix d'Eden) ; une « phrase » à plus de 10 dB sous la
+  phrase médiane de la voix n'en est pas une (respiration, fuite) : laissée telle quelle.
+  L'instru est mesurée **au-dessus de 200 Hz**, la bande qui couvre les paroles (le sub d'un
+  808 les masque à peine ; choix d'Eden) ; référence = l'équilibre médian de la voix sur tout
+  le morceau (pas une valeur fixe) ; une phrase à plus de 2 dB de cette référence est
+  ramenée, ±4 dB max (sous la plage par défaut ±6 dB d'un Vocal Rider : le suivi ne doit
+  jamais s'entendre travailler ; choix d'Eden). **Chaque gain doit avoir sa cause dans le
+  signal** : une phrase n'est baissée que de ce dont la voix elle-même dépasse sa phrase
+  médiane (l'instru qui se retire n'est jamais une raison de baisser la voix), et n'est
+  montée que de ce dont la voix est sous sa médiane plus ce dont l'instru dépasse la sienne
+  (un écart sans cause mesurée — prises qui se chevauchent, mesure incertaine — ne bouge
+  pas). Une phrase où l'instru est à plus de 6 dB sous sa phrase médiane (break, filtre,
+  beat coupé pour une punchline) est laissée telle quelle et ne compte pas dans la
+  référence. Le gain tient
   pendant le silence et change dans les 120 ms qui précèdent la phrase suivante (les silences
   du rap durent le plus souvent une double croche, ~180 ms : MCFlow, non vérifié). Sur une voix
   dont les reverbs et delays FL ont été rendus à part, les phrases et leur niveau sont lus sur la
@@ -214,22 +224,30 @@ choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Dou
 
 ## 4. Espace
 
-Rien n'est ajouté à une voix qui porte déjà une reverb ou un delay FL. Pour les autres,
+Rien n'est ajouté à une voix qui porte déjà une reverb ou un delay FL, ni à une prise qui
+**sonne déjà réverbérée** : si, après les fins de phrase suivies d'un silence, l'enregistrement
+lui-même continue de sonner à moins de 40 dB sous le chant (médiane sur au moins 3 fins de
+phrase, fenêtre 80–300 ms après la phrase ; choix d'Eden), une reverb ou un delay a été
+enregistré dans la prise (FL enregistre la piste du Mixer avec ses effets) : Eden la traite
+comme une voix « prudente » et n'ajoute rien par-dessus. Pour les autres,
 les « quatre envois » d'un lead rap devant mais collé au beat (architecture non vérifiée,
 synthèse de la recherche ; niveaux : choix d'Eden) :
 
+Le rap se tient sec : chaque retour reste loin sous la voix (niveaux revus à la baisse de
+4 dB après écoute d'un utilisateur : « beaucoup trop d'écho » ; choix d'Eden).
+
 | Envoi | Réglage | Niveau (sous la voix, avant ducking) |
 |---|---|---|
-| Ambiance | 80 ms, pré-delay 8 ms, 400 Hz – 6 kHz | −23 dB |
-| Plate | 0,8 à 1,4 s (≈ 2 temps ressentis), pré-delay = 1/64 ou 1/32 le plus proche de 45 ms, borné 20–80 ms, 300 Hz – 6 kHz, baissée de 2,5 dB pendant le chant | −19 dB |
-| Delay 1/8 | ping-pong, feedback 0,25, 400 Hz – 4 kHz, baissé de 10 dB pendant le chant ; remonte en un quart du temps de delay, pour que le premier écho après la phrase s'entende en entier | −21 dB |
-| Jet d'écho (lead) | 1/4, feedback 0,35, envoyé seulement sur la fin d'une phrase suivie d'un silence, baissé de 10 dB pendant le chant ; remonte en un quart du temps de delay | −12 dB |
+| Ambiance | 80 ms, pré-delay 8 ms, 400 Hz – 6 kHz | −26 dB |
+| Plate | 0,8 à 1,4 s (≈ 2 temps ressentis), pré-delay = 1/64 ou 1/32 le plus proche de 45 ms, borné 20–80 ms, 300 Hz – 6 kHz, baissée de 2,5 dB pendant le chant | −23 dB |
+| Delay 1/8 | ping-pong, feedback 0,25, 400 Hz – 4 kHz, baissé de 10 dB pendant le chant ; remonte en un quart du temps de delay, pour que le premier écho après la phrase s'entende en entier | −25 dB |
+| Jet d'écho (lead) | 1/4, feedback 0,3, envoyé seulement sur la fin d'une phrase suivie d'un silence d'au moins deux échos (un jet est rare, pas une habitude), baissé de 10 dB pendant le chant ; remonte en un quart du temps de delay | −16 dB |
 
 - Voix secondaires : mêmes envois 4 dB plus présents (plus loin).
 - L'envoi est dé-essé une fois (8 dB) avant tous les effets : un « s » répété n'est que du
   bruit.
 - Les niveaux sont réglés sur le volume BS.1770 de la voix sèche, pas sur ses crêtes.
-- **Plafond** : Eden garde la reverb de tout le morceau, **tes effets FL compris**, à −16 LU
+- **Plafond** : Eden garde la reverb de tout le morceau, **tes effets FL compris**, à −19 LU
   au plus par rapport au mix sec quand il le peut en baissant ses propres effets ; les tiens
   ne sont jamais touchés. Sourcé : De Man, McNally & Reiss 2017, 80 mixes : à −9 LU ou plus,
   toujours jugé trop mouillé ; −14 LU plus souhaitable. Le rap se tient plus sec : choix

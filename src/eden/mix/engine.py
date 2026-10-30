@@ -89,7 +89,7 @@ CARVE_MAX_MASKING_DB = 12.0
 CARVE_VOICE_RANGE_DB = 20.0
 CARVE_SHARE = 0.25  # the dip is reported on the groups / the rest of the mix that carry this share of what it removes
 SECONDARY_DIP_DB = 2.0  # doubles / backs / ad-libs in 1–4 kHz while the lead sings
-MAX_REVERB_LU = -16.0  # relative reverb loudness of the whole mix (−9 LU: too wet; −14 LU: optimum; rap is drier)
+MAX_REVERB_LU = -19.0  # relative reverb loudness of the whole mix (−9 LU: too wet; −14 LU: optimum; rap is drier)
 HARMONICS_NEEDED_DB = -20.0  # an 808 whose harmonics are this far under its fundamental is a bare sine
 
 
@@ -101,7 +101,7 @@ class PartResult:
     treatments: list[Treatment]
     loudness_before: float
     loudness_after: float
-    fl_space: str = "none"  # none | tracked (rendered apart, put back untouched) | untracked
+    fl_space: str = "none"  # none | tracked (rendered apart, put back untouched) | untracked | printed
     level_change_db: float = 0.0
     placement: str | None = None
     space: list[str] = field(default_factory=list)
@@ -223,8 +223,8 @@ def _chain(v: Part, fs: float, k: float, status: str, tempo_bpm: float | None
     its FL effects, as heard."""
     source = v.dry if v.dry is not None else v.audio
     m = measure_vocal(source, fs)
-    treatments = plan_voice(m, v.role, k, status == "untracked")
-    hold = tail_hold(m, source, fs, tempo_bpm) if status == "untracked" else None
+    treatments = plan_voice(m, v.role, k, status in ("untracked", "printed"))
+    hold = tail_hold(m, source, fs, tempo_bpm) if status in ("untracked", "printed") else None
     processed = apply(source, fs, treatments, hold=hold, input_lufs=m.loudness_lufs) if treatments else source
     treatments = [t for t in treatments if t.applied]
     fl_wet = None
@@ -302,7 +302,7 @@ def _untouched(parts: Parts, fs: float, fl_space: dict[str, str]) -> list[PartRe
 
 def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[str, str],
         progress: ProgressCallback | None = None) -> MixOutcome:
-    """Mix the parts; ``fl_space[voice key]`` says whether FL reverbs/delays are none/tracked/untracked."""
+    """Mix the parts; ``fl_space[voice key]``: none / tracked / untracked / printed (see ``fl_space_status``)."""
     fs = parts.sample_rate
     k = max(0.0, min(1.0, intensity))
     premaster_lufs = integrated_loudness(parts.premaster, fs)
@@ -517,7 +517,7 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
     voices_sum, returns_sum, fl_wet_sum = np.zeros(shape), np.zeros(shape), np.zeros(shape)
     # an FL reverb left inside a voice cannot be measured: the reverb of the whole mix cannot be kept
     # under its ceiling, so Eden adds none of its own
-    unmeasured = [f"« {v.label} »" for v in parts.voices if fl_space.get(v.key) == "untracked"]
+    unmeasured = [f"« {v.label} »" for v in parts.voices if fl_space.get(v.key) in ("untracked", "printed")]
 
     def add_space(v: Part, audio: np.ndarray, position: float = 0.0) -> None:
         nonlocal returns_sum
@@ -525,9 +525,9 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
             return
         if unmeasured:
             results[v.key].space = [
-                f"Pas d'espace ajouté : la reverb / le delay FL de {', '.join(unmeasured)} n'a pas pu être rendu à "
-                f"part, Eden ne peut donc pas mesurer la reverb de tout le morceau ni la tenir sous "
-                f"{MAX_REVERB_LU:.0f} LU"]
+                f"Pas d'espace ajouté : {', '.join(unmeasured)} porte(nt) déjà une reverb ou un delay (dans la "
+                "prise enregistrée, ou dans une chaîne FL non rendue à part) : Eden ne peut pas mesurer la "
+                f"reverb de tout le morceau ni la tenir sous {MAX_REVERB_LU:.0f} LU, il n'en ajoute donc aucune"]
             return
         plan = design_space(tempo_bpm, v.role, k)
         tell(f"Espace pour « {v.label} » : " + " · ".join(send.label for send in plan.sends))

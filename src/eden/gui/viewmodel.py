@@ -173,6 +173,7 @@ def _local_date(iso: str) -> str:
 FL_SPACE_FR = {
     "tracked": "Reverb / delay FL Studio gardés tels quels (rendus à part)",
     "untracked": "Reverb / delay FL Studio dans la voix : compression prudente, rien ajouté",
+    "printed": "Reverb / delay enregistré dans la prise elle-même : compression prudente, rien ajouté",
 }
 MIX_ROLE_LABELS_FR = {**ROLE_LABELS_FR, "residual": "Reste du mix"}  # listed when Eden carved it
 

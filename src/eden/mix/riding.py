@@ -6,9 +6,12 @@ the beat while the voice sounds, not the voice's own level. The static
 balance has already put the voice at its place; riding only evens out the
 phrases around it:
 
-1. phrases are found on 1 ms frames: sound separated by rests of at least
-   an eighth note of the felt pulse (rap rests are mostly one 16th note,
-   ~180 ms, so shorter ones stay inside a phrase);
+1. phrases are found on 1 ms frames of the voiced band (120–3500 Hz, where
+   the vowels live): breaths, headphone bleed and effect tails do not pass
+   for phrases there (the breath detection every vocal rider needs, so a
+   breath between phrases is never cranked up). Sound separated by rests of
+   at least an eighth note of the felt pulse makes a phrase (rap rests are
+   mostly one 16th note, ~180 ms, so shorter ones stay inside a phrase);
 2. for each phrase, the K-weighted loudness of the voice minus that of the
    beat above ``MASKING_FROM_HZ``, over the moments the voice sounds: the
    band that masks words (an 808's sub hardly does);
@@ -18,9 +21,13 @@ phrases around it:
    counted in the reference;
 4. the reference is the median difference of the other phrases; a phrase
    further than ``TOLERANCE_DB`` from it gets the gain that brings it back,
-   clamped to ±``MAX_RIDE_DB`` times the intensity. It is brought down only
-   as far as the voice itself got louder than its median phrase: a beat that
-   got quieter is never a reason to lower the voice;
+   clamped to ±``MAX_RIDE_DB`` times the intensity. Every move needs its
+   cause in the signal: a phrase is brought down only as far as the voice
+   itself got louder than its median phrase (a beat that got quieter is
+   never a reason to lower the voice), and brought up only as far as the
+   voice got quieter plus the beat got louder. A phrase more than
+   ``FAINT_DB`` under the voice's median phrase is no phrase at all (a
+   breath, bleed) and is left alone;
 5. each phrase keeps its gain through the rest that follows it (an FL echo
    tail stays at its phrase's level) and the next gain fades in during the
    end of that rest, never on a word.
@@ -36,8 +43,9 @@ from scipy.signal import butter, sosfilt
 from eden.mix import dsp
 from eden.mix.loudness import k_weighting
 
-MAX_RIDE_DB = 6.0  # a vocal rider's default range (±6 dB)
-TOLERANCE_DB = 1.5  # phrases this close to the song's balance are left alone
+MAX_RIDE_DB = 4.0  # tighter than a vocal rider's default ±6 dB: riding should never be heard working
+TOLERANCE_DB = 2.0  # phrases this close to the song's balance are left alone
+FAINT_DB = 10.0  # a "phrase" this far under the voice's median phrase is a breath or bleed: left alone
 MASKING_FROM_HZ = 200.0  # the beat is measured above this: the band that masks words
 EXPOSED_DB = 6.0  # a phrase whose beat is this much under the median phrase's is never ridden
 CROSSFADE_S = 0.12  # fades sit in the rests, which are mostly one 16th note (~180 ms)
@@ -129,10 +137,11 @@ def phrase_levels(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: flo
                   ) -> tuple[list[tuple[int, int]], np.ndarray, np.ndarray, int]:
     """(phrases in 1 ms frames, K-weighted dB of the voice and of the beat above
     ``MASKING_FROM_HZ`` over each phrase's sung moments, −inf for silence, frame size)."""
-    level, size = dsp.band_levels_db(voice, fs)
+    from eden.mix.breath import sung_activity
+
+    active, level, size = sung_activity(voice, fs)
     if level.size == 0:
         return [], np.zeros(0), np.zeros(0), size
-    active = level > max(-90.0, float(np.percentile(level, 95)) - 30.0)
     gap_s = felt_quarter(tempo_bpm) / 2 if tempo_bpm else 0.3  # an eighth of the felt pulse
     phrases = [(s, e) for s, e in phrases_of(active, int(gap_s / dsp.FRAME_S))
                if (e - s) * dsp.FRAME_S >= MIN_PHRASE_S]
@@ -166,12 +175,14 @@ def ride(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None
     heard = np.isfinite(beat_db)
     if heard.sum() < 2:
         return unity
-    exposed = ~heard | (beat_db < float(np.median(beat_db[heard])) - EXPOSED_DB)
+    beat_median = float(np.median(beat_db[heard]))
+    voice_median = float(np.median(voice_db[np.isfinite(voice_db)]))
+    faint = ~np.isfinite(voice_db) | (voice_db < voice_median - FAINT_DB)
+    exposed = ~heard | (beat_db < beat_median - EXPOSED_DB) | faint
     compared = np.isfinite(diffs) & ~exposed
     if compared.sum() < 2:
         return unity
     reference = float(np.median(diffs[compared]))
-    voice_median = float(np.median(voice_db[np.isfinite(voice_db)]))
     frames = -(-n // size)
     gain_db = np.zeros(frames)
     fade = max(1, int(CROSSFADE_S / dsp.FRAME_S))
@@ -183,6 +194,8 @@ def ride(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None
             move = reference - d
             if move < 0:  # down only as far as the voice itself got louder than its median phrase
                 move = max(move, -max(0.0, v - voice_median))
+            else:  # up only as far as the voice got quieter plus the beat got louder
+                move = min(move, max(0.0, voice_median - v) + max(0.0, float(beat_db[i]) - beat_median))
             g = float(np.clip(move, -MAX_RIDE_DB, MAX_RIDE_DB)) * k
         result.append(Phrase(s * dsp.FRAME_S, e * dsp.FRAME_S, g, bool(exposed[i])))
         # the new gain fades in at the end of the previous phrase's rest, then holds through

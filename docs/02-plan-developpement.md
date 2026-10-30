@@ -98,7 +98,8 @@ Fait (détails, seuils et sources : `docs/mixage.md`) :
   edma, 808 pour départager les relatives), tempo du projet et pulsation ressentie, notes du 808 et accord avec la
   gamme, collisions kick / 808, stéréo des graves ;
 - chaîne vocale complète par rôle, dans l'ordre des chaînes pro documentées, chaque étape
-  déclenchée par une mesure et plafonnée ;
+  déclenchée par une mesure et plafonnée ; respirations détectées (souffle non voisé entre
+  les phrases) et baissées avant toute compression, qui les remonterait ;
 - voix sèche quand FL joue vraiment une reverb ou un delay sur la chaîne de la voix : un
   effet désactivé ou inaudible (mix à 0 %, insert coupé, volume de l'insert à zéro, insert
   sans sortie vers le Master) ne compte pas, et l'inspection dit lequel des deux il est ; un
@@ -113,8 +114,10 @@ Fait (détails, seuils et sources : `docs/mixage.md`) :
   retours impossibles à distinguer, plugin non identifié sur le chemin de la voix, voix
   sèche écartée) la voix est traitée en compression « prudente » ;
 - niveaux (voix principale au-dessus de l'instru pendant le chant, autres voix par rapport
-  à elle), suivi phrase par phrase, espace en quatre envois pour les voix qui n'en ont pas,
-  placement stéréo, place pour les paroles (bandes pondérées par leur importance pour
+  à elle), suivi phrase par phrase (phrases lues sur la bande des voyelles, jamais sur une
+  respiration ; chaque gain a sa cause mesurée, ±4 dB max), espace en quatre envois secs
+  pour les voix qui n'en ont pas — ni dans leur chaîne FL, ni enregistré dans la prise
+  (détecté à l'écoute : la prise qui continue de sonner après ses phrases), placement stéréo, place pour les paroles (bandes pondérées par leur importance pour
   l'intelligibilité), tenue des notes du 808, kick / 808, harmoniques du 808 pour petites
   enceintes ;
 - mastering Eden : graves en mono, compression de bus, clip doux puis

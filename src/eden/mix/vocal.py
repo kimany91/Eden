@@ -2,9 +2,11 @@
 
 Order of the chain (the one documented hip-hop sessions share, see
 docs/mixage.md): pitch correction is already printed by FL Studio, then
-high-pass → fixed resonances → low-mid build-up → light de-esser →
-leveling compressor → peak compressor → parallel compression → saturation
-→ air / push-back of secondary voices → main de-esser → make-up. Each step
+breaths brought down → high-pass → fixed resonances → low-mid build-up →
+light de-esser → leveling compressor → peak compressor → parallel
+compression → saturation → air / push-back of secondary voices → main
+de-esser → make-up. Breaths come first because every compressor and the
+make-up after them raise whatever was left loud (``breath.py``). Each step
 has a measured trigger and a cap; a step whose trigger is not met is simply
 not added.
 
@@ -25,6 +27,8 @@ import numpy as np
 
 from eden.mix import dsp
 from eden.mix.analysis import LOW_MID_MIN_DB, LOW_MID_STEADY_SHARE, VocalMeasure, deess_band_low_hz
+from eden.mix.breath import BREATH_UNDER_DB
+from eden.mix.breath import MAX_REDUCTION_DB as MAX_BREATH_REDUCTION_DB
 from eden.mix.riding import felt_quarter, phrases_of
 from eden.mix.treatments import Treatment
 
@@ -87,6 +91,14 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
         return []
     profile = PROFILES.get(role, PROFILES["vocal"])
     out: list[Treatment] = []
+
+    # 0. breaths, before anything raises them; what is found decides when the chain runs
+    out.append(Treatment(
+        "breath", "Respirations baissées",
+        "Les respirations entre les phrases (bruit non voisé, plus faible que le chant) sont ramenées "
+        f"à {BREATH_UNDER_DB:.0f} dB sous la voix chantée avant toute compression, qui les remonterait ; "
+        "les plus douces sont laissées telles quelles",
+        {"max_reduction_db": MAX_BREATH_REDUCTION_DB * k}))
 
     # 1. high-pass: never above the lowest sustained note of the voice, and only when something sounds
     #    under the planned cut. While the voice sings, it is read an octave under the cut, where the

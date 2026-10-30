@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from eden.mix import dsp
+from eden.mix import breath, dsp
 from eden.mix.analysis import active_frames, vowel_level
 from eden.mix.loudness import integrated_loudness
 from eden.mix.saturation import saturate
@@ -99,7 +99,14 @@ def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarra
     y = x
     for i, t in enumerate(treatments):
         p = t.params
-        if t.kind == "highpass":
+        if t.kind == "breath":
+            found = breath.find_breaths(y, fs, p["max_reduction_db"])
+            t.applied = found.count > 0
+            if t.applied:
+                _record_gain(t, found.gain_db)
+                t.label = (f"{found.count} respiration(s) baissée(s), jusqu'à {found.deepest_db:.0f} dB")
+                y = dsp._apply_gain(y, dsp._to_samples(found.gain_db, found.size, y.shape[0]))
+        elif t.kind == "highpass":
             y = dsp.apply_sos(y, dsp.highpass_sos(fs, p["freq_hz"], p.get("q", 0.7071)))
         elif t.kind == "eq":
             y = dsp.apply_sos(y, dsp.peaking_sos(fs, p["freq_hz"], p["q"], p["gain_db"]))

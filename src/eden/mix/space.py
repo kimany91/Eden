@@ -15,8 +15,10 @@ so the effect fills the gaps without clouding the words.
 The plan for a voice follows the "four sends" a mix engineer sets up for a
 rap lead that must stay in front yet glued to the beat: a short ambience, a
 plate of about a second, a tempo delay, and an echo "throw" on the last
-word of a phrase. Nothing is added to a voice that already carries reverb
-or delay from its FL Studio chain. The reverb of the whole mix (the user's
+word of a phrase followed by a real rest. Rap stays dry: every return sits
+far under the voice. Nothing is added to a voice that already carries
+reverb or delay from its FL Studio chain, nor to one whose recording
+already rings (``recorded_space``: a reverb printed into the take). The reverb of the whole mix (the user's
 FL effects and Eden's) stays far under the −9 LU relative reverb loudness
 that listeners judge too wet (De Man et al. 2017).
 """
@@ -166,17 +168,18 @@ def design_space(tempo_bpm: float | None, role: str, k: float) -> SpacePlan:
     decay = min(1.4, max(0.8, 2 * quarter))
     predelay = min(80.0, max(20.0, min((quarter / 16 * 1000, quarter / 8 * 1000), key=lambda v: abs(v - 45))))
     back = 0.0 if lead else 4.0  # secondary voices sit further back (lower direct-to-reverb ratio)
-    plan.sends.append(Send("ambience", "Ambiance courte (80 ms, pré-delay 8 ms)", -23.0 + back, 0.0, 0.0,
+    plan.sends.append(Send("ambience", "Ambiance courte (80 ms, pré-delay 8 ms)", -26.0 + back, 0.0, 0.0,
                            400.0, 6000.0, reverb=ReverbDesign(0.08, 8.0, hf_ratio=0.6, buildup_ms=5.0)))
-    plan.sends.append(Send("plate", f"Plate {decay:.1f} s, pré-delay {predelay:.0f} ms", -19.0 + back, 2.5, 120.0,
+    plan.sends.append(Send("plate", f"Plate {decay:.1f} s, pré-delay {predelay:.0f} ms", -23.0 + back, 2.5, 120.0,
                            300.0, 6000.0, reverb=ReverbDesign(decay, predelay, hf_ratio=0.5)))
     eighth = quarter / 2
     # delay ducks recover within a quarter of the delay time, so the first echo after a phrase is heard whole
-    plan.sends.append(Send("delay", f"Delay 1/8 ({eighth * 1000:.0f} ms, ping-pong)", -21.0 + back, 10.0,
+    plan.sends.append(Send("delay", f"Delay 1/8 ({eighth * 1000:.0f} ms, ping-pong)", -25.0 + back, 10.0,
                            eighth * 250, 400.0, 4000.0, delay_s=eighth, feedback=0.25))
     if lead:
-        plan.sends.append(Send("throw", f"Jet d'écho 1/4 ({quarter * 1000:.0f} ms) sur les fins de phrase",
-                               -12.0, 10.0, quarter * 250, 400.0, 4000.0, delay_s=quarter, feedback=0.35,
+        plan.sends.append(Send("throw", f"Jet d'écho 1/4 ({quarter * 1000:.0f} ms) sur les fins de phrase "
+                               "suivies d'un vrai silence",
+                               -16.0, 10.0, quarter * 250, 400.0, 4000.0, delay_s=quarter, feedback=0.3,
                                throw_only=True))
     plan.notes.append(f"Tempo ressenti : noire = {quarter * 1000:.0f} ms"
                       + (f" (projet à {tempo_bpm:g} BPM)" if tempo_bpm else " (tempo inconnu : 120 BPM supposé)"))
@@ -237,8 +240,8 @@ def render_space(dry: np.ndarray, fs: float, plan: SpacePlan, k: float) -> tuple
     total = np.zeros((send_source.shape[0], 2))
     for send in plan.sends:
         source = send_source
-        if send.throw_only:
-            env = throw_envelope(dry_low, rate, send.delay_s or 0.5)
+        if send.throw_only:  # only phrase ends followed by a rest of two echoes: a throw is rare, not a habit
+            env = throw_envelope(dry_low, rate, (send.delay_s or 0.5) * 2)
             source = send_source * (env[:, None] if send_source.ndim == 2 else env)
         if send.reverb is not None:
             wet = reverb(source, rate, send.reverb)
@@ -303,3 +306,32 @@ def returns_scale(fl_wet: np.ndarray, eden_wet: np.ndarray, dry: np.ndarray, fs:
         mid = (lo + hi) / 2
         lo, hi = (mid, hi) if rrl(mid) <= cap_lu else (lo, mid)
     return lo, rrl(lo)
+
+
+RECORDED_RING_DB = -40.0  # a take whose rests ring this close to its phrases carries a printed reverb
+RING_WINDOW_S = (0.08, 0.30)  # read just after the phrase ends: late enough for the room, before the next breath
+
+
+def recorded_space(x: np.ndarray, fs: float) -> float | None:
+    """How much the recording itself rings after its phrases (dB under the sung voice), or None when
+    it cannot be read (too few phrases followed by a rest).
+
+    A dry mic take falls to the room's noise right after a word; a take recorded through a reverb
+    or delay (printed into the file) keeps ringing. Median over the phrase ends followed by a rest,
+    so open phrase ends or one echo do not decide alone."""
+    from eden.mix.breath import sung_activity
+
+    sung, level, _ = sung_activity(x, fs)
+    if not sung.any():
+        return None
+    sung_db = float(np.percentile(level[sung], 95))
+    lo, hi = int(RING_WINDOW_S[0] / dsp.FRAME_S), int(RING_WINDOW_S[1] / dsp.FRAME_S)
+    rings = []
+    for _, e in phrases_of(sung, 1):
+        if e + hi > level.size or sung[e:e + hi].any():
+            continue  # the next phrase starts too soon: nothing readable there
+        window = level[e + lo:e + hi]
+        if window.size:
+            rings.append(float(np.median(window)) - sung_db)
+    return float(np.median(rings)) if len(rings) >= 3 else None
+

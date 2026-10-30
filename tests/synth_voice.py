@@ -12,11 +12,13 @@ FS = 44100
 
 def voice(seconds: float = 24.0, seed: int = 1, *, notes: list[float] | None = None,
           resonance_hz: float | None = None, rumble: float = 0.0, sibilance: float = 0.3,
-          phrase_spread_db: float = 4.0, level: float = 0.25) -> np.ndarray:
+          phrase_spread_db: float = 4.0, level: float = 0.25, breaths: float = 0.0) -> np.ndarray:
     """Mono voice: syllables on changing notes, vowel formants, 's' bursts, pauses.
 
     ``sibilance`` is the peak of the 's' bursts relative to the vowels' peak
     (0.3 ≈ −10 dB, a normal voice; above 1, piercing sibilants).
+    ``breaths``: a breath before each phrase, its peak this fraction of the
+    vowels' (0.2 ≈ −14 dB, the loud breaths of a close mic).
     """
     rng = np.random.default_rng(seed)
     n = int(seconds * FS)
@@ -48,6 +50,14 @@ def voice(seconds: float = 24.0, seed: int = 1, *, notes: list[float] | None = N
         phrase[start:start + 4 * FS] = 10 ** (rng.uniform(-phrase_spread_db, phrase_spread_db) / 2 / 20)
         phrase[start + 4 * FS:start + 5 * FS] = 0
     out = out * phrase
+    if breaths:
+        sos = butter(4, [1500, 6000], btype="bandpass", fs=FS, output="sos")
+        length = int(0.35 * FS)
+        window = np.hanning(length)
+        for start in range(5 * FS, n, 5 * FS):  # in the pause, just before the next phrase
+            at = start - int(0.5 * FS)
+            burst = sosfilt(sos, rng.normal(0, 1, length)) * window
+            out[at:at + length] += breaths * burst / (np.max(np.abs(burst)) + 1e-12)
     out = out / (np.max(np.abs(out)) + 1e-12) * level
     if resonance_hz:
         out = apply_sos(out, peaking_sos(FS, resonance_hz, 12, 10))

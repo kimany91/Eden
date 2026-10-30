@@ -1,24 +1,37 @@
-Eden 1.2.11 : la vérification du son comprend pourquoi la somme des pistes diffère, et ne bloque plus à tort.
+Eden 1.3.0 : le mix des voix refait là où ça s'entendait — respirations, volume qui bouge, écho.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.11.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.3.0.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
 
-## Corrigé dans 1.2.11
+## Corrigé dans 1.3.0 (retours d'écoute d'un utilisateur)
 
-- **« La somme des pistes diffère du mix d'origine » alors que rien ne manque** : certains
-  plugins ne jouent pas deux fois exactement pareil (une modulation aléatoire dans un chorus, un
-  doubleur, une reverb, ou un plugin en version d'essai qui coupe le son de temps en temps). FL
-  Studio ne rend alors jamais deux fois le même morceau, et aucune somme de pistes ne peut lui
-  être égale au sample près. Quand la vérification échoue, Eden rend maintenant ton morceau une
-  2e fois et mesure de combien FL varie : si les pistes ne s'écartent pas plus que ça, c'est la
-  variation de FL, la vérification passe et Eden le dit. Si FL rend deux fois pareil, l'écart
-  vient vraiment de la séparation, et Eden dit d'où il vient (un effet que l'instru et tes voix
-  traversent ensemble : compresseur, sidechain…) ; « Mixer quand même » reste possible.
+- **Les respirations étaient très fortes** : rien ne les baissait, et la compression puis le gain
+  de compensation les remontaient (mesuré : +2,5 dB sur une voix de test). Eden fait maintenant ce
+  que font Waves DeBreath et iZotope Breath Control : il détecte les respirations (du souffle non
+  voisé entre les phrases, plus faible que le chant) et les ramène à 22 dB sous la voix **avant**
+  toute compression. Les plus douces ne bougent pas, le chant non plus.
+- **La voix montait et baissait au hasard** : le suivi de niveau prenait une respiration isolée
+  pour une « phrase » trop faible et pouvait la monter de 6 dB. Les phrases sont maintenant lues
+  sur la bande des voyelles (une respiration n'y passe pas pour une phrase), une « phrase » à plus
+  de 10 dB sous les autres n'est pas touchée, et chaque mouvement doit avoir sa cause mesurée :
+  la voix n'est montée que de ce dont elle a baissé plus ce dont l'instru a monté, ±4 dB au plus
+  (au lieu de ±6).
+- **Beaucoup trop d'écho, voix « sous l'eau »** : Eden ajoutait son espace complet à chaque groupe
+  de voix, avec un jet d'écho sur chaque fin de phrase. Tous les retours baissent de 4 dB, le jet
+  d'écho passe à −16 dB et ne part que sur une fin de phrase suivie d'un vrai silence, le plafond
+  de reverb du morceau descend de −16 à −19 LU. Et si tes prises portent déjà une reverb
+  enregistrée dedans (FL enregistre la piste du Mixer avec ses effets), Eden le détecte à
+  l'écoute et n'ajoute **rien** par-dessus.
+- **« La somme des pistes diffère » sans cause visible** : quand la vérification échoue, Eden rend
+  ton morceau une 2e fois. Si FL Studio ne rend pas deux fois pareil (un plugin à modulation
+  aléatoire, une version d'essai), c'est sa variation : la vérification passe et le dit. Si FL
+  rend deux fois pareil, l'écart vient d'un effet que l'instru et les voix traversent ensemble,
+  et Eden le dit.
 
 ## Corrigé dans 1.2.10
 

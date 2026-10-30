@@ -420,7 +420,7 @@ def test_space_returns_sit_under_the_voice_and_duck():
     wet, report = render_space(v, FS, design_space(95.0, "lead_vocal", 1.0), 1.0)
     assert len(report) == 4
     share = integrated_loudness(wet, FS) - integrated_loudness(v, FS)
-    assert -20 < share < -8
+    assert -27 < share < -14  # rap stays dry: the sum of the returns sits far under the voice
     # in the pauses the returns are louder relative to the voice than while it sings
     gap = slice(int(4.1 * FS), int(4.9 * FS))
     sung = slice(int(1 * FS), int(3.5 * FS))
