@@ -170,8 +170,9 @@ class EdenController(QObject):
         self.renders = None  # RenderResult of the current project
         self.renderer_factory = renderer_factory or default_renderer
         self.probe = probe or default_probe
-        self.worker: _Worker | None = None
-        self.update_worker: _Worker | None = None
+        # every thread started, kept until it has finished: one step's thread hands over to the next while it
+        # is still ending, and Qt aborts the program when a running thread is destroyed
+        self._workers: set[_Worker] = set()
         self._player = player or ABPlayer()
         self._unchecked = False  # the user chose to mix renders that did not pass their check
         self._render_creep = QTimer(self)
@@ -253,15 +254,24 @@ class EdenController(QObject):
         self._set("errorStep", "")
         self._set("errorMessage", "")
         self._set("busy", True)
-        self.worker = _Worker(fn)
+        worker = self._keep(_Worker(fn))
         if on_progress:
-            self.worker.progress.connect(on_progress)
+            worker.progress.connect(on_progress)
         if on_detail:
-            self.worker.detail.connect(on_detail)
-        self.worker.log.connect(self._on_log)
-        self.worker.succeeded.connect(on_success)
-        self.worker.failed.connect(self._on_failed)
-        self.worker.start()
+            worker.detail.connect(on_detail)
+        worker.log.connect(self._on_log)
+        worker.succeeded.connect(on_success)
+        worker.failed.connect(self._on_failed)
+        worker.start()
+
+    def _keep(self, worker: _Worker) -> _Worker:
+        self._workers.add(worker)
+        worker.finished.connect(lambda: self._retire(worker))
+        return worker
+
+    def _retire(self, worker: _Worker) -> None:
+        worker.wait()  # it said it finished: what is left of it ends now
+        self._workers.discard(worker)
 
     def _on_failed(self, step: str, message: str) -> None:
         self._set("busy", False)
@@ -651,9 +661,9 @@ class EdenController(QObject):
 
             return check_and_download()
 
-        self.update_worker = _Worker(job)
-        self.update_worker.succeeded.connect(self._on_update)
-        self.update_worker.start()
+        worker = self._keep(_Worker(job))
+        worker.succeeded.connect(self._on_update)
+        worker.start()
 
     def _on_update(self, result) -> None:
         if result.status in ("downloaded", "available_no_installer"):
@@ -662,8 +672,8 @@ class EdenController(QObject):
 
     def shutdown(self) -> None:
         self._player.close()
-        for w in (self.worker, self.update_worker):
-            if w is not None and w.isRunning():
+        for w in list(self._workers):
+            if w.isRunning():
                 w.wait(3000)
         from eden.updater import launch_pending_install
 

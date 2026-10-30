@@ -304,3 +304,25 @@ def test_mix_page_flow(ui, tmp_path):
     assert sorted(p.name for p in out.iterdir()) == ["Mon son - Eden.wav"]
     assert engine.load_warnings == []
     assert not list(Path(os.environ["EDEN_HOME"]).rglob("*.flp"))
+
+
+def test_a_step_handing_over_to_the_next_keeps_its_thread_until_it_has_ended(app):
+    # the next step starts from the end of the one before, while its thread is still ending: dropped then,
+    # Qt would abort the whole program ("QThread: Destroyed while thread is still running")
+    import gc
+
+    c = EdenController(check_updates=False)
+    done = []
+
+    def chain(_result):
+        if len(done) < 30:
+            c._set("busy", False)
+            c._start(lambda worker: done.append(1), chain)  # the next step, from the end of this one
+
+    c._start(lambda worker: done.append(1), chain)
+    waited = 0
+    while (len(done) < 30 or c._workers) and waited < 20000:
+        gc.collect()
+        pump(20)
+        waited += 20
+    assert len(done) == 30 and not c._workers  # every thread ended, none destroyed while running

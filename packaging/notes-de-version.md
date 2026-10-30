@@ -1,12 +1,19 @@
-Eden 1.2.9 : l'arbre pousse de tous les côtés, en vrai, et la caméra le suit sans à-coup.
+Eden 1.2.10 : un plantage possible entre deux étapes corrigé.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.9.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.2.10.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Corrigé dans 1.2.10
+
+- **Eden pouvait se fermer d'un coup entre deux étapes** (analyse → son de FL Studio → mixage) :
+  l'étape suivante démarrait pendant que celle d'avant finissait, et Windows arrêtait Eden quand
+  le travail de l'étape d'avant était effacé trop tôt. Chaque étape est maintenant gardée jusqu'à
+  sa vraie fin.
 
 ## Nouveau dans 1.2.9
 
@@ -139,4 +146,4 @@ Eden 1.2.9 : l'arbre pousse de tous les côtés, en vrai, et la caméra le suit 
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.9/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.10/docs/mixage.md).
