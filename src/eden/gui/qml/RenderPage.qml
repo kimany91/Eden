@@ -222,5 +222,42 @@ EdenPage {
                 }
             }
         }
+
+        // what the render plan and the checks of the renders found (also kept with each mix)
+        ScrollView {
+            id: warningScroll
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(warningCol.implicitHeight, 190)
+            visible: !page.rendering && (page.sum.warnings || []).length > 0
+            contentWidth: availableWidth
+            clip: true
+            Column {
+                id: warningCol
+                width: warningScroll.availableWidth
+                spacing: 8
+                Repeater {
+                    objectName: "renderWarnings"
+                    model: page.sum.warnings || []
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: warningCol.width
+                        height: wtext.implicitHeight + 22
+                        radius: 10
+                        color: Theme.warningSoft
+                        border.width: 1
+                        border.color: Qt.rgba(1, 0.7, 0.28, 0.25)
+                        Icon { x: 14; anchors.verticalCenter: parent.verticalCenter; width: 16; height: 16; name: "warning"; color: Theme.warning }
+                        Text {
+                            id: wtext
+                            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 42; rightMargin: 14 }
+                            text: modelData
+                            wrapMode: Text.WordWrap
+                            color: Theme.text
+                            font.family: Theme.fontFamily; font.pixelSize: 13
+                        }
+                    }
+                }
+            }
+        }
     }
 }

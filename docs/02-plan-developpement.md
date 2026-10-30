@@ -53,13 +53,14 @@ Fait :
   désactivé l'est vraiment : une piste rendue seule avec et sans une de ses reverbs ou un de
   ses delays (dont FL a enregistré l'état activé/désactivé), l'écart entre les deux rendus
   doit dépasser −60 dB. Un slot peut ne rien changer pour une raison qui lui est propre
-  (plugin réglé pour laisser passer le son, fader du retour en bas) : jusqu'à deux autres
-  slots sont alors essayés, de préférence sur un autre insert, et avec une autre piste quand
-  il y en a une (le même slot n'est repris avec une autre piste que s'il n'en reste aucun
-  autre ; 3 essais au plus, choix d'Eden), chaque essai noté dans le compte rendu, et le
-  test n'échoue que si aucun ne change le rendu ; sans reverb ni delay de ce genre dans le
-  projet, ou si tous les rendus essayés sont muets, il est noté « non vérifié ». La syntaxe
-  qui marche n'est enregistrée que si tout ce qui a pu être vérifié passe ;
+  (plugin réglé pour laisser passer le son, envoi ou retour presque tout en bas ; tout en
+  bas, l'effet est inaudible et n'est pas essayé) : jusqu'à deux autres slots sont alors
+  essayés, de préférence sur un autre insert, et avec une autre piste quand il y en a une
+  (le même slot n'est repris avec une autre piste que s'il n'en reste aucun autre ; 3 essais
+  au plus, choix d'Eden), chaque essai noté dans le compte rendu, et le test n'échoue que si
+  aucun ne change le rendu ; sans reverb ni delay de ce genre dans le projet, ou si tous
+  les rendus essayés sont muets, il est noté « non vérifié ». La syntaxe qui marche n'est
+  enregistrée que si tout ce qui a pu être vérifié passe ;
 - `eden render` et bouton « Récupérer le son depuis FL Studio » ;
 - tests avec un simulateur de FL Studio (effets non linéaires sur bus et Master), y compris
   la détection d'un découpage faux.
@@ -71,9 +72,10 @@ Critères restant à valider **avec ton FL Studio** :
 
 Rendu « voix sèche » : pour chaque voix dont la chaîne FL contient une reverb ou un delay
 que FL joue vraiment (slot actif avec un dry/wet qui n'est pas à 0, insert et ses effets
-actifs, insert qui atteint le Master), une copie supplémentaire est rendue avec ces effets
-contournés (slots désactivés sur le chemin de la voix, retours d'effets coupés) ; voix
-complète − voix sèche = exactement ce que tes effets ajoutent.
+actifs, volume de l'insert au-dessus de zéro, insert qui atteint le Master), une copie
+supplémentaire est rendue avec ces effets contournés (slots désactivés sur le chemin de la
+voix, retours d'effets coupés) ; voix complète − voix sèche = exactement ce que tes effets
+ajoutent.
 
 Mastering : c'est Eden qui le fait (décision : « Eden fait tout le mastering »). Les
 effets de ton Master FL ne servent qu'à ton écoute dans FL Studio.
@@ -115,7 +117,7 @@ Fait (détails, seuils et sources : `docs/mixage.md`) :
 - versions conservées, export WAV (dossier, nom, fréquence, 16/24/32 bits) ;
 - page « Mixage Eden » dans l'interface, commande `eden mix`.
 
-Critères validés : à 0 %, résultat identique au morceau d'origine (écart < −100 dB) ;
+Critères validés : à 0 %, résultat identique au mix d'origine avant le Master (écart < −100 dB) ;
 voix propre : seulement les étapes de forme, volume rendu par le gain de compensation ;
 chaque défaut de test corrigé et mesurablement réduit ; plafond de crête tenu pour les deux
 lectures ; conversion à l'export sans repliement ni crête remontée ; aucun export écrêté en

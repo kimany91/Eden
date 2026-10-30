@@ -125,7 +125,7 @@ def render_project(
     report = report or inspect_project(path, workspace_home=workspace_home)
     original, fp = read_project_bytes(path)
     if fp.sha256 != report.file.sha256:
-        raise RenderError("Le projet a changé depuis l'analyse : relancez l'analyse")
+        raise RenderError("Le projet a changé depuis l'analyse : relance l'analyse")
 
     plan = plan_renders(report)
     repairs = sample_repairs(report, allow_missing)
@@ -202,12 +202,12 @@ def render_project(
         result.warnings.append(
             "Le son est encore présent à la toute fin de certains rendus (" + "; ".join(cut) + ") : "
             "une fin d'écho, de delay ou de reverb est peut-être coupée. Dans la fenêtre d'export "
-            "de FL Studio, choisissez de laisser la fin des effets (« Leave remainder »), puis "
-            "relancez.")
+            "de FL Studio, choisis de laisser la fin des effets (« Leave remainder »), puis "
+            "relance la récupération du son.")
     if any(c.clipped_samples for c in checks if "FLOAT" not in c.subtype.upper()):
         result.warnings.append(
             "Certains rendus atteignent 0 dBFS en format entier (écrêtage possible) : "
-            "réglez l'export WAV de FL Studio en 32 bits flottant")
+            "règle l'export WAV de FL Studio en 32 bits flottant")
     verify_unchanged(path, fp)
     _write_manifest(manifest, result)
     return result

@@ -169,6 +169,10 @@ class EdenController(QObject):
             return []
         return data["triangles"]
 
+    @Property("QVariantList", constant=True)
+    def sampleRates(self) -> list:
+        return viewmodel.sample_rate_choices()
+
     @Property(str, constant=True)
     def logoUrl(self) -> str:
         return QUrl.fromLocalFile(str(ASSETS / "eden-logo.png")).toString()
@@ -308,8 +312,8 @@ class EdenController(QObject):
         self._set("renderRows", rows)
         self._set("renderSummary", summary)
         self._set("progress", 1.0)
-        self._set("progressLabel", "Terminé : tout a été vérifié." if result.ok else
-                  "Terminé, avec des points à vérifier (voir ci-dessous).")
+        self._set("progressLabel", "Terminé : tout a été vérifié." if result.ok and not result.warnings
+                  else "Terminé, avec des points à vérifier (voir ci-dessous).")
         self._set("busy", False)
         self._set("stage", "rendered")
 

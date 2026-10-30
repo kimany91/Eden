@@ -10,10 +10,11 @@ test renders):
      delay whose on/off state FL stored is rendered alone, with and without
      that slot: the two renders must differ by more than SLOT_BYPASS_MIN_DB.
      A slot can leave the render unchanged for a reason of its own (a plugin
-     set to let the sound through, a return fader at the bottom), so when it
-     does, other slots are tried, up to SLOT_CHECK_TRIES in all: the check
-     fails only when no slot tried changes the render. Not checked when the
-     project has no such slot (the dry voices rely on these bypasses).
+     set to let the sound through, a send or a return turned almost all the
+     way down; all the way down, the effect is inaudible and never tried),
+     so when it does, other slots are tried, up to SLOT_CHECK_TRIES in all:
+     the check fails only when no slot tried changes the render. Not checked
+     when the project has no such slot (the dry voices rely on these bypasses).
 The working syntax is saved in Eden's settings only if every check that could run passes.
 """
 
@@ -112,11 +113,11 @@ def probe_fl_studio(
         exe = find_fl_studio(fl_path or settings.fl_path)
         result = ProbeResult(fl_path=str(exe) if exe else None)
         if exe is None:
-            say("FL Studio introuvable. Indiquez le chemin de FL64.exe avec --fl.")
+            say("FL Studio introuvable. Indique le chemin de FL64.exe avec --fl.")
             return result
         command = [str(exe)]
         if fl_is_running():
-            say("FL Studio est ouvert : fermez-le avant le test (il pourrait intercepter la commande).")
+            say("FL Studio est ouvert : ferme-le avant le test (il pourrait intercepter la commande).")
             return result
     else:
         result = ProbeResult(fl_path=" ".join(command))
@@ -162,14 +163,14 @@ def probe_fl_studio(
                 say("  → fichier silencieux : rendu non valide")
                 continue
             if check.ends_with_sound:
-                say("  Attention : le rendu s'arrête alors que le son continue. Réglez l'export de "
+                say("  Attention : le rendu s'arrête alors que le son continue. Règle l'export de "
                     "FL Studio pour laisser la fin des effets (« Leave remainder »), sinon les "
                     "échos et delays de fin seraient coupés.")
             working = renderer
             result.working_args = args
             result.audio_format = f"{check.sample_rate} Hz {check.subtype}"
             if "FLOAT" not in check.subtype.upper():
-                say("  Conseil : réglez l'export WAV de FL Studio en 32 bits flottant pour éviter "
+                say("  Conseil : règle l'export WAV de FL Studio en 32 bits flottant pour éviter "
                     "tout écrêtage des pistes séparées.")
             break
 
@@ -268,7 +269,7 @@ def probe_fl_studio(
             say("Rendu automatique opérationnel : réglages enregistrés.")
         else:
             say("Rendu possible, mais l'isolation des pistes n'est pas fiable : "
-                "envoyez ce compte rendu pour analyse.")
+                "envoie ce compte rendu pour analyse.")
     try:
         _run_checks()
     finally:  # test copies and test renders are not kept

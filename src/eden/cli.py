@@ -71,7 +71,7 @@ def _configured_renderer():
     settings = load_settings()
     exe = find_fl_studio(settings.fl_path)
     if exe is None or not settings.render_args:
-        print("Rendu automatique pas encore configuré : lancez d'abord « eden fl-probe <projet.flp> ».",
+        print("Rendu automatique pas encore configuré : lance d'abord « eden fl-probe <projet.flp> ».",
               file=sys.stderr)
         return None, settings
     return FLStudioRenderer([str(exe)], settings.render_args), settings
@@ -83,8 +83,6 @@ def _render(args: argparse.Namespace, renderer, settings, report=None):
     result = render_project(args.project, renderer, timeout_s=settings.render_timeout_s,
                             threshold_db=settings.null_test_threshold_db,
                             allow_missing=args.allow_missing, report=report, on_step=_progress)
-    for w in result.warnings:
-        print(f"Avertissement : {w}")
     if result.null_test:
         print(result.null_test.message)
     return result
@@ -102,6 +100,8 @@ def _cmd_render(args: argparse.Namespace) -> int:
     except (InspectionError, RenderError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    for w in result.warnings:  # ``eden mix`` prints them with the mix's own, or before its error
+        print(f"Avertissement : {w}")
     print(f"Pistes rendues dans : {result.folder}")
     return 0 if result.ok else 1
 
@@ -146,11 +146,16 @@ def _print_version(version) -> None:
 
 
 def _cmd_mix(args: argparse.Namespace) -> int:
-    from eden.mix.export import ExportError, export_wav
+    from eden.mix.export import ExportError, check_format, export_wav
     from eden.mix.session import MixError, mix_project
     from eden.project.inspector import InspectionError, inspect_project
     from eden.render.fl_studio import RenderError
 
+    try:  # before FL renders and Eden mixes for minutes
+        check_format(args.frequence, args.bits)
+    except ExportError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     renderer, settings = _configured_renderer()
     if renderer is None:
         return 2
@@ -158,8 +163,14 @@ def _cmd_mix(args: argparse.Namespace) -> int:
     try:
         report = inspect_project(project, on_step=_progress)
         renders = _render(args, renderer, settings, report)
+    except (InspectionError, RenderError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    try:
         version = mix_project(project, report, renders, args.intensite / 100, on_step=_progress)
-    except (InspectionError, RenderError, MixError) as exc:
+    except MixError as exc:
+        for w in renders.warnings:  # a mix carries them in its own warnings; without one, said here
+            print(f"Avertissement : {w}")
         print(str(exc), file=sys.stderr)
         return 2
     _print_version(version)
@@ -203,9 +214,11 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("project", help="Chemin du fichier .flp")
     m.add_argument("--intensite", type=float, default=100.0, help="Intensité des corrections, 0 à 100")
     m.add_argument("--export", help="Fichier WAV à écrire (sans écraser un fichier existant)")
-    m.add_argument("--frequence", type=int, choices=[44100, 48000, 88200, 96000],
-                   help="Fréquence d'échantillonnage du WAV (par défaut : celle de FL Studio)")
-    m.add_argument("--bits", type=int, choices=[16, 24, 32], default=24, help="Profondeur de bits")
+    # the rates and depths are checked against the export's own lists, in _cmd_mix: importing the
+    # export module here would load scipy for every eden command
+    m.add_argument("--frequence", type=int,
+                   help="Fréquence d'échantillonnage du WAV, en Hz (par défaut : celle de FL Studio)")
+    m.add_argument("--bits", type=int, default=24, help="Profondeur de bits (par défaut : 24)")
     m.add_argument("--allow-missing", action="store_true",
                    help="Continuer même si des fichiers audio sont introuvables")
     m.set_defaults(func=_cmd_mix)

@@ -103,12 +103,6 @@ EdenPage {
                     spacing: 18
 
                     SectionTitle { text: "Voix détectées"; count: (page.r.voices || []).length }
-                    Text {
-                        visible: (page.r.voices || []).length === 0
-                        text: "Aucune voix reconnue automatiquement : vérifie les noms de tes pistes."
-                        color: Theme.warning
-                        font.family: Theme.fontFamily; font.pixelSize: 14
-                    }
                     Grid {
                         id: voiceGrid
                         width: parent.width

@@ -99,12 +99,13 @@ bus). Deux modes :
   automatique. Ce dernier test demande, dans le projet testé, une piste de la playlist qui
   passe par une reverb ou un delay actif dont FL a enregistré l'état activé/désactivé ; sans
   elle, il est noté « non vérifié sur ce projet ». Un slot peut ne rien changer pour une
-  raison qui lui est propre (plugin réglé pour laisser passer le son, fader du retour en
-  bas) : Eden essaie alors jusqu'à deux autres slots, de préférence sur un autre insert, et
-  avec une autre piste quand il y en a une (le même slot n'est repris avec une autre piste
-  que s'il n'en reste aucun autre ; 3 essais au plus, choix d'Eden), note chaque essai dans
-  le compte rendu, et ne conclut que FL ne respecte pas un slot désactivé que si aucun essai
-  ne change le rendu.
+  raison qui lui est propre (plugin réglé pour laisser passer le son, envoi ou retour
+  presque tout en bas ; tout en bas, l'effet est inaudible et n'est pas essayé) : Eden
+  essaie alors jusqu'à deux autres slots, de préférence sur un autre insert, et avec une
+  autre piste quand il y en a une (le même slot n'est repris avec une autre piste que s'il
+  n'en reste aucun autre ; 3 essais au plus, choix d'Eden), note chaque essai dans le compte
+  rendu, et ne conclut que FL ne respecte pas un slot désactivé que si aucun essai ne change
+  le rendu.
 - Plan B si la ligne de commande ne marche pas sur ta version : export guidé
   (« Split mixer tracks ») surveillé par Eden.
 
@@ -130,7 +131,8 @@ Règles :
 - **Test de reconstruction (null test)** : la somme des stems rendus doit égaler le rendu
   du Master de FL (écart mesuré, seuil à définir, ex. < −60 dB). Si ce n'est pas le cas,
   Eden refuse de continuer et dit pourquoi (insert non routé au Master, effet aléatoire,
-  envoi parallèle…). C'est la garantie que « mix Eden à 0 % = ton projet d'origine ».
+  envoi parallèle…). C'est la garantie que « mix Eden à 0 % = ton mix d'origine avant le
+  Master ».
 - **Choix des stems par analyse du graphe de routage** (déjà calculé en phase 2) : un
   insert envoyé dans un bus apparaît *aussi* dans le stem du bus. Eden additionne
   uniquement les inserts routés **directement** au Master pour reconstruire le mix, et
@@ -140,17 +142,18 @@ Règles :
   Eden liste les plugins sur tout le chemin jusqu'au Master avec leur catégorie (correction
   de hauteur, EQ, compression, de-esser, reverb, delay, saturation…) et leur état : actif,
   désactivé (son slot ou les effets de l'insert), ou inaudible (mix à 0 %, insert coupé,
-  volume de l'insert à zéro, insert sans sortie vers le Master). Le moteur de mixage s'en sert : pas d'Auto-Tune
-  ajouté si une correction de hauteur est déjà active, pas de reverb supplémentaire si le
-  bus vocal en a déjà une, etc.
+  volume de l'insert à zéro, insert sans sortie vers le Master). Le moteur de mixage s'en
+  sert : Eden n'ajoute jamais de correction de hauteur (celle de FL est déjà dans le rendu),
+  et pas de reverb ni de delay supplémentaire sur une voix dont la chaîne FL en a déjà.
 - **Master de FL — décision (révisée) : Eden fait le mastering.** Les pistes sont
   récupérées avant le Master (effets du Master contournés dans les copies) ; Eden mixe puis
   masterise lui-même (graves, bus, clip doux, limiteur true-peak, volume cible rap
   commercial). Les effets de ton Master FL servent à ton écoute dans FL Studio, pas au
   fichier final. La réinjection du mix dans le Master FL (première version) a été retirée.
 - **Voix sèche** : pour une voix dont la chaîne contient une reverb ou un delay que FL joue
-  vraiment (slot et insert actifs, insert qui atteint le Master), une copie est rendue avec
-  ces effets contournés (slot désactivé dans les paramètres du Mixer, retours d'effets
+  vraiment (slot actif avec un dry/wet qui n'est pas à 0, insert et ses effets actifs,
+  volume de l'insert au-dessus de zéro, insert qui atteint le Master), une copie est rendue
+  avec ces effets contournés (slot désactivé dans les paramètres du Mixer, retours d'effets
   coupés). La différence voix complète − voix sèche est exactement ce que tes effets
   ajoutent : Eden traite la voix sèche et remet tes effets par-dessus. Avant de s'en servir,
   Eden vérifie que FL en a bien retiré quelque chose et qu'elle est calée sur la voix
@@ -273,7 +276,7 @@ essentia (AGPL-3), Rubber Band (GPL ou licence commerciale payante).
 | Rendu automatique par ligne de commande non disponible / incomplet | rendu manuel nécessaire | mode d'export guidé + vérification automatique des fichiers |
 | Stems qui ne se resomment pas exactement (bus, sidechain, effets aléatoires, envois parallèles) | son différent de l'original | null test obligatoire, analyse du graphe de routage, rapport clair |
 | Effets temporels coupés en fin de clip (reverb/delay) | queues tronquées | rendu FL avec queues (option « leave remainder »), vérification de la fin |
-| Mauvaise identification des voix | mauvais traitement | rôles avec raisons et confiance, correction manuelle dans l'interface |
+| Mauvaise identification des voix | mauvais traitement | rôles avec raisons et confiance ; pas encore de correction manuelle : renommer la piste dans FL Studio puis relancer l'analyse |
 | Qualité du DSP « maison » | son moins bon qu'avec des plugins pros | métriques + écoutes comparatives, bascule vers un module C++ si nécessaire |
 | Performances Python sur des titres longs | lenteur | numpy vectorisé, numba, C++ ciblé |
 | Mises à jour depuis un dépôt privé | l'application ne peut pas télécharger les versions | dépôt public de releases ou jeton (voir `mises-a-jour.md`) |
