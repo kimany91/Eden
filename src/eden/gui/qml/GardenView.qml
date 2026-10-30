@@ -53,12 +53,13 @@ Item {
     readonly property real frameYaw: autoYaw + userYaw
     property real focusYaw: frameYaw  // set when the end starts: the shortest turn to the apple's side
 
-    Rectangle {  // the sky; the scene's fog fades the lawn into its horizon colour
+    Rectangle {  // a blue sky, paler down to the horizon, where the scene's fog fades the lawn into it
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#030407" }
-            GradientStop { position: 0.58; color: "#10131C" }
-            GradientStop { position: 1.0; color: "#10131C" }
+            GradientStop { position: 0.0; color: "#2F6DC6" }
+            GradientStop { position: 0.32; color: "#5E9BE0" }
+            GradientStop { position: 0.6; color: "#CFE6F7" }
+            GradientStop { position: 1.0; color: "#CFE6F7" }
         }
     }
 
@@ -176,6 +177,15 @@ Item {
     }
 
     // -- what is happening ---------------------------------------------------------------------
+    Rectangle {  // a light shade at the top of the sky: the header stays readable on the blue
+        anchors { left: parent.left; right: parent.right; top: parent.top }
+        height: 200
+        opacity: 1 - garden.toApple * 0.6
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.rgba(0.02, 0.04, 0.1, 0.55) }
+            GradientStop { position: 1.0; color: Qt.rgba(0.02, 0.04, 0.1, 0) }
+        }
+    }
     Item {
         id: header
         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 28 }
@@ -272,7 +282,7 @@ Item {
     Rectangle {
         id: journal
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 18 }
-        height: Math.max(150, Math.min(260, parent.height * 0.28))
+        height: Math.max(80, Math.min(130, parent.height * 0.14))  // the last few lines: what is happening now
         radius: Theme.radius
         color: Qt.rgba(0.02, 0.025, 0.035, 0.82)
         border.width: 1

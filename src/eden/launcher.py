@@ -80,7 +80,15 @@ RENDER_QML = """
 import QtQuick
 import "%s"
 Window {
-    width: 960; height: 600; visible: true; color: "#10131C"
+    width: 960; height: 600; visible: true
+    Rectangle {  // the garden's blue sky, as in Eden
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: "#2F6DC6" }
+            GradientStop { position: 0.32; color: "#5E9BE0" }
+            GradientStop { position: 0.6; color: "#CFE6F7" }
+        }
+    }
     GardenScene {
         objectName: "scene"; anchors.fill: parent
         growth: 1; time: 2; yaw: 35; pitch: -9; distance: %f

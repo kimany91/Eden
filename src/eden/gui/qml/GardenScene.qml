@@ -16,7 +16,7 @@ View3D {
     property vector3d applePosition: GardenInfo.appleCenter
     property vector3d appleRotation: Qt.vector3d(0, 0, 0)
     property real appleLight: 0  // a soft light on the apple while the camera looks at it
-    readonly property color horizon: "#10131C"  // the parent's sky meets the fog there
+    readonly property color horizon: "#CFE6F7"  // the parent's sky meets the fog there: a pale blue haze
 
     camera: camera
     environment: SceneEnvironment {
@@ -28,8 +28,9 @@ View3D {
             enabled: true
             color: view.horizon
             depthEnabled: true
-            depthNear: 5
-            depthFar: 19
+            // from just behind the tree to the lawn's far edge (18 m from its centre): the tree stays clear
+            depthNear: view.distance + 2.5
+            depthFar: view.distance + 18
         }
     }
 
@@ -45,12 +46,12 @@ View3D {
         }
     }
 
-    // low sun at the end of the day, its sky behind, a warm glow from the crown as it fills
+    // a sunny day: the sun, the blue sky's light from everywhere, a warm glow from the crown as it fills
     DirectionalLight {
-        eulerRotation: Qt.vector3d(-36, -38, 0)
-        color: "#FFE2B0"
-        brightness: 1.45
-        ambientColor: "#1E2230"
+        eulerRotation: Qt.vector3d(-42, -38, 0)
+        color: "#FFF3DC"
+        brightness: 1.5
+        ambientColor: "#4A5A72"
         castsShadow: true
         shadowMapQuality: Light.ShadowMapQualityHigh
         shadowMapFar: 30
@@ -60,13 +61,13 @@ View3D {
     }
     DirectionalLight {
         eulerRotation: Qt.vector3d(-18, 150, 0)
-        color: "#6A86C8"
-        brightness: 0.5
+        color: "#A9C6EE"
+        brightness: 0.55
     }
     PointLight {
         position: Qt.vector3d(0, 3.1, 0.4)
         color: "#FFC83A"
-        brightness: 0.9 * Math.max(0, (view.growth - 0.35) / 0.65)
+        brightness: 0.5 * Math.max(0, (view.growth - 0.35) / 0.65)
         quadraticFade: 0.6
     }
 
@@ -109,7 +110,7 @@ View3D {
             property real time: view.time
             property real roughness: 0.7
             property real shine: 0.18
-            property real glow: 0.09
+            property real glow: 0.14  // golden like the logo even in the crown's shade
             vertexShader: "shaders/leaf.vert"
             fragmentShader: "shaders/facet.frag"
         }
