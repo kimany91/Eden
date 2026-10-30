@@ -83,7 +83,7 @@ est marqué :
 | Tonalité | chroma des pics au-dessus de **200 Hz** (kick, 808 et lignes de basse brouillent le chroma ; Faraldo, sourcé) des parties harmoniques : instru complète, éléments musicaux, effets, inconnus et reste du mix, sans les groupes batterie et 808 (quand tous les groupes sont batterie ou 808 : tout le beat) ; corrélation avec trois profils (Krumhansl-Kessler, Shaath, edma ; valeurs sourcées sur Essentia) ; Temperley écarté (penche vers le majeur relatif, sourcé). Quand majeur et mineur relatifs sont proches (scores à moins de 0,1), le 808 tranche s'il joue vraiment une des deux toniques : au moins 10 % de son énergie grave et 1,5 fois plus que l'autre (choix d'Eden) ; sinon les deux sont affichées | affichage, contrôle des notes du 808 |
 | Tempo | tempo du projet FL ; pulsation « ressentie » ramenée entre 65 et 135 BPM (corpus MCFlow de rap : 79–124 BPM, non vérifié ; la trap écrite à 140 se ressent à 70) | delays, pré-delay, relâchements, phrases |
 | Notes du 808 | NSDF (McLeod & Wyvill) sur la bande < 200 Hz décimée de tous les groupes basse / 808 réunis, notes de 25 à 150 Hz, affinage parabolique ; les trames d'un glissando (> 30 cents en 60 ms) sont ignorées : les hauteurs qu'un slide traverse ne sont pas des notes | note principale, notes hors gamme (averties, jamais corrigées ; ≥ 0,5 s et ≥ 3 % du jeu du 808), désaccord > 25 cents, tenue des notes du 808 (§ 6) |
-| Kick / 808 | attaques du kick sous 150 Hz, sur tous les groupes batterie réunis (FL rend souvent chaque élément sur son propre insert) : montée de 4 dB en 20 ms, à moins de 12 dB des plus forts (ghost kicks compris) ; part des kicks qui tombent sur une note de 808, et de combien le 808 baisse déjà après le kick, mesuré contre sa propre décroissance | décider d'un ducking ; pas de tenue des notes du 808 sur un 808 que FL baisse déjà (§ 6) |
+| Kick / 808 | attaques du kick sous 150 Hz, sur tous les groupes batterie réunis (FL rend souvent chaque élément sur son propre insert) : montée de 4 dB en 20 ms, à moins de 12 dB des plus forts (ghost kicks compris) ; un coup n'est un kick que si la bande sous 150 Hz porte au moins 10 % de sa puissance sur ses 30 premières ms (choix d'Eden) : les 12 dB se comptent depuis les coups les plus forts de la bande grave des groupes batterie, et dans un groupe batterie sans kick (hi-hats, caisse claire, percussions ; le kick est alors dans l'instru complète, ou c'est le 808 qui en tient lieu) le peu de grave qu'ils laissent passer serait lu comme des kicks. Sur des batteries de test : hi-hats 0 %, caisses claires au corps de 180 à 200 Hz 4 % au plus, kicks de 11 % (une couche de clic qui porte 8 dB de plus que le coup sur leurs 30 premières ms) à 82 %, 18 % sous une crash ; un tom au corps sous 150 Hz (44 %) passe pour un kick ; part des kicks qui tombent sur une note de 808, et de combien le 808 baisse déjà après le kick, mesuré contre sa propre décroissance | décider d'un ducking ; pas de tenue des notes du 808 sur un 808 que FL baisse déjà (§ 6) |
 | Graves en stéréo | corrélation G/D sous 100 Hz | mono des graves au master |
 
 ## 2. La chaîne de chaque voix
@@ -157,7 +157,8 @@ d'1/6 d'octave d'une note tenue ou de son octave.
   contre l'instru comme une seule voix, avec la même cible et le même maximum de 10 dB, et
   elles reçoivent le même gain statique : ce réglage ne change pas leur équilibre entre elles
   (le suivi phrase par phrase, ensuite, se fait voix par voix). Seule exception : une voix
-  principale qui copie une autre (corrélation > 0,8 à ±40 ms) n'est jamais montée. Quand deux
+  principale qui copie une autre (corrélation > 0,8 à ±40 ms, lue seulement entre deux voix qui
+  chantent ensemble : une copie chante quand l'originale chante) n'est jamais montée. Quand deux
   voix se copient l'une l'autre (piste dupliquée), la première dans l'ordre du projet compte
   comme l'originale et reçoit le gain ; seule l'autre est gardée à son niveau, et la somme
   est alors mesurée à nouveau pour l'avertissement.
@@ -172,7 +173,13 @@ d'1/6 d'octave d'une note tenue ou de son octave.
   quelle et ne compte pas dans la référence, et une phrase n'est baissée que de ce dont la voix
   elle-même dépasse sa phrase médiane (6 dB et cette règle : choix d'Eden). Le gain tient
   pendant le silence et change dans les 120 ms qui précèdent la phrase suivante (les silences
-  du rap durent le plus souvent une double croche, ~180 ms : MCFlow, non vérifié).
+  du rap durent le plus souvent une double croche, ~180 ms : MCFlow, non vérifié). Sur une voix
+  dont les reverbs et delays FL ont été rendus à part, les phrases et leur niveau sont lus sur la
+  voix sans eux : leurs queues rempliraient les silences et souderaient les phrases (sur une voix
+  de test aux silences de 0,6 s, avec un écho à la noire à −15 dB, tout le morceau ne formait
+  plus qu'une phrase, et rien n'était suivi). Ils reçoivent le même gain que la voix et
+  suivent donc leur phrase. Sur une voix « prudente », ils sont dans la voix et ne peuvent pas
+  être mis de côté.
 - **Doublages / ad-libs / chœurs** par rapport à la voix principale : −6 (−10 à −3), −6
   (−9 à −3), −7 (−10 à −4) dB (moyennes de blogs, **non vérifié**), changement statique
   4 dB max ; hors de leur fenêtre une fois ce changement fait, Eden le signale aussi
@@ -191,17 +198,21 @@ synthèse de la recherche ; niveaux : choix d'Eden) :
 | Ambiance | 80 ms, pré-delay 8 ms, 400 Hz – 6 kHz | −23 dB |
 | Plate | 0,8 à 1,4 s (≈ 2 temps ressentis), pré-delay = 1/64 ou 1/32 le plus proche de 45 ms, borné 20–80 ms, 300 Hz – 6 kHz, baissée de 2,5 dB pendant le chant | −19 dB |
 | Delay 1/8 | ping-pong, feedback 0,25, 400 Hz – 4 kHz, baissé de 10 dB pendant le chant ; remonte en un quart du temps de delay, pour que le premier écho après la phrase s'entende en entier | −21 dB |
-| Jet d'écho (lead) | 1/4, feedback 0,35, envoyé seulement sur la fin d'une phrase suivie d'un silence | −12 dB |
+| Jet d'écho (lead) | 1/4, feedback 0,35, envoyé seulement sur la fin d'une phrase suivie d'un silence, baissé de 10 dB pendant le chant ; remonte en un quart du temps de delay | −12 dB |
 
 - Voix secondaires : mêmes envois 4 dB plus présents (plus loin).
 - L'envoi est dé-essé une fois (8 dB) avant tous les effets : un « s » répété n'est que du
   bruit.
 - Les niveaux sont réglés sur le volume BS.1770 de la voix sèche, pas sur ses crêtes.
-- **Plafond** : la reverb de tout le morceau, **tes effets FL compris**, reste ≤ −16 LU par
-  rapport au mix sec. Sourcé : De Man, McNally & Reiss 2017, 80 mixes : à −9 LU ou plus,
+- **Plafond** : Eden garde la reverb de tout le morceau, **tes effets FL compris**, à −16 LU
+  au plus par rapport au mix sec quand il le peut en baissant ses propres effets ; les tiens
+  ne sont jamais touchés. Sourcé : De Man, McNally & Reiss 2017, 80 mixes : à −9 LU ou plus,
   toujours jugé trop mouillé ; −14 LU plus souhaitable. Le rap se tient plus sec : choix
-  d'Eden. Si le plafond est dépassé, seuls les effets d'Eden baissent ; les tiens ne sont
-  jamais touchés.
+  d'Eden. Quand le plafond n'est dépassé qu'avec les effets d'Eden, ils baissent juste assez,
+  et chaque voix concernée dit de combien. Si tes effets dépassent déjà ce plafond à eux
+  seuls, Eden retire les siens et te le signale dans les avertissements, avec la valeur
+  mesurée et les voix dont les effets FL sont en cause ; sur chaque voix qui en aurait reçu,
+  la liste de ses envois est remplacée par « Effets d'Eden retirés » et cette valeur.
 - Tes effets FL ne comptent que s'ils ont été rendus à part. Quand la reverb ou le delay FL
   d'une voix reste dans sa voix (voix « prudente »), la reverb du morceau ne peut pas être
   mesurée : Eden n'ajoute alors d'espace à **aucune** voix, et l'indique sur chaque voix qui
@@ -232,31 +243,39 @@ synthèse de la recherche ; niveaux : choix d'Eden) :
 ## 6. Place pour les paroles et basses
 
 - **Démasquage** : dans chaque bande de tiers d'octave centrée de 250 Hz à 8 kHz, Eden
-  mesure l'instru moins la voix pendant le chant. Une bande où l'instru est 3 dB ou plus
-  sous la voix n'a pas besoin de creux ; les autres baisseraient, à 100 %, de 1 dB (instru
-  3 dB sous la voix) à 3 dB (instru 3 dB au-dessus ou plus). Sont écartées celles que
-  l'instru couvre de plus de 12 dB (un creux de 3 dB n'y découvre rien) et celles où la
-  voix est à plus de 20 dB sous sa bande la plus forte (elle n'y a presque rien) : 12 et
-  20 dB, choix d'Eden. Au plus 3 bandes sont gardées : celles où le creux rend le plus de
-  paroles audibles, soit l'importance de la bande pour l'intelligibilité (ANSI S3.5,
-  1–4 kHz ≈ 72 % du poids, sourcé ; chaque tiers reçoit le tiers du poids de son octave)
-  × l'audibilité gagnée, l'audibilité d'une bande valant 0 quand la voix est 15 dB sous
-  l'instru, 1 à partir de 15 dB au-dessus, et montant en ligne droite entre les deux
-  (ANSI S3.5, non vérifié sur le texte de la norme). Dans les bandes retenues (instru de
-  3 dB sous la voix à 12 dB au-dessus), l'audibilité n'atteint jamais 0 ni 1 : l'audibilité
-  gagnée vaut la profondeur du creux divisée par 30, et le classement revient à importance
-  × profondeur. Le creux ne joue que quand la voix chante (méthode de Hafezi & Reiss 2015,
-  sourcé). L'instru est creusée là où elle a été mesurée : dans les groupes et dans le
-  reste du mix (une instru qui passe par un bus partagé avec les voix s'y retrouve). Quand
-  des voix sont restées dans le reste du mix (au-delà des 16 voix qu'Eden fait rendre une
-  par une), seuls les groupes sont mesurés et creusés : creuser le reste baisserait aussi
-  ces voix ; le motif du creux le dit. Le creux est affiché sur les groupes, et sur une
-  ligne « Reste du mix », quand ils portent au moins 25 % de ce qu'il retire (choix
-  d'Eden). Fait **avant** l'équilibre, pour que la voix soit réglée sur l'instru telle
-  qu'on l'entendra. Doublages, chœurs et ad-libs baissent de 2 dB entre 1 et 4 kHz aux
-  mêmes moments (choix d'Eden) : un doublage chante sous la voix principale. Seule la voix
-  baisse : ses reverbs et delays FL rendus à part restent tels quels (sur une voix
-  « prudente », ils sont dans la voix et baissent avec elle).
+  mesure l'instru moins la voix pendant le chant, la voix au niveau qu'il prévoit de lui
+  donner (§ 3, réglé sur l'instru avant le creux) : mesurée telle que FL l'a rendue, une
+  voix rendue 10 dB trop bas lirait l'instru 10 dB plus haut dans chaque bande, et les creux
+  tomberaient ailleurs. Une bande où l'instru est 3 dB ou plus sous la voix n'a pas besoin
+  de creux ; les autres baisseraient, à 100 %, de 1 dB (instru 3 dB sous la voix) à 3 dB
+  (instru 3 dB au-dessus ou plus). Sont écartées celles que l'instru couvre de plus de 12 dB
+  (même creusée de 3 dB, la voix y resterait à plus de 9 dB sous l'instru ; selon le modèle
+  d'audibilité ci-dessous, ce creux y gagnerait pourtant autant que dans une bande retenue
+  jusqu'à 15 dB, et moins jusqu'à 18 dB : c'est un choix) et celles où la voix est à plus de
+  20 dB sous sa bande la plus forte (elle n'y a presque rien) : 12 et 20 dB, choix d'Eden.
+  Au plus 3 bandes sont gardées : celles où le creux rend le plus de paroles audibles, soit
+  l'importance de la bande pour l'intelligibilité (ANSI S3.5, 1–4 kHz ≈ 72 % du poids,
+  sourcé ; chaque tiers reçoit le tiers du poids de son octave) × l'audibilité gagnée,
+  l'audibilité d'une bande valant 0 quand la voix est 15 dB sous l'instru, 1 à partir de
+  15 dB au-dessus, et montant en ligne droite entre les deux (ANSI S3.5, non vérifié sur le
+  texte de la norme). Dans les bandes retenues (instru de 3 dB sous la voix à 12 dB
+  au-dessus), l'audibilité n'atteint jamais 0 ni 1 : l'audibilité gagnée vaut la profondeur
+  du creux divisée par 30, et le classement revient à importance × profondeur. Le creux ne
+  joue que quand la voix chante (comme l'« Unmask » des égaliseurs dynamiques, non vérifié ;
+  choix d'Eden) ; baisser l'instru là où elle masque la voix est la méthode de Hafezi &
+  Reiss 2015 (sourcé). L'instru est creusée là où elle a été mesurée : dans les groupes et
+  dans le reste du mix (une instru qui passe par un bus partagé avec les voix s'y retrouve).
+  Quand des voix sont restées dans le reste du mix (au-delà des 16 voix qu'Eden fait rendre
+  une par une), seuls les groupes sont mesurés et creusés : creuser le reste baisserait
+  aussi ces voix ; le motif du creux le dit. Le creux est affiché sur les groupes, et sur
+  une ligne « Reste du mix », quand ils portent au moins 25 % de ce qu'il retire (choix
+  d'Eden). Fait **avant** l'équilibre : le niveau de la voix principale est d'abord prévu
+  sur l'instru avant le creux, les bandes sont choisies avec la voix à ce niveau, puis
+  l'équilibre est mesuré à nouveau sur l'instru creusée, telle qu'on l'entendra. Doublages,
+  chœurs et ad-libs baissent de 2 dB entre 1 et 4 kHz aux mêmes moments (choix d'Eden) : un
+  doublage chante sous la voix principale. Seule la voix baisse : ses reverbs et delays FL
+  rendus à part restent tels quels (sur une voix « prudente », ils sont dans la voix et
+  baissent avec elle).
 - **Tenue des notes du 808** : avant le ducking, Eden lit les notes du 808 sur tous les
   groupes basse / 808 réunis, que FL rend à part : aucun kick n'y gêne la lecture des notes.
   Le niveau est celui de la bande sous 100 Hz, moyenné sur une période de chaque note (sans
@@ -300,9 +319,11 @@ synthèse de la recherche ; niveaux : choix d'Eden) :
   des notes rejouées (sur des 808 de test aux notes égales dont chaque note déborde sur la
   suivante d'un quart de l'écart entre deux notes, la tenue s'est déclenchée à tort dans
   8 cas sur 27).
-- **Kick / 808** : si plus d'un kick sur deux (lus sur tous les groupes batterie réunis)
-  tombe sur une note de 808 qui ne baisse pas déjà (< 2 dB), chaque groupe basse / 808 est
-  baissé de 3 dB sous 100 Hz à chacun de ces kicks : descente en 5 ms
+- **Kick / 808** : si plus d'un kick sur deux (lus sur tous les groupes batterie réunis ;
+  un coup dont la bande sous 150 Hz porte moins de 10 % de la puissance sur ses 30 premières
+  ms n'en est pas un, voir § 1 : un groupe de hi-hats ou de caisse claire seul ne fait pas
+  baisser le 808) tombe sur une note de 808 qui ne baisse pas déjà (< 2 dB), chaque groupe
+  basse / 808 est baissé de 3 dB sous 100 Hz à chacun de ces kicks : descente en 5 ms
   (cosinus, sans clic) avant l'attaque, tenue 30 ms après, remontée 100 ms. Chaque kick est
   calé sur son attaque : sa montée est repérée sur la moyenne des 20 ms autour de chaque
   milliseconde, qui commence à monter jusqu'à 10 ms avant le kick, puis le kick est placé sur

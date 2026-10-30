@@ -8,34 +8,38 @@ Everything is done on FL Studio's own renders (parts, see ``parts.py``):
    groups: FL often gives each drum its own insert), stereo of the low end;
 2. the lead voices' chains (``vocal.py``), on FL's dry render when the voice
    carries FL reverbs or delays, which are then put back untouched;
-3. the beat: room for the words (the bands where a dip makes the most of
-   the lead's words audible are dipped while it sings, in the whole instru
-   they were measured on: groups and rest of the mix, or the groups alone
-   when voices were left in the rest of the mix), the 808's notes evened out
-   when they vary by more than 4 dB from one to the next (read on the bass
-   groups, where no kick gets in the way, unless FL already ducks the 808 at
-   each kick), kick / 808 duck when they collide and nothing ducks already,
-   harmonics for small speakers when the 808 is a bare sine. This comes
-   before the balance, so the balance is measured on the beat as it will be
-   heard;
+3. the beat: the 808's notes evened out when they vary by more than 4 dB
+   from one to the next (read on the bass groups, where no kick gets in the
+   way, unless FL already ducks the 808 at each kick), kick / 808 duck when
+   they collide and nothing ducks already, harmonics for small speakers when
+   the 808 is a bare sine; then room for the words: the bands where a dip
+   makes the most of the lead's words audible are dipped while it sings, in
+   the whole instru they were measured on (groups and rest of the mix, or
+   the groups alone when voices were left in the rest of the mix). The
+   leads' static level is planned first, on the beat before the dips, and
+   the bands are chosen with the leads at that level; the balance is then
+   measured on the beat as it will be heard;
 4. the leads: level against the beat while they sing (leads that sing
    together are set as one; a warning when the change cannot bring them into
-   the window), riding phrase by phrase (``riding.py``), space when they
-   have none (``space.py``);
+   the window), riding phrase by phrase (``riding.py``; the phrases are read
+   on the voice without its FL reverbs and delays, which follow the same
+   gain), space when they have none (``space.py``);
 5. the other voices one by one: chain, level against the lead (copies of
    the lead are never raised: comb filtering; a warning when the change
    cannot bring them into their window), placement (``stereo.py``), a dip
    in 1–4 kHz of the voice alone (not its FL effects) while the lead sings,
    space when they have none;
 6. the reverb of the whole mix (the user's FL effects and Eden's) is kept
-   under a ceiling — when a voice's FL reverb could not be rendered apart,
-   it cannot be measured, and Eden adds no space at all; the mix goes back
-   to the level it came in at.
+   under a ceiling by lowering Eden's returns (a warning when the user's FL
+   effects alone go over it) — when a voice's FL reverb could not be
+   rendered apart, it cannot be measured, and Eden adds no space at all;
+   the mix goes back to the level it came in at.
 
-Voices are processed one at a time and added up as they are done, so
-memory does not grow with the number of voices. At intensity 0 nothing is
-changed: the result is the original pre-master mix, bit for bit. Every
-change is recorded with its reason.
+The leads are kept, in 32-bit float like the parts, until they are
+balanced together; the other voices are processed one at a time and added
+up as they are done, so memory does not grow with their number. At
+intensity 0 nothing is changed: the result is the original pre-master mix,
+bit for bit. Every change is recorded with its reason.
 """
 
 from __future__ import annotations
@@ -46,11 +50,12 @@ from dataclasses import dataclass, field
 from itertools import combinations
 
 import numpy as np
+from scipy.signal import resample_poly
 
 from eden.mix import dsp, lowend, stereo
 from eden.mix.analysis import BandMasking, Level, balance_against, band_masking, level_of, measure_vocal
 from eden.mix.loudness import integrated_loudness
-from eden.mix.parts import Part, Parts
+from eden.mix.parts import Part, Parts, _lag_correlation
 from eden.mix.riding import EXPOSED_DB, MASKING_FROM_HZ, TOLERANCE_DB, apply_ride, felt_quarter, ride
 from eden.mix.space import design_space, render_space, returns_scale
 from eden.mix.tonality import bass_pitch_classes, detect_key, tuning
@@ -72,8 +77,10 @@ MAX_LEVEL_CHANGE_DB = 4.0  # static level change of the other voices against the
 # already mastered beat can sit 10 dB under it (choix d'Eden)
 MAX_LEAD_CHANGE_DB = 10.0
 MAX_CARVE_DB = 3.0  # dip of the beat in one band while the lead sings
-# bands left out of the carve (choix d'Eden): the beat covers the voice there by more than this, so a 1–3 dB
-# dip uncovers nothing; the voice is this far under its strongest band there, so the band carries little of it
+# bands left out of the carve (choix d'Eden): the beat covers the voice there by more than this, so even dipped
+# MAX_CARVE_DB the voice stays more than 9 dB under it (by ANSI S3.5's audibility, that dip would still gain as much
+# there as in a band kept, up to 15 dB, and less up to 18 dB: leaving these bands out is a choice); the voice is
+# this far under its strongest band there, so the band carries little of it
 CARVE_MAX_MASKING_DB = 12.0
 CARVE_VOICE_RANGE_DB = 20.0
 CARVE_SHARE = 0.25  # the dip is reported on the groups / the rest of the mix that carry this share of what it removes
@@ -122,10 +129,9 @@ class MixOutcome:
     parts: list[PartResult]
     song: SongAnalysis
     staging_gain_db: float  # keeps the level entering the master as before
-    loudness_original: float
-    loudness_mix: float
     # relative reverb loudness of the whole mix (De Man et al. 2017); NaN when an FL reverb inside a voice
-    # could not be rendered apart, so cannot be measured
+    # could not be rendered apart, so cannot be measured; −inf when there is none to measure (no reverb or
+    # delay, or intensity 0)
     reverb_lu: float
     warnings: list[str] = field(default_factory=list)
 
@@ -148,9 +154,10 @@ def _carve_bands(bands: list[BandMasking], k: float) -> list[tuple[BandMasking, 
     """Up to 3 (band, depth) to dip in the beat while the lead sings.
 
     A band where the beat is 3 dB or more under the voice needs no dip; one it
-    covers by more than ``CARVE_MAX_MASKING_DB`` cannot be uncovered by a dip
-    of 1 to 3 dB; one where the voice is more than ``CARVE_VOICE_RANGE_DB``
-    under its strongest band carries little of it. Each other band would dip
+    covers by more than ``CARVE_MAX_MASKING_DB`` is left out (choix d'Eden: even
+    dipped ``MAX_CARVE_DB``, the voice stays more than 9 dB under the beat
+    there); one where the voice is more than ``CARVE_VOICE_RANGE_DB`` under its
+    strongest band carries little of it. Each other band would dip
     from 1 dB (beat 3 dB under the voice) to ``MAX_CARVE_DB`` (beat 3 dB over
     it and more), scaled by ``k``; the ones whose dip makes the most of the
     words audible are kept: the band's importance times the audibility the
@@ -247,16 +254,36 @@ def _sing_together(leads: list[Part], levels: dict[str, Level]) -> list[list[Par
     return list(clusters.values())
 
 
-def _copies(together: list[Part], fs: float) -> dict[str, tuple[str, float]]:
+def _copies(together: list[Part], levels: dict[str, Level], fs: float) -> dict[str, tuple[str, float]]:
     """For each voice of ``together`` (in project order) that is a copy of another one, (label,
     correlation) of the one it copies most. When two copy each other (a duplicated track), the
-    first one in project order counts as the original: only the later one is a copy."""
-    corr = {(v.key, o.key): stereo.copy_correlation(v.audio, o.audio, fs)
-            for v in together for o in together if o is not v}
+    first one in project order counts as the original: only the later one is a copy.
+
+    The correlation is ``stereo.copy_correlation``'s, with each voice decimated and masked once,
+    and it is read only between voices that sing together (``stereo.together`` of their sung
+    blocks, ``levels``, at least ``stereo.TOGETHER``): a copy sings when the voice it copies does."""
+    factor = max(1, int(fs // 11025))  # as in copy_correlation: the voice below 5 kHz is enough
+    rate = fs / factor
+    mono, sounds = {}, {}
+    for v in together:
+        d = resample_poly(v.audio.mean(axis=1) if v.audio.ndim == 2 else v.audio, 1, factor)
+        level, size = dsp.band_levels_db(d, rate)
+        active = np.repeat(level > float(np.percentile(level, 95)) - 30.0, size) if level.size else np.zeros(0, bool)
+        mono[v.key], sounds[v.key] = d, np.pad(active, (0, max(0, d.size - active.size)))[:d.size]
+    corr = {}
+    for v in together:
+        for o in together:
+            if o is v or stereo.together(levels[v.key].active_blocks, levels[o.key].active_blocks) < stereo.TOGETHER:
+                continue
+            n = min(mono[v.key].size, mono[o.key].size)
+            dm, lm = mono[v.key][:n] * sounds[v.key][:n], mono[o.key][:n] * sounds[v.key][:n]
+            denom = math.sqrt(float(np.dot(dm, dm) * np.dot(lm, lm)))
+            near = _lag_correlation(dm, lm, int(0.040 * rate))  # ±40 ms: Haas-style delayed copies too
+            corr[v.key, o.key] = float(np.max(np.abs(near)) / denom) if denom > 0 else 0.0
     out = {}
     for i, v in enumerate(together):
         originals = [(o.label, corr[v.key, o.key]) for j, o in enumerate(together)
-                     if j != i and corr[v.key, o.key] > stereo.COPY_CORRELATION
+                     if (v.key, o.key) in corr and corr[v.key, o.key] > stereo.COPY_CORRELATION
                      and (j < i or corr[o.key, v.key] <= stereo.COPY_CORRELATION)]
         if originals:
             out[v.key] = max(originals, key=lambda c: c[1])
@@ -292,27 +319,40 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         warnings.append(f"Le 808 est désaccordé d'environ {song.bass_detune_cents:.0f} cents par rapport "
                         "au reste de l'instru")
     if k <= 0:  # bit-exact: nothing is changed
-        return MixOutcome(parts.premaster.copy(), fs, k, _untouched(parts, fs, fl_space), song, 0.0,
-                          premaster_lufs, premaster_lufs, -math.inf, warnings)
+        return MixOutcome(parts.premaster.copy(), fs, k, _untouched(parts, fs, fl_space), song, 0.0, -math.inf,
+                          warnings)
 
     results: dict[str, PartResult] = {}
     leads = [v for v in parts.voices if v.role in LEAD_ROLES]
     others = [v for v in parts.voices if v.role not in LEAD_ROLES]
+    shape = parts.premaster.shape
 
     # -- 1. the leads' chains ------------------------------------------------------------
-    chained = {}
+    # kept until they are balanced together, in 32-bit float like the parts (half the memory); their FL
+    # reverbs and delays are read from the part again when they are needed
+    chained: dict[str, tuple[np.ndarray, Level]] = {}
     for v in leads:
         say(f"Voix : {v.label}")
-        chained[v.key] = _chain(v, fs, k, fl_space.get(v.key, "none"), tempo_bpm)
-        results[v.key] = chained[v.key][3]
-    sung = [v for v in leads if math.isfinite(chained[v.key][2].lufs)]
-    lead_mix = sum((chained[v.key][0] for v in sung), np.zeros(parts.premaster.shape)) if sung else None
+        processed, _, level, res = _chain(v, fs, k, fl_space.get(v.key, "none"), tempo_bpm)
+        chained[v.key] = (processed.astype(np.float32, copy=False), level)
+        results[v.key] = res
+        del processed
+    sung = [v for v in leads if math.isfinite(chained[v.key][1].lufs)]
+    levels = {v.key: chained[v.key][1] for v in sung}
+
+    def heard(together: list[Part], gains_db: dict[str, float] | None = None) -> Level:
+        """Level of leads that sing together, added up (each at its gain in dB, none by default)."""
+        if len(together) == 1 and gains_db is None:
+            return levels[together[0].key]
+        stack = sum((chained[v.key][0] * 10 ** ((gains_db or {}).get(v.key, 0.0) / 20) for v in together),
+                    np.zeros(shape))
+        return level_of(stack, fs)
 
     # -- 2. the beat: the low end, then room for the words -----------------------------------
     for g in parts.groups:
         lufs = integrated_loudness(g.audio, fs)
         results[g.key] = PartResult(g.key, g.label, g.role, [], lufs, lufs, "none")
-    groups = np.zeros(parts.premaster.shape)
+    groups = np.zeros(shape)
     for g in parts.groups:
         if g.role != "bass":
             groups += g.audio
@@ -323,7 +363,7 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         bass = _sum_of(parts.groups, "bass")
         ducked = low.existing_duck_db >= lowend.DUCKED_DB  # measured only with drums and bass groups
         if low.kick_overlap > 0.5 and not ducked:
-            _, _, hits = lowend.kick_808_interaction(bass, _sum_of(parts.groups, "drums"), fs)
+            hits = low.kick_hits
         # the 808's notes are read on the bass groups alone, where no kick gets in the way; not when FL already
         # ducks the 808 at each kick: its dips and its climbs back would read as notes
         if not ducked:
@@ -367,8 +407,27 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         del audio
     say("Place pour les paroles dans l'instru")
     residual = parts.residual.audio
+    clusters = _sing_together(sung, levels)
+    as_one = [heard(together) for together in clusters]  # each cluster's leads added up, for both balances
+    lead_copies: dict[int, dict[str, tuple[str, float]]] = {}
+
+    def copies_in(i: int) -> dict[str, tuple[str, float]]:
+        """The copies among the leads of ``clusters[i]`` (worked out once)."""
+        if i not in lead_copies:
+            lead_copies[i] = _copies(clusters[i], levels, fs)
+        return lead_copies[i]
+
     env = size = None
-    if lead_mix is not None:
+    if sung:
+        # the leads' static level is planned on the beat before the carve, and the bands are chosen with the
+        # leads at that level: a lead rendered quieter than it will be heard reads the beat over it everywhere
+        planned: dict[str, float] = {}
+        uncarved = residual + groups
+        for i, together in enumerate(clusters):
+            change = _level_change(balance_against(as_one[i], uncarved, fs), LEAD_BALANCE, k, MAX_LEAD_CHANGE_DB)
+            copied = copies_in(i) if change > 0 and len(together) > 1 else {}
+            planned.update({v.key: 0.0 if v.key in copied else change for v in together})
+        lead_mix = sum((chained[v.key][0] * 10 ** (planned[v.key] / 20) for v in sung), np.zeros(shape))
         level, _ = dsp.band_levels_db(lead_mix, fs)
         env, size = dsp.activity_envelope(lead_mix, fs, float(np.percentile(level, 95)) - 35.0,
                                           attack_ms=15.0, release_ms=200.0)
@@ -376,8 +435,8 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         # a bus with the voices lands there), or the groups alone when voices were left in the rest of the mix
         # (they would be measured, and dipped, as instru); the dips are linear, carving each is carving their sum
         with_rest = not parts.voices_in_residual
-        bands = band_masking(lead_mix, residual + groups if with_rest else groups, fs,
-                             level_of(lead_mix, fs).active_blocks)
+        bands = band_masking(lead_mix, uncarved if with_rest else groups, fs, level_of(lead_mix, fs).active_blocks)
+        del uncarved
         chosen = _carve_bands(bands, k)
         if chosen:
             carved_groups, carved_residual = groups, residual
@@ -395,10 +454,11 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
                     f"{b.low_hz:.0f}–{b.high_hz:.0f} Hz −{d:.1f} dB" for b, d in chosen),
                 "Bandes où un creux rend le plus de paroles audibles (importance de la bande pour les paroles × "
                 "audibilité gagnée, ANSI S3.5), creusées seulement pendant le chant ; instru − voix dans ces "
-                "bandes : " + ", ".join(f"{b.masking_db:+.1f} dB" for b, _ in chosen)
+                "bandes, la voix au niveau prévu par Eden : " + ", ".join(f"{b.masking_db:+.1f} dB" for b, _ in chosen)
                 + ". Choisies parmi les tiers d'octave de 250 Hz à 8 kHz où l'instru est à moins de 3 dB sous la "
-                f"voix ou au-dessus, sans celles qu'elle couvre de plus de {CARVE_MAX_MASKING_DB:.0f} dB (un creux "
-                f"de {MAX_CARVE_DB:.0f} dB n'y découvre rien) ni celles où la voix est à plus de "
+                f"voix ou au-dessus, sans celles qu'elle couvre de plus de {CARVE_MAX_MASKING_DB:.0f} dB (choix "
+                f"d'Eden : même creusée de {MAX_CARVE_DB:.0f} dB, la voix y resterait à plus de "
+                f"{CARVE_MAX_MASKING_DB - MAX_CARVE_DB:.0f} dB sous l'instru) ni celles où la voix est à plus de "
                 f"{CARVE_VOICE_RANGE_DB:.0f} dB sous sa bande la plus forte"
                 + ("" if with_rest else " ; des voix sont restées dans le reste du mix : seuls les groupes sont "
                    "mesurés et creusés"))
@@ -414,7 +474,6 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
     beat = residual + groups
     del groups, residual
 
-    shape = parts.premaster.shape
     voices_sum, returns_sum, fl_wet_sum = np.zeros(shape), np.zeros(shape), np.zeros(shape)
     # an FL reverb left inside a voice cannot be measured: the reverb of the whole mix cannot be kept
     # under its ceiling, so Eden adds none of its own
@@ -459,10 +518,10 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
     say("Équilibre et suivi de la voix principale")
     target = (f"visé {LEAD_BALANCE[0]:+.0f} dB, accepté de {LEAD_BALANCE[1]:+.0f} à {LEAD_BALANCE[2]:+.0f} dB "
               "(mesure BS.1770, où une voix lit environ 2 LU plus bas qu'à l'oreille)")
-    for together in _sing_together(sung, {v.key: chained[v.key][2] for v in sung}):
+    for i, together in enumerate(clusters):
         if len(together) == 1:
             v = together[0]
-            current = balance_against(chained[v.key][2], beat, fs)
+            current = balance_against(levels[v.key], beat, fs)
             set_level(v, _level_change(current, LEAD_BALANCE, k, MAX_LEAD_CHANGE_DB),
                       f"voix {current:+.1f} dB par rapport à l'instru pendant qu'elle chante ; {target}")
             # a static gain moves the balance by exactly that many dB
@@ -472,11 +531,9 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
                        "baisse la voix ou monte l'instru dans FL Studio"))
             continue
         # takes sung at the same moments add up: they are set as one, their balance kept
-        stack = sum((chained[v.key][0] for v in together), np.zeros(shape))
-        current = balance_against(level_of(stack, fs), beat, fs)
-        del stack
+        current = balance_against(as_one[i], beat, fs)
         change = _level_change(current, LEAD_BALANCE, k, MAX_LEAD_CHANGE_DB)
-        copied = _copies(together, fs) if change > 0 else {}
+        copied = copies_in(i) if change > 0 else {}
         kept = [f"« {v.label} »" for v in together if v.key in copied]
         s = "s" if len(kept) > 1 else ""
         names = " + ".join(f"« {v.label} »" for v in together)
@@ -493,10 +550,8 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
                 set_level(v, change, what)
         gains = {results[v.key].level_change_db for v in together}
         if len(gains) > 1:  # copies kept at their level: the stack is measured again
-            stack = sum((chained[v.key][0] * 10 ** (results[v.key].level_change_db / 20) for v in together),
-                        np.zeros(shape))
-            after = balance_against(level_of(stack, fs), beat, fs)
-            del stack
+            after = balance_against(heard(together, {v.key: results[v.key].level_change_db for v in together}),
+                                    beat, fs)
         else:
             after = current + gains.pop()
         still_off(f"{names}, qui chantent ensemble,", True, "de l'instru pendant qu'elles chantent", after,
@@ -504,12 +559,15 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
                                  "baisse ces voix ou monte l'instru dans FL Studio"))
     reference = None
     for v in leads:
-        processed, fl_wet, level, _ = chained.pop(v.key)
+        processed, level = chained.pop(v.key)
+        fl_wet = v.space  # the user's FL reverbs and delays, rendered apart (None when FL had none)
         if math.isfinite(level.lufs):
             gain = 10 ** (results[v.key].level_change_db / 20)
             processed = processed * gain
             fl_wet = fl_wet * gain if fl_wet is not None else None
-            r = ride(processed, beat, fs, tempo_bpm, k)
+            # the phrases are read on the voice without its FL effects, whose tails would fill the rests and
+            # join its phrases; the effects get the same gain, so they follow their phrase
+            r = ride(processed - fl_wet if fl_wet is not None else processed, beat, fs, tempo_bpm, k)
             if r.moved:
                 processed = apply_ride(processed, r)
                 fl_wet = apply_ride(fl_wet, r) if fl_wet is not None else None
@@ -522,14 +580,15 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
                     f"tout le morceau) ; écart toléré ±{TOLERANCE_DB:.1f} dB ; baissée seulement de ce dont la voix "
                     "elle-même dépasse sa phrase médiane, jamais parce que l'instru se retire"
                     + (f" ; {r.exposed} phrase(s) laissée(s) telle(s) quelle(s), l'instru y est à plus de "
-                       f"{EXPOSED_DB:.0f} dB sous sa médiane" if r.exposed else "")))
+                       f"{EXPOSED_DB:.0f} dB sous sa médiane" if r.exposed else "")
+                    + (" ; phrases lues sur la voix sans tes reverbs et delays FL (leurs queues rempliraient les "
+                       "silences), qui reçoivent le même gain" if fl_wet is not None else "")))
             if reference is None or results[v.key].loudness_after > results[reference.key].loudness_after:
                 reference = v
             add_space(v, processed)
         voices_sum += processed
         if fl_wet is not None:
             fl_wet_sum += fl_wet
-    del chained
 
     # -- 4. the other voices, one at a time --------------------------------------------------
     doubles = [v for v in others if v.role == "double"]
@@ -592,16 +651,27 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
     elif returns_sum.any() or fl_wet_sum.any():
         dry = beat + voices_sum - fl_wet_sum
         scale, reverb_lu = returns_scale(fl_wet_sum, returns_sum, dry, fs, MAX_REVERB_LU)
-        if scale < 1.0 and returns_sum.any():
-            returns_sum *= scale
-            note = (f"Effets d'Eden baissés de {-20 * math.log10(scale):.1f} dB" if scale > 0
-                    else "Effets d'Eden retirés")
-            for v in parts.voices:
-                if results[v.key].space:
-                    results[v.key].space.append(
-                        f"{note} : la reverb de tout le morceau (tes effets FL compris) restait au-dessus de "
-                        f"{MAX_REVERB_LU:.0f} LU")
         del dry
+        eden_space = returns_sum.any()
+        if scale < 1.0 and eden_space:
+            returns_sum *= scale
+            for v in parts.voices:
+                if not results[v.key].space:
+                    continue
+                if scale > 0:
+                    results[v.key].space.append(
+                        f"Effets d'Eden baissés de {-20 * math.log10(scale):.1f} dB : la reverb de tout le morceau "
+                        f"(tes effets FL compris) restait au-dessus de {MAX_REVERB_LU:.0f} LU")
+                else:  # the user's FL effects alone reach the ceiling: the sends listed are not in the mix
+                    results[v.key].space = [
+                        f"Effets d'Eden retirés : avec tes seuls effets FL, la reverb de tout le morceau est déjà à "
+                        f"{reverb_lu:.1f} LU par rapport au mix sec (plafond {MAX_REVERB_LU:.0f} LU)"]
+        if reverb_lu > MAX_REVERB_LU:  # the user's FL effects alone go over the ceiling (Eden's are out)
+            tracked = ", ".join(f"« {v.label} »" for v in parts.voices if v.dry is not None)
+            warnings.append(f"La reverb de tout le morceau est à {reverb_lu:.1f} LU par rapport au mix sec, "
+                            f"au-dessus du plafond de {MAX_REVERB_LU:.0f} LU : les reverbs et delays FL de "
+                            f"{tracked} suffisent à le dépasser" + (" (Eden a retiré les siens)" if eden_space else "")
+                            + " ; baisse-les dans FL Studio")
     final = beat + voices_sum + returns_sum
     staging = 0.0
     mix_lufs = integrated_loudness(final, fs)
@@ -609,5 +679,4 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         staging = premaster_lufs - mix_lufs
         final = _gain(final, staging)
     ordered = [results[p.key] for p in [*parts.voices, *parts.groups, parts.residual] if p.key in results]
-    return MixOutcome(final, fs, k, ordered, song, staging, premaster_lufs, integrated_loudness(final, fs),
-                      reverb_lu, warnings)
+    return MixOutcome(final, fs, k, ordered, song, staging, reverb_lu, warnings)
