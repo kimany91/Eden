@@ -120,6 +120,16 @@ def test_eden_mix_prints_each_render_warning_once(tmp_path, monkeypatch, capsys)
     assert capsys.readouterr().out.count(CUT_TAIL) == 1
 
 
+def test_eden_mix_prints_the_render_warnings_when_it_cannot_mix(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("EDEN_SIM_CUT_TAIL", "1")
+    monkeypatch.setenv("EDEN_SIM_IGNORE_MUTE", "1")  # every group holds the whole song: the null test fails
+    save_settings(Settings(fl_path=sys.executable, render_args=[SIM, "/R", "/Ewav", "{project}"]))
+    assert main(["mix", str(make_session(tmp_path)), "--intensite", "0"]) == 2
+    out, err = capsys.readouterr()
+    assert out.count(CUT_TAIL) == 1  # no mix to carry it: said before the error
+    assert "n'a pas passé ses vérifications" in err
+
+
 # -- 2. what 0 % gives ----------------------------------------------------------------------
 
 def test_zero_percent_is_described_as_the_mix_before_the_master():

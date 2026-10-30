@@ -100,7 +100,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
     except (InspectionError, RenderError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    for w in result.warnings:  # ``eden mix`` prints them with the mix's own warnings
+    for w in result.warnings:  # ``eden mix`` prints them with the mix's own, or before its error
         print(f"Avertissement : {w}")
     print(f"Pistes rendues dans : {result.folder}")
     return 0 if result.ok else 1
@@ -163,8 +163,14 @@ def _cmd_mix(args: argparse.Namespace) -> int:
     try:
         report = inspect_project(project, on_step=_progress)
         renders = _render(args, renderer, settings, report)
+    except (InspectionError, RenderError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    try:
         version = mix_project(project, report, renders, args.intensite / 100, on_step=_progress)
-    except (InspectionError, RenderError, MixError) as exc:
+    except MixError as exc:
+        for w in renders.warnings:  # a mix carries them in its own warnings; without one, said here
+            print(f"Avertissement : {w}")
         print(str(exc), file=sys.stderr)
         return 2
     _print_version(version)
