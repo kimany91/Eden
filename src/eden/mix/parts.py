@@ -1,6 +1,7 @@
 """Split FL Studio's renders into the parts Eden mixes.
 
-    voices    each vocal channel alone, with its whole FL chain; when FL
+    voices    each voice alone (the vocal channels of one Mixer track with one
+              role, together), with its whole FL chain; when FL
               also rendered it without its reverbs and delays, the voice
               carries that dry render and ``space`` (full minus dry) holds
               exactly what the user's FL effects add
@@ -32,6 +33,7 @@ import soundfile as sf
 from eden.mix.dsp import band_levels_db
 from eden.project.inspector import InspectionReport
 from eden.render.pipeline import RenderResult
+from eden.render.plan import voice_title
 
 DRY_LAG_SEARCH_S = 0.1  # how far FL's delay compensation may have moved the dry voice (choix d'Eden)
 
@@ -180,7 +182,7 @@ def split(report: InspectionReport, renders: RenderResult) -> Parts:
         members = [sources[c] for c in job.channels if c in sources]
         if kind == "vocal":
             s = members[0] if members else None
-            label = s.label if s else job.description
+            label = voice_title(report.project, members) if members else job.description
             voice_dry = dry.get(job.channels[0])
             problem = dry_render_problem(audio, voice_dry, fs) if voice_dry is not None else None
             if problem:

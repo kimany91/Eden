@@ -23,8 +23,13 @@ def test_render_rows_follow_pipeline_steps(tmp_path):
     report = inspect_project(project, roots=SearchRoots())
     rows = viewmodel.render_rows(plan_renders(report))
     assert [r["name"] for r in rows][-1] == "verification"
-    marked = viewmodel.mark_step(rows, 2)
-    assert [r["status"] for r in marked[:4]] == ["done", "done", "running", "pending"]
+    started = viewmodel.mark_step(rows, -1)  # FL Studio renders the parts together, in any order
+    assert {r["status"] for r in started[:-1]} == {"running"} and started[-1]["status"] == "pending"
+    marked = viewmodel.mark_step(started, 2)
+    assert [r["status"] for r in marked[:4]] == ["running", "running", "done", "running"]
+    assert viewmodel.rendered_share(marked) == 1 / len(rows)
+    checking = viewmodel.mark_step(marked, len(rows) - 1)
+    assert {r["status"] for r in checking[:-1]} == {"done"} and checking[-1]["status"] == "running"
 
     result = render_project(project, sim_renderer(), timeout_s=120, report=report)
     final, summary = viewmodel.render_view(rows, result)

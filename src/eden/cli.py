@@ -65,16 +65,14 @@ def _progress(i: int, total: int, label: str) -> None:
 
 
 def _configured_renderer():
-    from eden.render.fl_studio import FLStudioRenderer, find_fl_studio
+    from eden.render.fl_studio import configured_renderer
     from eden.settings import load_settings
 
-    settings = load_settings()
-    exe = find_fl_studio(settings.fl_path)
-    if exe is None or not settings.render_args:
+    renderer = configured_renderer()
+    if renderer is None:
         print("Rendu automatique pas encore configuré : lance d'abord « eden fl-probe <projet.flp> ».",
               file=sys.stderr)
-        return None, settings
-    return FLStudioRenderer([str(exe)], settings.render_args), settings
+    return renderer, load_settings()
 
 
 def _render(args: argparse.Namespace, renderer, settings, report=None):

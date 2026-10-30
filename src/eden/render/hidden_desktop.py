@@ -10,6 +10,7 @@ stays while no render file grows is read (title and text), FL is closed, and Ede
 from __future__ import annotations
 
 import ctypes
+import itertools
 import os
 import subprocess
 import time
@@ -24,7 +25,9 @@ DIALOG_PATIENCE_S = 15.0  # a message that stays this long while nothing is rend
 POLL_S = 0.5
 GENERIC_ALL = 0x10000000
 CREATE_NO_WINDOW = 0x08000000
+BELOW_NORMAL_PRIORITY_CLASS = 0x00004000  # what the user does on the PC goes first: nothing lags
 WAIT_OBJECT_0 = 0
+_desktop_numbers = itertools.count(1)  # each desktop its own name, two FL Studios starting together included
 
 
 class Unavailable(OSError):
@@ -113,7 +116,7 @@ def run_hidden(args: list[str], cwd: Path, timeout_s: float, progress: Callable[
     """Run ``args`` on a desktop never shown, until it ends, ``timeout_s`` passes, or a message stays
     ``DIALOG_PATIENCE_S`` while ``progress()`` (what the run has produced so far) does not change."""
     api = _api()
-    name = f"Eden-{os.getpid()}-{time.monotonic_ns()}"
+    name = f"Eden-{os.getpid()}-{next(_desktop_numbers)}"
     desktop = api.user32.CreateDesktopW(name, None, None, 0, GENERIC_ALL, None)
     if not desktop:
         raise Unavailable(ctypes.get_last_error(), "CreateDesktopW")
@@ -122,7 +125,8 @@ def run_hidden(args: list[str], cwd: Path, timeout_s: float, progress: Callable[
     info.lpDesktop = name
     command = ctypes.create_unicode_buffer(subprocess.list2cmdline(args))
     try:
-        if not api.kernel32.CreateProcessW(None, command, None, None, False, CREATE_NO_WINDOW, None, str(cwd),
+        if not api.kernel32.CreateProcessW(None, command, None, None, False,
+                                           CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, None, str(cwd),
                                            ctypes.byref(info), ctypes.byref(proc)):
             raise OSError(ctypes.get_last_error(), "CreateProcessW")
         api.kernel32.CloseHandle(proc.hThread)

@@ -22,12 +22,19 @@ Environment switches used by tests:
                            effect still plays)
   EDEN_SIM_WET_REVERB=1    reverb slots give their tail only (100 % wet, as set on an
                            effect return)
+  EDEN_SIM_TRACE=<file>    each launch adds a line to <file>: when it started and ended
+                           (JSON), and the projects it rendered
+  EDEN_SIM_ALONE=<file>    behave like an FL Studio that will not start beside another one:
+                           a launch while <file> exists (another one is rendering) renders
+                           nothing and ends at once
 """
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+import time
 from functools import cache
 from pathlib import Path
 
@@ -125,8 +132,25 @@ def main(argv: list[str]) -> int:
             projects.append(Path(a))
     if "/R" not in argv or not projects:
         return 2
-    for proj in projects:
-        sf.write(proj.with_suffix(".wav"), render(proj), SR, subtype="FLOAT")
+    alone = os.environ.get("EDEN_SIM_ALONE")
+    if alone:
+        try:
+            os.close(os.open(alone, os.O_CREAT | os.O_EXCL))
+        except FileExistsError:
+            return 0
+    start = time.time()
+    try:
+        for proj in projects:
+            sf.write(proj.with_suffix(".wav"), render(proj), SR, subtype="FLOAT")
+        if alone:
+            time.sleep(1.0)  # long enough for a launch beside this one to find it rendering
+    finally:
+        if alone:
+            os.remove(alone)
+    trace = os.environ.get("EDEN_SIM_TRACE")
+    if trace:
+        with open(trace, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"start": start, "end": time.time(), "projects": [p.stem for p in projects]}) + "\n")
     return 0
 
 

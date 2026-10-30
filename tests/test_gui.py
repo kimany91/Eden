@@ -125,7 +125,7 @@ def test_one_journey_from_the_project_to_the_result(ui, tmp_path):
     assert shown["lines"] == len(lines)
     text = "\n".join(f"{line['kind']} {line['text']}" for line in lines)
     for said in ("stage Analyse du projet", "detail Voix trouvée : « Lead » → Voix principale",
-                 "stage FL Studio joue tes pistes", "step Rendu FL Studio : Lead seule",
+                 "stage FL Studio joue tes pistes", "step Rendu FL Studio : ", "step Rendu par FL Studio : Lead seule",
                  "done Somme des pistes = mix d'origine", "stage Mixage Eden",
                  "step Voix « Lead » : mesures", "detail « Lead » : Coupe-bas", "stage Mastering Eden",
                  # the project's "Instru" is a complete beat: kept as it is, not squashed a second time

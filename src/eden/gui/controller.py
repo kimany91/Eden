@@ -43,14 +43,9 @@ LOG_LIMIT = 2000  # lines kept for a view opened late (the garden is shown durin
 
 def default_renderer():
     """FL Studio renderer from the saved settings, or None if not set up yet."""
-    from eden.render.fl_studio import FLStudioRenderer, find_fl_studio
-    from eden.settings import load_settings
+    from eden.render.fl_studio import configured_renderer
 
-    settings = load_settings()
-    exe = find_fl_studio(settings.fl_path)
-    if exe is None or not settings.render_args:
-        return None
-    return FLStudioRenderer([str(exe)], settings.render_args)
+    return configured_renderer()
 
 
 def default_export_folder() -> Path:
@@ -448,8 +443,8 @@ class EdenController(QObject):
     def _on_render_progress(self, index: int, total: int, label: str) -> None:
         self._step(label)
         if total > 1 and self._renderRows:
-            self._grow("render", index / total)
             self._set("renderRows", viewmodel.mark_step(self._renderRows, index))
+            self._grow("render", viewmodel.rendered_share(self._renderRows))
 
     def _on_rendered(self, result) -> None:
         self.renders = result

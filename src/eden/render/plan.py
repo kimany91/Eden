@@ -13,8 +13,11 @@ a file). Kinds of jobs:
   inserts that bypass it are cut, so their sum equals ``premaster``: each
   source is counted once, bus processing is kept, Master effects are left to
   Eden's finishing;
-* ``vocal``     – one vocal channel alone, through its whole real chain
-  (inserts, buses), for analysis and per-voice decisions. Not part of the sum;
+* ``vocal``     – one voice alone, through its whole real chain (inserts,
+  buses), for analysis and per-voice decisions. Not part of the sum. A voice
+  is every vocal channel of one Mixer track (or played straight into the
+  Master) with one role: the audio files of a track go through its effects
+  together, as they do in the song, and cost one render, not one each;
 * ``vocal_dry`` – the same voice without its FL reverbs and delays: its
   effect returns (inserts holding a reverb or delay that the voice does not
   need to reach the Master) have their outputs cut and the reverb or delay slots on its
@@ -150,6 +153,35 @@ def _dry_edits(project: FlpProject, s: SourceAnalysis) -> tuple[list[int], list[
     return sorted(returns), slots, left_in
 
 
+def _voices(project: FlpProject, vocal: list[SourceAnalysis]) -> list[tuple[list[SourceAnalysis], tuple]]:
+    """Vocal channels rendered together, with how their reverbs and delays come off: those on one
+    Mixer track (or played straight into the Master) with one role, Eden mixing them the same way,
+    whose reverbs and delays come off the same way."""
+    voices: dict[tuple, list[SourceAnalysis]] = {}
+    for s in vocal:
+        track = MASTER_INSERT if s.insert is None else s.insert
+        returns, slots, left_in = _dry_edits(project, s)
+        voices.setdefault((track, s.role.role, (tuple(returns), tuple(slots), left_in)), []).append(s)
+    return [(members, dry) for (_, _, dry), members in voices.items()]
+
+
+def voice_title(project: FlpProject, members: list[SourceAnalysis]) -> str:
+    """How a voice is called: its channel, or its Mixer track (or role) and how many audio files it holds."""
+    s = members[0]
+    if len(members) == 1:
+        return s.label
+    ins = project.insert(s.insert) if s.insert not in (None, MASTER_INSERT) else None
+    return f"{ins.label if ins else s.role.label.capitalize()} ({len(members)} fichiers)"
+
+
+def _voice_name(members: list[SourceAnalysis]) -> str:
+    s = members[0]
+    if len(members) == 1:
+        return f"ch{s.channel:03d}-{_slug(s.label)}"
+    track = "master" if s.insert in (None, MASTER_INSERT) else f"ins{s.insert:03d}"
+    return f"{track}-{_slug(s.role.role)}"
+
+
 def plan_renders(report: InspectionReport) -> RenderPlan:
     project = report.project
     sources = [s for s in report.sources if s.reaches_master]
@@ -159,7 +191,11 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
             notes.append(f"« {s.label} » n'atteint pas le Master : absent du mix, ignoré")
 
     source_channels = sorted(s.channel for s in sources)
-    direct = [s for s in sources if s.insert in (None, MASTER_INSERT)]
+    voices = _voices(project, [s for s in sources if s.role.is_vocal])
+    # played straight into the Master: each source a stem of its own, a voice of several files one stem
+    direct = sorted([[s] for s in sources if s.insert in (None, MASTER_INSERT) and not s.role.is_vocal]
+                    + [members for members, _ in voices if members[0].insert in (None, MASTER_INSERT)],
+                    key=lambda members: members[0].channel)
     # every channel that can sound: a part is played alone by muting all the others (read as playing nowhere
     # included: if one plays after all, it stays out of the parts and is heard in the rest of the mix)
     sounding = sorted({s.channel for s in report.sources} | set(report.idle_channels))
@@ -215,30 +251,34 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
             **no_master,
         ))
 
-    for s in direct:
+    for members in direct:
+        title = voice_title(project, members)
         jobs.append(RenderJob(
-            name=f"stem-ch{s.channel:03d}-{_slug(s.label)}",
+            name=f"stem-{_voice_name(members)}",
             kind="stem",
-            description=f"{s.label} (joué directement dans le Master)",
-            mute_channels=all_but({s.channel}),
-            channels=[s.channel],
+            description=f"{title} (joué{'s' if len(members) > 1 else ''} directement dans le Master)",
+            mute_channels=all_but({s.channel for s in members}),
+            channels=[s.channel for s in members],
             **no_master,
         ))
 
-    vocals = [s for s in sources if s.role.is_vocal]
-    if len(vocals) > MAX_VOCAL_JOBS:
-        notes.append(f"{len(vocals)} voix détectées : rendu individuel limité aux "
+    if len(voices) > MAX_VOCAL_JOBS:
+        notes.append(f"{len(voices)} voix détectées : rendu individuel limité aux "
                      f"{MAX_VOCAL_JOBS} premières")
-        vocals = vocals[:MAX_VOCAL_JOBS]
+        voices = voices[:MAX_VOCAL_JOBS]
     guessed: set[tuple[int, int]] = set()  # (insert, slot) of unidentified plugins taken for space effects
-    for s in vocals:
-        others = all_but({s.channel})
+    for members, (returns, slots, left_in) in voices:
+        s, title, name = members[0], voice_title(project, members), _voice_name(members)
+        alone = len(members) == 1
+        channels = [m.channel for m in members]
+        others = all_but(set(channels))
         jobs.append(RenderJob(
-            name=f"vocal-ch{s.channel:03d}-{_slug(s.label)}",
+            name=f"vocal-{name}",
             kind="vocal",
-            description=f"{s.label} seule ({s.role.label}), avec toute sa chaîne d'effets",
+            description=(f"{title} seule ({s.role.label}), avec toute sa chaîne d'effets" if alone else
+                         f"{title} ({s.role.label}) ensemble, avec toute leur chaîne d'effets"),
             mute_channels=others,
-            channels=[s.channel],
+            channels=channels,
             **no_master,
         ))
         for e in s.space_effects:
@@ -246,21 +286,20 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
                 guessed.add((e.insert, e.slot))
                 notes.append(f"« {e.plugin} » (insert « {e.insert_label} ») : plugin non identifié, "
                              "compté comme reverb ou delay d'après le nom de l'insert")
-        returns, slots, left_in = _dry_edits(project, s)
         if left_in:  # a half-dry render would pass for dry
-            notes.append(f"« {s.label} » : pas de voix sèche, {left_in} ; ses reverbs et delays FL "
+            notes.append(f"« {title} » : pas de voix sèche, {left_in} ; ses reverbs et delays FL "
                          "seront traités avec prudence au mixage")
         elif returns or slots:
             silenced = [(r, route.target) for r in returns for route in project.insert(r).routes]
             jobs.append(RenderJob(
-                name=f"dry-ch{s.channel:03d}-{_slug(s.label)}",
+                name=f"dry-{name}",
                 kind="vocal_dry",
-                description=f"{s.label} sans ses reverbs et delays FL (voix sèche)",
+                description=f"{title} sans {'ses' if alone else 'leurs'} reverbs et delays FL (voix sèche)",
                 mute_channels=others,
                 cut_routes=silenced,  # nothing of the returns reaches the Master
-                bypass_slots=slots + no_master["bypass_slots"],
+                bypass_slots=list(slots) + no_master["bypass_slots"],
                 bypass_master_switch=no_master["bypass_master_switch"],
-                channels=[s.channel],
+                channels=channels,
             ))
 
     overlap = {}

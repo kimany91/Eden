@@ -1,12 +1,28 @@
-Eden 1.2.3 : marche avec FL Studio 2025 / 2026, et bien plus vite.
+Eden 1.2.4 : la récupération du son depuis FL Studio va bien plus vite, sans faire ramer le PC.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.3.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.2.4.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Nouveau dans 1.2.4
+
+- **Une piste du Mixer = un seul rendu** : tous les fichiers d'une même piste (les couplets du
+  lead, les ad-libs…) sont rendus ensemble, prod et reste coupés, au lieu d'un rendu par
+  fichier. Ils passent dans les effets de la piste comme dans le morceau, et Eden les mixe
+  comme une piste. Des fichiers de rôles différents sur une même piste (lead et ad-libs) sont
+  rendus à part, parce qu'Eden ne les traite pas pareil.
+- **FL Studio ne s'ouvre qu'une fois** pour tous les rendus : il rend toutes les copies d'un
+  coup au lieu de redémarrer (lui et tous ses plugins) pour chacune. Sur un PC costaud
+  (8 cœurs logiques et 4 Go de mémoire libre), deux FL travaillent côte à côte, jamais plus.
+- **Le PC ne rame pas** : FL Studio tourne en priorité basse, ce que tu fais sur le PC passe
+  avant.
+- Chaque rendu terminé apparaît tout de suite dans la liste. Si une copie n'a pas été rendue
+  (FL refuse un deuxième FL, ou le rendu groupé ne marche pas avec ta version), Eden la rend
+  seule et retient ce qui marche sur ton PC pour la fois suivante.
 
 ## Corrigé dans 1.2.3
 
@@ -61,4 +77,4 @@ Eden 1.2.3 : marche avec FL Studio 2025 / 2026, et bien plus vite.
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.3/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.4/docs/mixage.md).

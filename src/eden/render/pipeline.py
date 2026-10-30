@@ -5,8 +5,10 @@
 
 FL Studio does all the sound: Eden only mutes parts of the project in a
 temporary copy so that FL renders each part separately, with every effect
-the user set (delays, Auto-Tune, echoes...). Each copy is deleted as soon as
-FL has rendered it; only the audio stays, in Eden's workspace. The original
+the user set (delays, Auto-Tune, echoes...). The copies go to FL together
+(``Renderer.render_many``: one launch of FL for all of them), and any it
+left without audio is rendered alone. The copies are deleted once FL has
+rendered them; only the audio stays, in Eden's workspace. The original
 project and its folder are never modified. A manifest (with the hash of each
 copy) is updated after every render so an interrupted run resumes where it
 stopped.
@@ -19,6 +21,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Callable
+from typing import NoReturn
 
 from eden.flp.edit import FlpEditor
 from eden.project.inspector import InspectionReport, inspect_project
@@ -28,6 +31,8 @@ from eden.render.plan import RenderJob, RenderPlan, plan_renders
 from eden.render.verify import AudioCheck, NullTest, check_audio, null_test
 from eden.safety import Workspace, read_project_bytes, verify_unchanged
 
+# (the part whose audio is there, in any order, -1 when FL Studio starts and the part count for the final
+# check; the number of steps; what is happening)
 StepCallback = Callable[[int, int, str], None]
 
 
@@ -140,56 +145,77 @@ def render_project(
         warnings=list(plan.notes),
     )
     total = len(plan.jobs) + 1
-    rendered: dict[str, str] = {}  # copy → its audio: two parts asking for the same copy cost one render
-
-    def run(job: RenderJob, copy_bytes: bytes, step: int) -> JobResult:
-        """Have FL render a temporary copy (or reuse the audio of an identical one: rendered earlier in
-        this run, such as a voice played straight into the Master and the same voice alone, or kept
-        from a previous run)."""
-        if on_step:
-            on_step(step, total, f"Rendu FL Studio : {job.description}")
-        job_dir = folder / job.name
-        job_dir.mkdir(exist_ok=True)
-        copy_path = job_dir / f"{job.name}.flp"
+    audio: dict[str, str] = {}  # copy → its audio: two parts asking for the same copy cost one render
+    owner: dict[str, JobResult] = {}  # copy → the part FL renders it for
+    for job in plan.jobs:
+        copy_bytes = build_copy(original, job, repairs)
         copy_sha = hashlib.sha256(copy_bytes).hexdigest()
         jr = JobResult(job=job, copy_sha256=copy_sha)
         result.jobs.append(jr)
-
         prev = previous.get(job.name)
-        if copy_sha not in rendered and prev and prev.get("copy_sha256") == copy_sha and prev.get("wav_path") \
-                and Path(prev["wav_path"]).is_file():
-            rendered[copy_sha] = prev["wav_path"]
-        if copy_sha in rendered:
-            jr.wav_path, jr.status = rendered[copy_sha], "resumed"
-            jr.check = check_audio(Path(jr.wav_path))
-            _write_manifest(manifest, result)
-            return jr
+        if copy_sha not in audio and prev and prev.get("copy_sha256") == copy_sha and prev.get("wav_path") \
+                and Path(prev["wav_path"]).is_file():  # kept from a previous run
+            audio[copy_sha] = prev["wav_path"]
+        if copy_sha in audio or copy_sha in owner:
+            continue
+        job_dir = folder / job.name
+        job_dir.mkdir(exist_ok=True)
+        (job_dir / f"{job.name}.flp").write_bytes(copy_bytes)
+        owner[copy_sha] = jr
+    copies = {folder / jr.job.name / f"{jr.job.name}.flp": sha for sha, jr in owner.items()}
 
-        copy_path.write_bytes(copy_bytes)
-        try:
-            produced = renderer.render(copy_path, timeout_s)
-            target = job_dir / f"{job.name}.wav"
-            if produced != target:
-                if target.exists():
-                    target.unlink()
-                produced.replace(target)
-            jr.wav_path = str(target)
-            jr.check = check_audio(target)
-            jr.status = "done"
-            rendered[copy_sha] = jr.wav_path
-            if jr.check.silent and job.kind != "original":
-                result.warnings.append(f"Rendu silencieux : {job.description}")
-        except (RenderError, OSError) as exc:
-            jr.status, jr.error = "failed", str(exc)
-            _write_manifest(manifest, result)
-            raise RenderError(f"Échec du rendu « {job.description} » : {exc}") from exc
-        finally:
-            copy_path.unlink(missing_ok=True)
+    def settle(copy_sha: str) -> None:
+        """The audio of a copy is there: each part asking for it is done (``resumed`` when FL did not
+        render it for that part: identical copy, or kept from a previous run)."""
+        check = check_audio(Path(audio[copy_sha]))
+        for i, jr in enumerate(result.jobs):
+            if jr.copy_sha256 != copy_sha or jr.status != "pending":
+                continue
+            jr.wav_path, jr.check = audio[copy_sha], check
+            jr.status = "done" if owner.get(copy_sha) is jr else "resumed"
+            if jr.status == "done" and check.silent and jr.job.kind != "original":
+                result.warnings.append(f"Rendu silencieux : {jr.job.description}")
+            if on_step:
+                on_step(i, total, f"{'Rendu par FL Studio' if jr.status == 'done' else 'Déjà rendu'} : "
+                                  f"{jr.job.description}")
         _write_manifest(manifest, result)
-        return jr
 
-    for i, job in enumerate(plan.jobs):
-        run(job, build_copy(original, job, repairs), i)
+    def fail(jr: JobResult, exc: Exception) -> NoReturn:
+        jr.status, jr.error = "failed", str(exc)
+        _write_manifest(manifest, result)
+        raise RenderError(f"Échec du rendu « {jr.job.description} » : {exc}") from exc
+
+    def rendered(copy: Path, produced: Path) -> None:
+        copy_sha = copies[copy]
+        target = copy.with_suffix(".wav")
+        try:
+            if produced != target:
+                target.unlink(missing_ok=True)
+                produced.replace(target)
+        except OSError as exc:
+            fail(owner[copy_sha], exc)
+        audio[copy_sha] = str(target)
+        settle(copy_sha)
+
+    for copy_sha in list(audio):  # kept from a previous run
+        settle(copy_sha)
+    if on_step and copies:
+        on_step(-1, total, f"Rendu FL Studio : {len(copies)} rendu{'s' if len(copies) > 1 else ''} "
+                           f"pour {len(plan.jobs)} parties")
+    try:
+        if len(copies) > 1:  # FL renders them together, then each one it left is rendered alone
+            renderer.render_many(list(copies), timeout_s, rendered)
+        for copy, copy_sha in copies.items():
+            if copy_sha in audio:
+                continue
+            try:
+                produced = renderer.render(copy, timeout_s)
+            except (RenderError, OSError) as exc:
+                fail(owner[copy_sha], exc)
+            rendered(copy, produced)
+    finally:
+        for copy in copies:
+            copy.unlink(missing_ok=True)
 
     if on_step:
         on_step(len(plan.jobs), total, "Vérification : la somme des pistes reproduit-elle le mix ?")

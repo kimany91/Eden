@@ -5,6 +5,7 @@ refused, or FL renders nothing there, it starts the usual way."""
 import os
 import sys
 import textwrap
+import threading
 import time
 
 import pytest
@@ -35,11 +36,11 @@ def launch(tmp_path, monkeypatch):
         return hidden_desktop.HiddenRun(None if what == "ask" else 0, False,
                                         "FL Studio — Plugin introuvable : Serum" if what == "ask" else None)
 
-    def shown_run(self, project_copy, timeout_s):
+    def shown_run(self, args, folder, timeout_s):
         calls["shown"] += 1
         outputs = []
         if behaviour["shown"] == "render":
-            out = project_copy.parent / f"affiche-{calls['shown']}.wav"
+            out = folder / f"affiche-{calls['shown']}.wav"
             out.write_bytes(b"RIFF")
             outputs = [out]
         return RunOutcome(0, False, 0.1, outputs, "")
@@ -91,6 +92,26 @@ def test_what_fl_studio_asks_is_said_instead_of_waited_for(launch):
     assert calls["shown"] == 0
 
 
+def test_copies_rendered_together_never_show_fl_studio(launch, tmp_path, monkeypatch):
+    # nothing rendered on its own desktop: the copies are left to ``render`` (alone, shown if need be), and the
+    # folder render is not judged while FL has never rendered there
+    renderer, _, calls, behaviour = launch
+    monkeypatch.setattr(fl_studio.os, "cpu_count", lambda: 4)
+    behaviour["hidden"] = "nothing"
+    copies = []
+    for name in ("a", "b"):
+        (tmp_path / name).mkdir()
+        copies.append(tmp_path / name / f"{name}.flp")
+        copies[-1].write_bytes(b"FLhd")
+    told = []
+    renderer.render_many(copies, 60, lambda copy, wav: told.append(copy))
+    assert told == [] and calls == {"hidden": 1, "shown": 0}
+    assert renderer.folders is None and all(c.read_bytes() == b"FLhd" for c in copies)
+    monkeypatch.setattr(fl_studio, "_hidden_renders", True)  # FL renders there: now the same says it
+    renderer.render_many(copies, 60, lambda copy, wav: told.append(copy))
+    assert told == [] and calls["shown"] == 0 and renderer.folders is False
+
+
 # -- the real desktop (Windows) -----------------------------------------------------------------------
 
 def _script(tmp_path, name, body):
@@ -99,25 +120,59 @@ def _script(tmp_path, name, body):
     return path
 
 
+DESKTOP_NAME = """
+    import ctypes, sys
+    from ctypes import wintypes as w
+    user32, kernel32 = ctypes.WinDLL("user32"), ctypes.WinDLL("kernel32")
+    user32.GetThreadDesktop.argtypes = [w.DWORD]
+    user32.GetThreadDesktop.restype = w.HANDLE
+    user32.GetUserObjectInformationW.argtypes = [w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD,
+                                                 ctypes.POINTER(w.DWORD)]
+    desktop = user32.GetThreadDesktop(kernel32.GetCurrentThreadId())
+    name, needed = ctypes.create_unicode_buffer(256), w.DWORD()
+    user32.GetUserObjectInformationW(desktop, 2, name, ctypes.sizeof(name), ctypes.byref(needed))
+    open(sys.argv[1], "w", encoding="utf-8").write(name.value)
+"""
+
+
 @windows
 def test_a_program_runs_on_a_desktop_that_is_not_the_users(tmp_path):
     out = tmp_path / "bureau.txt"
-    script = _script(tmp_path, "bureau.py", """
-        import ctypes, sys
-        from ctypes import wintypes as w
-        user32, kernel32 = ctypes.WinDLL("user32"), ctypes.WinDLL("kernel32")
-        user32.GetThreadDesktop.argtypes = [w.DWORD]
-        user32.GetThreadDesktop.restype = w.HANDLE
-        user32.GetUserObjectInformationW.argtypes = [w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD,
-                                                     ctypes.POINTER(w.DWORD)]
-        desktop = user32.GetThreadDesktop(kernel32.GetCurrentThreadId())
-        name, needed = ctypes.create_unicode_buffer(256), w.DWORD()
-        user32.GetUserObjectInformationW(desktop, 2, name, ctypes.sizeof(name), ctypes.byref(needed))
-        open(sys.argv[1], "w", encoding="utf-8").write(name.value)
-    """)
+    script = _script(tmp_path, "bureau.py", DESKTOP_NAME)
     run = hidden_desktop.run_hidden([sys.executable, str(script), str(out)], tmp_path, 60, lambda: 0)
     assert run.returncode == 0 and not run.timed_out and run.dialog is None
     assert out.read_text(encoding="utf-8").startswith("Eden-")  # never the user's ("Default")
+
+
+@windows
+def test_two_programs_started_together_each_have_a_desktop_of_their_own(tmp_path):
+    # two FL Studios side by side: each one's messages are read on its own desktop
+    script = _script(tmp_path, "bureau.py", DESKTOP_NAME)
+    outs = [tmp_path / f"bureau-{k}.txt" for k in range(2)]
+    runs = [threading.Thread(target=hidden_desktop.run_hidden,
+                             args=([sys.executable, str(script), str(out)], tmp_path, 60, lambda: 0)) for out in outs]
+    for run in runs:
+        run.start()
+    for run in runs:
+        run.join()
+    names = {out.read_text(encoding="utf-8") for out in outs}
+    assert len(names) == 2 and all(name.startswith("Eden-") for name in names)
+
+
+@windows
+def test_there_it_runs_at_a_low_priority(tmp_path):
+    # what the user does on the PC goes first: the renders do not make it lag
+    out = tmp_path / "priorite.txt"
+    script = _script(tmp_path, "priorite.py", """
+        import ctypes, sys
+        kernel32 = ctypes.WinDLL("kernel32")
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.GetPriorityClass.argtypes = [ctypes.c_void_p]
+        open(sys.argv[1], "w", encoding="utf-8").write(str(kernel32.GetPriorityClass(kernel32.GetCurrentProcess())))
+    """)
+    run = hidden_desktop.run_hidden([sys.executable, str(script), str(out)], tmp_path, 60, lambda: 0)
+    assert run.returncode == 0
+    assert int(out.read_text(encoding="utf-8")) == hidden_desktop.BELOW_NORMAL_PRIORITY_CLASS
 
 
 @windows

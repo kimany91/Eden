@@ -92,8 +92,20 @@ bus). Deux modes :
   2025/2026 ne rend plus une copie où elle l'est (vu sur le projet d'un utilisateur, FL se
   ferme sans fichier). La copie est effacée dès que FL l'a rendue, et une copie identique à
   une autre réutilise son rendu au lieu de relancer FL.
-- Il lance FL Studio en ligne de commande sur chaque copie (`FL64.exe /R ...`, syntaxe
-  rapportée par des utilisateurs) et récupère le WAV produit.
+- Il lance FL Studio en ligne de commande (`FL64.exe /R ...`, syntaxe rapportée par des
+  utilisateurs) et récupère les WAV produits. **Une seule ouverture de FL pour toutes les
+  copies** : elles sont posées dans un dossier que FL rend d'un coup (`/F<dossier>`, rendu
+  d'un dossier décrit dans le manuel d'Image-Line) ; deux FL côte à côte seulement sur un PC
+  qui a la place (8 cœurs logiques et 4 Go libres), toujours en priorité basse pour que le
+  PC ne rame pas. Chaque WAV est reconnu au nom de sa copie et pris dès que FL passe à la
+  suivante ; une copie restée sans WAV (FL refuse un deuxième FL, le rendu de dossier ne
+  marche pas sur ce PC, un message l'a arrêté) est rendue seule. Ce qui marche sur le PC
+  est retenu dans les réglages.
+- Les fichiers d'une même piste du Mixer avec le même rôle (les couplets du lead, les
+  ad-libs…) sont une seule voix, rendue en une fois : ils passent ensemble dans les effets
+  de la piste, comme dans le morceau. Ils ne sont pas redécoupés fichier par fichier : la
+  reverb ou le delay d'un fichier déborde sur le suivant, et deux fichiers joués en même
+  temps ne se sépareraient pas.
 - Comme cette syntaxe n'est pas documentée de façon fiable, rien n'est supposé :
   `eden fl-probe` (fait aussi au premier rendu) l'essaie sur ton PC, un seul rendu. Que FL
   respecte ce qu'Eden change dans ses copies est vérifié sur chaque morceau par les rendus

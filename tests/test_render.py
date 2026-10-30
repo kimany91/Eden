@@ -40,14 +40,27 @@ class CapturingRenderer:
         self.copies[copy.stem] = copy.read_bytes()
         return self.inner.render(copy, timeout_s)
 
+    def render_many(self, copies, timeout_s, on_rendered):
+        self.copies.update((copy.stem, copy.read_bytes()) for copy in copies)
+        self.inner.render_many(copies, timeout_s, on_rendered)
+
 
 class CountingRenderer:
+    """Counts the copies FL Studio renders."""
+
     def __init__(self, inner):
         self.inner, self.calls, self.name = inner, 0, "compteur"
 
     def render(self, copy, timeout_s):
         self.calls += 1
         return self.inner.render(copy, timeout_s)
+
+    def render_many(self, copies, timeout_s, on_rendered):
+        def counted(copy, wav):
+            self.calls += 1
+            on_rendered(copy, wav)
+
+        self.inner.render_many(copies, timeout_s, counted)
 
 
 @pytest.fixture
@@ -417,8 +430,6 @@ def test_no_copy_switches_a_mixer_track_off(session):
 def test_identical_copies_cost_one_render(tmp_path, monkeypatch):
     # a voice played straight into the Master is the same copy as that voice alone; without Master effects the
     # song before the Master is the song itself
-    from eden.render.fl_studio import FLStudioRenderer
-
     d = tmp_path / "Direct"
     d.mkdir()
     t = np.arange(int(2.0 * 22050)) / 22050
@@ -429,12 +440,11 @@ def test_identical_copies_cost_one_render(tmp_path, monkeypatch):
                                Chan("Instru", insert=0, sample_path=str(d / "Beat.wav"))],
                               [Insert(routes=())], [Clip(1, 0, BAR, channel=0), Clip(2, 0, BAR, channel=1)],
                               tempo=120))
-    rendered = []
-    render = FLStudioRenderer.render
-    monkeypatch.setattr(FLStudioRenderer, "render",
-                        lambda self, copy, timeout_s: rendered.append(copy.parent.name) or render(self, copy, timeout_s))
+    trace = tmp_path / "trace.jsonl"
+    monkeypatch.setenv("EDEN_SIM_TRACE", str(trace))
     result = render_project(flp, sim_renderer(), timeout_s=120, report=_report(flp))
     assert result.ok and len(result.jobs) == 5
-    assert rendered == ["original", "stem-ch000-lead", "stem-ch001-instru"]
+    rendered = [name for line in trace.read_text().splitlines() for name in json.loads(line)["projects"]]
+    assert sorted(rendered) == ["original", "stem-ch000-lead", "stem-ch001-instru"]
     assert {j.job.name: j.status for j in result.jobs if j.status == "resumed"} == {
         "premaster": "resumed", "vocal-ch000-lead": "resumed"}

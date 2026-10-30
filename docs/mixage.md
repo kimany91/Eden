@@ -14,7 +14,12 @@ est marqué :
 
 ## Les morceaux du mix
 
-- **Chaque voix seule**, rendue par FL avec toute sa chaîne (inserts, bus, envois).
+- **Chaque voix seule**, rendue par FL avec toute sa chaîne (inserts, bus, envois). Une voix,
+  ce sont tous les fichiers d'une même piste du Mixer avec le même rôle (les couplets du
+  lead, les ad-libs…), rendus ensemble : ils passent dans les effets de la piste comme dans
+  le morceau (un compresseur, un Auto-Tune les entend ensemble), et Eden les mixe comme une
+  piste, ce que fait un ingénieur. Des fichiers de rôles différents sur une même piste sont
+  rendus à part, parce qu'Eden ne les traite pas pareil.
 - **Chaque voix sèche** : si sa chaîne FL contient une reverb ou un delay que FL joue
   vraiment (slot actif avec un dry/wet qui n'est pas à 0, insert et ses effets actifs,
   volume de l'insert au-dessus de zéro, insert qui atteint le Master : un retour coupé,

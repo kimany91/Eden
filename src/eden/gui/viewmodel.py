@@ -89,13 +89,24 @@ def render_rows(plan: RenderPlan) -> list[dict]:
 
 
 def mark_step(rows: list[dict], index: int) -> list[dict]:
+    """FL Studio renders the parts together, in any order: before it starts (``index`` -1) they are all
+    under way, then each one is done as it comes (``index``); the last row, the verification, runs once
+    they all are."""
     rows = [dict(r) for r in rows]
-    for i, row in enumerate(rows):
-        if i < index and row["status"] in ("pending", "running"):
-            row["status"] = "done"
-        elif i == index:
+    last = len(rows) - 1
+    for i, row in enumerate(rows[:last]):
+        if index < 0 and row["status"] == "pending":
             row["status"] = "running"
+        elif index in (i, last) and row["status"] in ("pending", "running"):
+            row["status"] = "done"
+    if index == last:
+        rows[last]["status"] = "running"
     return rows
+
+
+def rendered_share(rows: list[dict]) -> float:
+    """How much of FL Studio's renders is done."""
+    return sum(r["status"] == "done" for r in rows) / len(rows) if rows else 0.0
 
 
 def render_view(rows: list[dict], result: RenderResult) -> tuple[list[dict], dict]:

@@ -1,5 +1,6 @@
-"""Nothing comes over Eden: the programs it starts open no console window, and FL Studio, where it
-cannot have a desktop of its own, starts minimized without taking the focus (render/fl_studio.py)."""
+"""Nothing comes over Eden and nothing lags: the programs it starts open no console window, FL Studio
+runs at a low priority, and where it cannot have a desktop of its own it starts minimized without
+taking the focus (render/fl_studio.py)."""
 
 import os
 import subprocess
@@ -21,6 +22,7 @@ def test_on_windows_a_command_line_program_opens_no_console():
 def test_on_windows_fl_studio_starts_minimized_without_taking_the_focus():
     kw = out_of_the_way()
     assert kw["creationflags"] & subprocess.CREATE_NO_WINDOW
+    assert kw["creationflags"] & subprocess.BELOW_NORMAL_PRIORITY_CLASS  # what the user does goes first
     info = kw["startupinfo"]
     assert info.dwFlags & subprocess.STARTF_USESHOWWINDOW and info.wShowWindow == fl_studio.SW_SHOWMINNOACTIVE == 7
 
@@ -42,7 +44,8 @@ def test_fl_studio_started_the_usual_way_stays_out_of_the_way(tmp_path, monkeypa
     seen = []
     monkeypatch.setattr(fl_studio.subprocess, "Popen", lambda args, **kw: seen.append(kw) or _Done())
     (tmp_path / "copie.flp").write_bytes(b"FLhd")
-    FLStudioRenderer(["FL64.exe"], ["/R", "/Ewav", "{project}"])._run_shown(tmp_path / "copie.flp", timeout_s=5)
+    renderer = FLStudioRenderer(["FL64.exe"], ["/R", "/Ewav", "{project}"])
+    renderer._run_shown(renderer.build_args(tmp_path / "copie.flp"), tmp_path, timeout_s=5)
     assert len(seen) == 1
     if os.name == "nt":
         assert seen[0]["creationflags"] & subprocess.CREATE_NO_WINDOW
