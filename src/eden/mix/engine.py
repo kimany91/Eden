@@ -609,26 +609,29 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         if v.role in RELATIVE_TO_LEAD and reference is not None and math.isfinite(level.lufs):
             # the voice may keep its level, follow the lead's own static change (the balance the user set
             # inside the stack is kept) or anything between; out of its window it moves towards its goal, at
-            # most MAX_LEVEL_CHANGE_DB beyond that span
+            # most MAX_LEVEL_CHANGE_DB (scaled by the intensity) beyond that span
             base = results[reference.key].level_change_db
             current = res.loudness_after + base - results[reference.key].loudness_after  # once it follows
             reach = MAX_LEVEL_CHANGE_DB * k
             change = float(np.clip(base + _level_change(current, RELATIVE_TO_LEAD[v.role], k, math.inf),
                                    min(0.0, base) - reach, max(0.0, base) + reach))
             against = f"{current:+.1f} dB par rapport à « {reference.label} »" + (
-                f" en suivant son gain ({base:+.1f} dB)" if abs(base) >= 0.1 else "")
+                f" si elle suivait son gain ({base:+.1f} dB)" if abs(base) >= 0.1 else "")
             if change > base and copies.get(v.key, 0.0) > stereo.COPY_CORRELATION:
                 if abs(base) < 0.1:
                     res.treatments.append(Treatment(
                         "gain", "Niveau gardé", "Copie de la voix principale : la monter créerait un filtrage "
                         "en peigne", {"gain_db": 0.0}))
                 else:
-                    set_level(v, base, against + ", pas plus : copie de la voix principale, la monter davantage "
-                              "créerait un filtrage en peigne")
+                    set_level(v, base, against + " ; elle le suit, pas plus : copie de la voix principale, la "
+                              "monter davantage créerait un filtrage en peigne")
             else:
+                if abs(change) < 0.1 <= abs(base):  # said: the voice would seem forgotten when the lead moved
+                    res.treatments.append(Treatment("gain", "Niveau gardé", f"Équilibre : {against}",
+                                                    {"gain_db": 0.0}))
                 set_level(v, change, against)
-                still_off(f"« {v.label} »", False, f"de « {reference.label} »", current + change - base,
-                          RELATIVE_TO_LEAD[v.role],
+                still_off(f"« {v.label} »", False, f"de « {reference.label} »",
+                          current + res.level_change_db - base, RELATIVE_TO_LEAD[v.role],
                           ("monte cette voix dans FL Studio", "baisse cette voix dans FL Studio"))
             gain = 10 ** (res.level_change_db / 20)
             processed = processed * gain

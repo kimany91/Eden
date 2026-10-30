@@ -191,12 +191,13 @@ choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Dou
   sa fenêtre en suivant le gain de la voix principale le suit : l'équilibre que tu as réglé
   entre elles est gardé. Sinon, elle va vers sa cible ; son changement peut aller de
   « garder son niveau » à « suivre la voix principale », et 4 dB au plus au-delà (choix
-  d'Eden) : un ad-lib déjà trop fort n'est pas monté avec une voix principale enterrée.
+  d'Eden) : un ad-lib déjà trop fort ne monte que jusqu'à sa cible, pas d'autant qu'une voix
+  principale enterrée ; quand il ne bouge pas, Eden le dit (« Niveau gardé »).
   Hors de sa fenêtre une fois ce changement fait, Eden le signale aussi
   (« monte cette voix » ou « baisse cette voix dans FL Studio »). Un doublage **copie** de la
   voix principale (corrélation > 0,8 à ±40 ms, choix d'Eden) n'est jamais remonté par
-  rapport à elle (filtrage en peigne) ; il en suit au plus le gain, et rien n'est signalé :
-  c'est voulu.
+  rapport à elle (filtrage en peigne) ; il en suit au plus le gain, et, tenu ainsi, rien n'est
+  signalé : c'est voulu.
 
 ## 4. Espace
 

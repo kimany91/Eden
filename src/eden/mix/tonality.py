@@ -65,7 +65,7 @@ class Key:
         if self.relative_close:
             return f"{self.name} (ou {self.relative.name})"
         if self.decided_by_bass:
-            return f"{self.name} (le 808 tranche face à {self.relative.name})"
+            return f"{self.name} (d'après le 808, plutôt que {self.relative.name})"
         return self.name
 
     @property
