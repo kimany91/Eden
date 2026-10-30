@@ -181,13 +181,13 @@ def test_riding_still_brings_down_a_phrase_the_voice_pushed(lead):
     v = lead.copy()
     v[PHRASE] *= 10 ** (5 / 20)
     phrase = _fourth_phrase(v, beat(SECONDS))
-    assert -5.5 <= phrase.gain_db <= -4.0
+    assert phrase.gain_db == -riding.MAX_RIDE_DB  # a 5 dB push is brought back, capped at the rider's range
 
 
 def test_riding_brings_the_voice_up_when_the_beat_gets_louder(lead):
     b = beat(SECONDS)
     b[PHRASE] *= 2.0
-    assert 4.0 <= _fourth_phrase(lead, b).gain_db <= riding.MAX_RIDE_DB
+    assert _fourth_phrase(lead, b).gain_db == riding.MAX_RIDE_DB  # the louder beat justifies the full range
 
 
 def test_riding_finds_the_phrases_of_a_quietly_rendered_voice(lead):
