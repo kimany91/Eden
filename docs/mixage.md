@@ -203,9 +203,9 @@ synthèse de la recherche ; niveaux : choix d'Eden) :
 - L'envoi est dé-essé une fois (8 dB) avant tous les effets : un « s » répété n'est que du
   bruit.
 - Les niveaux sont réglés sur le volume BS.1770 de la voix sèche, pas sur ses crêtes.
-- **Plafond** : Eden tient la reverb de tout le morceau, **tes effets FL compris**, à −16 LU
-  au plus par rapport au mix sec, en baissant ses propres effets ; les tiens ne sont jamais
-  touchés. Sourcé : De Man, McNally & Reiss 2017, 80 mixes : à −9 LU ou plus, toujours jugé
+- **Plafond** : Eden garde la reverb de tout le morceau, **tes effets FL compris**, à −16 LU
+  au plus par rapport au mix sec quand il le peut en baissant ses propres effets ; les tiens
+  ne sont jamais touchés. Sourcé : De Man, McNally & Reiss 2017, 80 mixes : à −9 LU ou plus, toujours jugé
   trop mouillé ; −14 LU plus souhaitable. Le rap se tient plus sec : choix d'Eden. Quand le
   plafond n'est dépassé qu'avec les effets d'Eden, ils baissent juste assez, et chaque voix
   concernée dit de combien. Si tes effets dépassent déjà ce plafond à eux seuls, Eden retire
