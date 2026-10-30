@@ -25,9 +25,10 @@ phrases around it:
    cause in the signal: a phrase is brought down only as far as the voice
    itself got louder than its median phrase (a beat that got quieter is
    never a reason to lower the voice), and brought up only as far as the
-   voice got quieter plus the beat got louder. A phrase more than
-   ``FAINT_DB`` under the voice's median phrase is no phrase at all (a
-   breath, bleed) and is left alone;
+   voice got quieter plus the beat got louder — except a phrase the artist
+   dropped by ``SOFT_DB`` or more: rapping softly is a performance choice,
+   never raised. A phrase more than ``FAINT_DB`` under the voice's median
+   phrase is no phrase at all (a breath, bleed) and is left alone;
 5. each phrase keeps its gain through the rest that follows it (an FL echo
    tail stays at its phrase's level) and the next gain fades in during the
    end of that rest, never on a word.
@@ -43,7 +44,8 @@ from scipy.signal import butter, sosfilt
 from eden.mix import dsp
 from eden.mix.loudness import k_weighting
 
-MAX_RIDE_DB = 4.0  # tighter than a vocal rider's default ±6 dB: riding should never be heard working
+MAX_RIDE_DB = 3.0  # far under a vocal rider's default ±6 dB: riding should never be heard working
+SOFT_DB = 6.0  # a phrase the artist dropped this far under their median phrase is a choice: never raised
 TOLERANCE_DB = 2.0  # phrases this close to the song's balance are left alone
 FAINT_DB = 10.0  # a "phrase" this far under the voice's median phrase is a breath or bleed: left alone
 MASKING_FROM_HZ = 200.0  # the beat is measured above this: the band that masks words
@@ -195,7 +197,11 @@ def ride(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None
             if move < 0:  # down only as far as the voice itself got louder than its median phrase
                 move = max(move, -max(0.0, v - voice_median))
             else:  # up only as far as the voice got quieter plus the beat got louder
-                move = min(move, max(0.0, voice_median - v) + max(0.0, float(beat_db[i]) - beat_median))
+                drop = voice_median - v
+                if drop >= SOFT_DB:  # the artist dropped on purpose: never raised
+                    move = 0.0
+                else:
+                    move = min(move, max(0.0, drop) + max(0.0, float(beat_db[i]) - beat_median))
             g = float(np.clip(move, -MAX_RIDE_DB, MAX_RIDE_DB)) * k
         result.append(Phrase(s * dsp.FRAME_S, e * dsp.FRAME_S, g, bool(exposed[i])))
         # the new gain fades in at the end of the previous phrase's rest, then holds through

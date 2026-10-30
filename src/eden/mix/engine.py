@@ -465,8 +465,10 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
             planned.update({v.key: 0.0 if v.key in copied else change for v in together})
         lead_mix = sum((chained[v.key][0] * 10 ** (planned[v.key] / 20) for v in sung), np.zeros(shape))
         level, _ = dsp.band_levels_db(lead_mix, fs)
+        # the dips breathe slowly (a user heard the 15 / 200 ms gate as the whole master changing
+        # every few seconds): the beat's tone must not flick at the rhythm of the phrases
         env, size = dsp.activity_envelope(lead_mix, fs, float(np.percentile(level, 95)) - 35.0,
-                                          attack_ms=15.0, release_ms=200.0)
+                                          attack_ms=120.0, release_ms=900.0)
         # the instru is carved where it was measured: the groups and the rest of the mix (an instru that shares
         # a bus with the voices lands there), or the groups alone when voices were left in the rest of the mix
         # (they would be measured, and dipped, as instru); the dips are linear, carving each is carving their sum
@@ -599,16 +601,32 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
                   LEAD_BALANCE, ("monte ces voix ou baisse l'instru dans FL Studio",
                                  "baisse ces voix ou monte l'instru dans FL Studio"))
     reference = None
+    staged: dict[str, tuple[np.ndarray, np.ndarray | None, bool]] = {}
+    ride_source = np.zeros(shape)
     for v in leads:
         processed, level = chained.pop(v.key)
         fl_wet = v.space  # the user's FL reverbs and delays, rendered apart (None when FL had none)
-        if math.isfinite(level.lufs):
+        sings = math.isfinite(level.lufs)
+        if sings:
             gain = 10 ** (results[v.key].level_change_db / 20)
             processed = processed * gain
             fl_wet = fl_wet * gain if fl_wet is not None else None
-            # the phrases are read on the voice without its FL effects, whose tails would fill the rests and
-            # join its phrases; the effects get the same gain, so they follow their phrase
-            r = ride(processed - fl_wet if fl_wet is not None else processed, beat, fs, tempo_bpm, k)
+            # the phrases are read on the voices without their FL effects, whose tails would fill the
+            # rests and join the phrases
+            ride_source += processed - fl_wet if fl_wet is not None else processed
+            if reference is None or results[v.key].loudness_after > results[reference.key].loudness_after:
+                reference = v
+        staged[v.key] = (processed, fl_wet, sings)
+    # ONE gain for the whole vocal performance, read on the leads together: every voice follows it, so
+    # stacks (doubles, backs over the lead) keep the balance the artist gave them — ridden one by one,
+    # two takes of one hook could drift apart and their sum jump out or clip (heard by a user)
+    r = ride(ride_source, beat, fs, tempo_bpm, k) if reference is not None else ride(ride_source, beat, fs,
+                                                                                     tempo_bpm, 0.0)
+    del ride_source
+    shared = sum(1 for *_, sings in staged.values() if sings) + len(others) > 1
+    for v in leads:
+        processed, fl_wet, sings = staged.pop(v.key)
+        if sings:
             if r.moved:
                 processed = apply_ride(processed, r)
                 fl_wet = apply_ride(fl_wet, r) if fl_wet is not None else None
@@ -619,13 +637,14 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
                     f"D'une phrase à l'autre, la voix doit rester à {r.reference_db:+.1f} dB de l'instru "
                     f"au-dessus de {MASKING_FROM_HZ:.0f} Hz, la bande qui couvre les paroles (son équilibre sur "
                     f"tout le morceau) ; écart toléré ±{TOLERANCE_DB:.1f} dB ; baissée seulement de ce dont la voix "
-                    "elle-même dépasse sa phrase médiane, jamais parce que l'instru se retire"
+                    "elle-même dépasse sa phrase médiane, jamais parce que l'instru se retire ; jamais montée "
+                    "quand l'artiste a volontairement baissé sa voix"
                     + (f" ; {r.exposed} phrase(s) laissée(s) telle(s) quelle(s), l'instru y est à plus de "
                        f"{EXPOSED_DB:.0f} dB sous sa médiane" if r.exposed else "")
+                    + (" ; un seul gain pour toutes les voix, lu sur les voix principales réunies : les "
+                       "doublages et chœurs gardent leur équilibre" if shared else "")
                     + (" ; phrases lues sur la voix sans tes reverbs et delays FL (leurs queues rempliraient les "
                        "silences), qui reçoivent le même gain" if fl_wet is not None else "")))
-            if reference is None or results[v.key].loudness_after > results[reference.key].loudness_after:
-                reference = v
             add_space(v, processed)
         voices_sum += processed
         if fl_wet is not None:
@@ -676,6 +695,17 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
             gain = 10 ** (res.level_change_db / 20)
             processed = processed * gain
             fl_wet = fl_wet * gain if fl_wet is not None else None
+        if r.moved and math.isfinite(level.lufs):
+            # the one gain of the vocal performance: a back or double posed on a ridden lead follows it,
+            # so the stack the artist balanced never drifts apart
+            processed = apply_ride(processed, r)
+            fl_wet = apply_ride(fl_wet, r) if fl_wet is not None else None
+            res.ride = {"phrases": len(r.phrases), "moved": r.moved, "max_change_db": r.max_change_db,
+                        "follows": True}
+            res.treatments.append(Treatment(
+                "ride", "Suit le suivi phrase par phrase des voix principales",
+                "Le même gain que les voix principales : posée sur elles, cette voix garde l'équilibre "
+                "que tu lui as donné dans le stack"))
         unplaced = processed  # what feeds Eden's sends: the voice before its dip and pan
         if env is not None and math.isfinite(level.lufs):
             # the voice alone: the user's FL reverbs and delays come back as they are. The dip comes before

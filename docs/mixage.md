@@ -192,13 +192,18 @@ choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Dou
   L'instru est mesurée **au-dessus de 200 Hz**, la bande qui couvre les paroles (le sub d'un
   808 les masque à peine ; choix d'Eden) ; référence = l'équilibre médian de la voix sur tout
   le morceau (pas une valeur fixe) ; une phrase à plus de 2 dB de cette référence est
-  ramenée, ±4 dB max (sous la plage par défaut ±6 dB d'un Vocal Rider : le suivi ne doit
+  ramenée, ±3 dB max (loin sous la plage par défaut ±6 dB d'un Vocal Rider : le suivi ne doit
   jamais s'entendre travailler ; choix d'Eden). **Chaque gain doit avoir sa cause dans le
   signal** : une phrase n'est baissée que de ce dont la voix elle-même dépasse sa phrase
   médiane (l'instru qui se retire n'est jamais une raison de baisser la voix), et n'est
   montée que de ce dont la voix est sous sa médiane plus ce dont l'instru dépasse la sienne
   (un écart sans cause mesurée — prises qui se chevauchent, mesure incertaine — ne bouge
-  pas). Une phrase où l'instru est à plus de 6 dB sous sa phrase médiane (break, filtre,
+  pas). Une phrase que l'artiste a baissée de 6 dB ou plus sous sa médiane est un choix de
+  jeu (rapper doucement) : jamais remontée (retour d'écoute d'un utilisateur : « quand je rap
+  doucement, ça sonne ultra fort d'un coup »). **Un seul gain pour toutes les voix**, lu sur
+  les voix principales réunies, suivi par les doublages, chœurs et ad-libs : suivis chacun de
+  leur côté, deux prises d'un même refrain dérivaient l'une de l'autre et leur somme sortait
+  du mix ou saturait (retour d'écoute). Une phrase où l'instru est à plus de 6 dB sous sa phrase médiane (break, filtre,
   beat coupé pour une punchline) est laissée telle quelle et ne compte pas dans la
   référence. Le gain tient
   pendant le silence et change dans les 120 ms qui précèdent la phrase suivante (les silences
@@ -296,7 +301,9 @@ Le rap se tient sec : chaque retour reste loin sous la voix (niveaux revus à la
   d'audibilité ci-dessous, ce creux y gagnerait pourtant autant que dans une bande retenue
   jusqu'à 15 dB, et moins jusqu'à 18 dB : c'est un choix) et celles où la voix est à plus de
   20 dB sous sa bande la plus forte (elle n'y a presque rien) : 12 et 20 dB, choix d'Eden.
-  Au plus 3 bandes sont gardées : celles où le creux rend le plus de paroles audibles, soit
+  Le creux s'ouvre en ~120 ms et se referme en ~900 ms : l'instru ne clignote pas au rythme
+  des phrases (avec 15 / 200 ms, un utilisateur entendait « le master changer toutes les
+  5 secondes »). Au plus 3 bandes sont gardées : celles où le creux rend le plus de paroles audibles, soit
   l'importance de la bande pour l'intelligibilité (ANSI S3.5, 1–4 kHz ≈ 72 % du poids,
   sourcé ; chaque tiers reçoit le tiers du poids de son octave) × l'audibilité gagnée,
   l'audibilité d'une bande valant 0 quand la voix est 15 dB sous l'instru, 1 à partir de

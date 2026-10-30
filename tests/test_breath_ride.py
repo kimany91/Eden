@@ -63,7 +63,7 @@ def test_the_rider_never_takes_a_breath_for_a_phrase():
 def test_every_ride_needs_its_cause_and_stays_small():
     sig = voice(30, seed=7, phrase_spread_db=8)
     r = riding.ride(sig, beat(30), FS, 95.0, 1.0)
-    assert r.moved >= 1 and r.max_change_db <= riding.MAX_RIDE_DB == 4.0
+    assert r.moved >= 1 and r.max_change_db <= riding.MAX_RIDE_DB == 3.0
     # a phrase is raised only as far as the voice dropped plus the beat rose: never more than its cause
     _, voice_db, beat_db, _ = riding.phrase_levels(sig, beat(30), FS, 95.0)
     v_med, b_med = float(np.median(voice_db)), float(np.median(beat_db))
@@ -92,3 +92,43 @@ def test_rap_space_stays_dry():
     assert sends["ambience"].level_db == -26.0 and sends["plate"].level_db == -23.0
     assert sends["delay"].level_db == -25.0 and sends["throw"].level_db == -16.0
     assert sends["throw"].feedback == 0.3
+
+
+def _phrases_at(levels_db: list[float], seconds_each: float = 2.5, rest_s: float = 1.0) -> np.ndarray:
+    """Phrases of one voice at the given levels, separated by silences."""
+    out = []
+    for i, db in enumerate(levels_db):
+        seg = voice(seconds_each + 1, seed=10 + i, phrase_spread_db=0)[:int(seconds_each * FS)]
+        out.append(seg * 10 ** (db / 20))
+        out.append(np.zeros((int(rest_s * FS), 2)))
+    return np.concatenate(out)
+
+
+def test_a_phrase_the_artist_dropped_is_never_raised():
+    sig = _phrases_at([0, 0, -8.0, 0, 0, -3.0, 0])  # -8: soft rap on purpose; -3: a take to even out
+    r = riding.ride(sig, beat(sig.shape[0] / FS), FS, 95.0, 1.0)
+    assert len(r.phrases) == 7
+    assert r.phrases[2].gain_db == 0.0  # the 8 dB drop is a performance choice
+    assert r.phrases[5].gain_db > 0.5  # the small drop is evened out
+
+
+def test_every_voice_follows_the_one_ride_of_the_leads(monkeypatch):
+    from eden.mix import engine
+    from eden.mix.engine import mix
+    from test_engine_mix import _parts
+
+    rides = []
+    apply_ride = engine.apply_ride
+    monkeypatch.setattr(engine, "apply_ride", lambda x, r: rides.append(r) or apply_ride(x, r))
+    # phrase offsets big enough to survive the chain's own leveling: what is left is ridden
+    lead = _phrases_at([0, 8.0, 0, -5.0, 0, 8.0, 0])
+    double = 0.5 * lead
+    n = lead.shape[0]
+    out = mix(_parts([("ch0", "Lead", "lead_vocal", lead, None), ("ch1", "Double", "double", double, None)],
+                     [("g1", "Instru", "beat", beat(n / FS)[:n])]), 1.0, 95.0, {"ch0": "none", "ch1": "none"})
+    res = {p.key: p for p in out.parts}
+    assert res["ch0"].ride["moved"] >= 1 and res["ch1"].ride.get("follows") is True
+    assert res["ch1"].ride["moved"] == res["ch0"].ride["moved"]
+    assert len({id(r) for r in rides}) == 1  # one gain for the whole vocal performance
+    assert any("garde l'équilibre" in t.reason for t in res["ch1"].treatments if t.kind == "ride")
+

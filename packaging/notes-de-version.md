@@ -1,12 +1,26 @@
-Eden 1.3.0 : le mix des voix refait là où ça s'entendait — respirations, volume qui bouge, écho.
+Eden 1.3.1 : un seul volume pour toutes tes voix, tes nuances respectées, l'instru ne clignote plus.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.3.0.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.3.1.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Corrigé dans 1.3.1 (retours d'écoute : volume inconstant, doublures qui saturent, master qui bouge)
+
+- **Un seul gain pour toutes les voix.** Le suivi phrase par phrase réglait chaque groupe de voix
+  de son côté : deux prises d'un même refrain dérivaient l'une de l'autre, leur somme sortait du
+  mix ou saturait, et la voix passait tantôt sous l'instru, tantôt dessus. Le suivi est maintenant
+  lu sur les voix principales réunies, et **toutes** les voix (doublures, chœurs, ad-libs) suivent
+  ce même gain : l'équilibre que tu as réglé entre elles ne bouge plus.
+- **Rapper doucement reste doux.** Une phrase que tu as baissée de 6 dB ou plus est un choix de
+  jeu : Eden ne la remonte plus jamais. Et le suivi est borné à ±3 dB (au lieu de ±4).
+- **L'instru ne clignote plus.** Le creux qui fait de la place aux paroles s'ouvrait en 15 ms et
+  se refermait en 200 ms : à chaque phrase, le grave et l'aigu de l'instru bougeaient — « le
+  master change toutes les 5 secondes ». Il s'ouvre maintenant en ~120 ms et se referme en
+  ~900 ms : plus de pompage audible.
 
 ## Corrigé dans 1.3.0 (retours d'écoute d'un utilisateur)
 
