@@ -1,12 +1,29 @@
-Eden 1.2.7 : Eden écoute tes pistes pour savoir lesquelles sont des voix, quel que soit leur nom.
+Eden 1.2.8 : tes vraies prises reconnues comme des voix, et tu n'es plus bloqué si la vérification échoue.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.7.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.2.8.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Corrigé dans 1.2.8
+
+- **Des prises de voix prises pour des instrus** : l'écoute de la 1.2.7 était trop stricte pour
+  de vraies prises. Une voix grave près du micro a de l'énergie vers 70-90 Hz, et le beat du
+  casque qui fuit dans le micro faisait croire que le son ne s'arrêtait jamais. Eden regarde
+  maintenant sous 60 Hz (le kick et le 808, pas une voix), ignore ce qui est 20 dB sous la voix,
+  et compte comme mono une prise faite sur un seul côté. Une prise enregistrée dans FL (son nom
+  porte la date et l'heure, ou elle est dans le dossier des enregistrements) reste une voix, sauf
+  si elle n'est presque que des basses.
+- **« La somme des pistes diffère » avec tes pistes VOICE et AUTOTUNE** : ces prises passent par
+  les mêmes effets du Mixer (Auto-Tune…). Rendues à part, elles ne redonnaient pas le morceau ;
+  reconnues comme des voix, elles sont rendues toutes ensemble.
+- **Plus bloqué** : si la vérification échoue quand même, le bouton « Mixer quand même » apparaît.
+  Ce qu'Eden n'a pas pu séparer reste tel quel (à 0 % tu retrouves ton mix) ; écoute l'avant / après.
+- **Fausse alerte « Leave remainder »** : quand c'est ton instru qui joue jusqu'à la toute fin du
+  morceau, le son présent à la fin est le sien, pas un écho coupé : plus d'alerte pour ça.
 
 ## Nouveau dans 1.2.7
 
@@ -110,4 +127,4 @@ Eden 1.2.7 : Eden écoute tes pistes pour savoir lesquelles sont des voix, quel 
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.7/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.8/docs/mixage.md).

@@ -37,6 +37,7 @@ from eden.safety import Workspace, read_project_bytes, verify_unchanged
 # (the part whose audio is there, in any order, -1 when FL Studio starts and the part count for the final
 # check; the number of steps; what is happening)
 StepCallback = Callable[[int, int, str], None]
+END_TOLERANCE_S = 0.1
 
 
 @dataclass
@@ -64,9 +65,14 @@ class RenderResult:
     premaster_sum: str | None = None
 
     @property
+    def complete(self) -> bool:
+        """Every part has its audio."""
+        return all(j.status in ("done", "resumed") for j in self.jobs)
+
+    @property
     def ok(self) -> bool:
-        return all(j.status in ("done", "resumed") for j in self.jobs) and bool(
-            self.null_test and self.null_test.passed)
+        """Every part has its audio, and they sum to the song."""
+        return self.complete and bool(self.null_test and self.null_test.passed)
 
     def wav(self, name: str) -> Path | None:
         j = next((j for j in self.jobs if j.job.name == name), None)
@@ -91,6 +97,14 @@ def sample_repairs(report: InspectionReport, allow_missing: bool = False) -> dic
     if missing and not allow_missing:
         raise RenderError("Fichiers audio introuvables, le rendu serait incomplet : " + "; ".join(missing))
     return repairs
+
+
+def plays_to_the_end(report: InspectionReport, channels: list[int]) -> bool:
+    """Whether one of ``channels`` without reverb or delay plays until the song's very end (a beat that runs
+    to it): the sound still there at the end of a render is then its own, not an echo cut short."""
+    end = report.project_end_seconds
+    return end is not None and any(s.channel in channels and not s.space_effects and s.last_seconds is not None
+                                   and s.last_seconds >= end - END_TOLERANCE_S for s in report.sources)
 
 
 def build_copy(original: bytes, job: RenderJob, repairs: dict[int, str]) -> bytes:
@@ -285,7 +299,8 @@ def render_project(
     checks = [j.check for j in result.jobs if j.check]
     if len({(c.sample_rate, c.channels) for c in checks}) > 1:
         result.warnings.append("Les rendus n'ont pas tous le même format audio")
-    cut = [j.job.description for j in result.jobs if j.check and j.check.ends_with_sound]
+    cut = [j.job.description for j in result.jobs if j.check and j.check.ends_with_sound
+           and not plays_to_the_end(report, j.job.channels)]
     if cut:
         result.warnings.append(
             "Le son est encore présent à la toute fin de certains rendus (" + "; ".join(cut) + ") : "

@@ -169,6 +169,7 @@ class EdenController(QObject):
         self.worker: _Worker | None = None
         self.update_worker: _Worker | None = None
         self._player = player or ABPlayer()
+        self._unchecked = False  # the user chose to mix renders that did not pass their check
         self.refreshProjects()
         if check_updates:
             self._start_update_check()
@@ -448,6 +449,7 @@ class EdenController(QObject):
 
     def _on_rendered(self, result) -> None:
         self.renders = result
+        self._unchecked = False
         rows, summary = viewmodel.render_view(self._renderRows, result)
         self._set("renderRows", rows)
         self._set("renderSummary", summary)
@@ -465,7 +467,19 @@ class EdenController(QObject):
     # -- Eden's mix and master, export ---------------------------------------------
     @Slot()
     def mixProject(self) -> None:
-        if self._busy or self.report_obj is None or self.renders is None or not self.renders.ok:
+        """Mix (or mix again, at another intensity) the way the user last chose for these renders."""
+        self._mix(unchecked=self._unchecked)
+
+    @Slot()
+    def mixAnyway(self) -> None:
+        """Mix although the parts FL rendered do not sum to the song: the user asked for it."""
+        self._unchecked = True
+        self._mix(unchecked=True)
+
+    def _mix(self, unchecked: bool) -> None:
+        renders = self.renders
+        if self._busy or self.report_obj is None or renders is None or not (
+                renders.ok or (unchecked and renders.complete)):
             return
         from eden.mix.session import MixError, mix_project
 
@@ -481,7 +495,7 @@ class EdenController(QObject):
 
         def job(worker: _Worker):
             try:
-                return mix_project(project, report, renders, intensity,
+                return mix_project(project, report, renders, intensity, unchecked=unchecked,
                                    on_step=lambda i, n, s: worker.progress.emit(i, n, s),
                                    on_progress=lambda s, share: worker.detail.emit(s, -1.0 if share is None
                                                                                    else share))

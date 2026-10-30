@@ -77,3 +77,31 @@ def test_tracks_named_anyhow_get_their_roles(tmp_path):
     roles = {s.label: s.role.role for s in report.sources}
     assert roles == {"kim 1": "lead_vocal", "kim 2": "lead_vocal", "mbappé": "adlib", "zz": "beat"}, roles
     assert not any(w.startswith("Aucune voix") for w in report.warnings)
+
+
+def _deep(seconds, rng):
+    """A deep voice close to the mic (its fundamental around 80-150 Hz, the proximity effect on top)."""
+    t = np.arange(int(seconds * SR)) / SR
+    words = (t % 0.33) < 0.2
+    pitch = 0.25 * np.sin(2 * np.pi * (95 + 20 * np.sin(2 * np.pi * 0.5 * t)) * t)
+    return (pitch + 0.1 * _voice(seconds, rng)) * words
+
+
+def test_real_takes_are_heard_as_voices(tmp_path):
+    rng = np.random.default_rng(4)
+    leak = 0.03 * _beat(20, rng)  # the beat in the headphones, leaking into the mic: -20 dB and more under the voice
+    take = _deep(20, rng)
+    sf.write(tmp_path / "grave.wav", take, SR)
+    sf.write(tmp_path / "fuite.wav", take + leak.mean(axis=1), SR)
+    sf.write(tmp_path / "un-cote.wav", np.stack([take, 0.001 * rng.standard_normal(take.size)], axis=1), SR)
+    for name in ("grave", "fuite", "un-cote"):
+        heard = listen(tmp_path / f"{name}.wav")
+        assert heard.kind == "voice", (name, heard)
+
+
+def test_a_take_recorded_in_fl_stays_a_voice_unless_it_is_mostly_low_end():
+    take = [("Canal", "lucki type beat - 'casino'_2026-10-25 19-13-21_AUTOTUNE")]
+    unclear = Heard("instrument", 0.3, 0.97, 100.0, False, "À l'écoute, un instrument")
+    assert guess_role(take, heard=unclear).is_vocal
+    bass = Heard("instrument", 0.8, 1.0, 100.0, True, "À l'écoute, un instrument")
+    assert not guess_role(take, heard=bass).is_vocal  # a bass recorded through the interface

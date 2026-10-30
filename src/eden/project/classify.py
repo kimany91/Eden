@@ -47,6 +47,7 @@ _NAME_RULES: list[tuple[str, int, str]] = [
 
 _RECORDED_DIR = re.compile(r"[\\/](recorded|recordings|enregistrements?)[\\/]", re.I)
 _RECORDED_FILE = re.compile(r"^(rec|recording|take|prise)\b", re.I)
+STRONG_SUB = 0.5  # a take recorded in FL is a voice unless its sound is mostly low end (a recorded bass)
 # A take recorded in the DAW: "<project>_<date> <time>_<input>" ("lucki type beat - 'casino'_2026-10-25
 # 15-45-47_VOICE"). Its start is the project's name (often the beat's), not what the take is.
 _RECORDED_NAME = re.compile(r"^.*?[\s_\-]*\d{4}-\d{2}-\d{2}[\s_]\d{2}[-.:h]\d{2}(?:[-.:m]\d{2})?[\s_\-]*(.*)$")
@@ -103,6 +104,7 @@ def guess_role(
 
     if sample_path:
         if _RECORDED_DIR.search(sample_path):
+            recorded = True
             scores["vocal"] = scores.get("vocal", 0) + 2
             reasons.append("Fichier situé dans un dossier d'enregistrements")
         base = re.split(r"[\\/]", sample_path)[-1]
@@ -118,6 +120,9 @@ def guess_role(
         scores["vocal"] += 1
         reasons.append("Fichier mono (typique d'une prise de voix)")
 
+    if recorded and heard is not None and heard.kind == "instrument" and heard.sub_share < STRONG_SUB:
+        reasons.append(f"{heard.reason} : pas assez net pour une prise enregistrée, qui reste une voix")
+        heard = None
     if heard is not None and heard.kind != "unsure":
         return _as_heard(heard, scores, reasons, channels, duration_s, project_duration_s)
     if not scores:

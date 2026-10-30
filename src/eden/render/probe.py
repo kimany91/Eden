@@ -18,7 +18,7 @@ from collections.abc import Callable
 from eden.flp.edit import FlpEditor
 from eden.project.inspector import inspect_project
 from eden.render.fl_studio import CANDIDATE_ARGS, FLStudioRenderer, RenderError, find_fl_studio, fl_is_running
-from eden.render.pipeline import sample_repairs
+from eden.render.pipeline import plays_to_the_end, sample_repairs
 from eden.render.verify import check_audio
 from eden.safety import Workspace, read_project_bytes
 from eden.settings import load_settings, save_settings
@@ -109,7 +109,7 @@ def probe_fl_studio(
             if check.silent:
                 say("  → fichier silencieux : rendu non valide")
                 continue
-            if check.ends_with_sound:
+            if check.ends_with_sound and not plays_to_the_end(report, [s.channel for s in report.sources]):
                 say("  Attention : le rendu s'arrête alors que le son continue. Règle l'export de "
                     "FL Studio pour laisser la fin des effets (« Leave remainder »), sinon les "
                     "échos et delays de fin seraient coupés.")

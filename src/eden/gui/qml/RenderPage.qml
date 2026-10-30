@@ -194,17 +194,18 @@ EdenPage {
                         width: parent.width
                         wrapMode: Text.WordWrap
                         text: page.sum.ok ? "Étape suivante : Eden mixe ton morceau et fait le mastering."
-                                          : "Le mixage sera possible quand la vérification sera validée."
+                            : page.sum.complete ? "La vérification n'est pas passée : tu peux mixer quand même, puis écouter l'avant / après."
+                            : "Le mixage sera possible quand la vérification sera validée."
                         color: Theme.textMuted
                         font.family: Theme.fontFamily; font.pixelSize: 12
                     }
                     EdenButton {
                         compact: true
                         primary: true
-                        text: "Mixer automatiquement"
+                        text: page.sum.ok === false && page.sum.complete === true ? "Mixer quand même" : "Mixer automatiquement"
                         iconName: "spark"
-                        enabled: page.sum.ok === true && !controller.busy
-                        onClicked: controller.mixProject()
+                        enabled: (page.sum.ok === true || page.sum.complete === true) && !controller.busy
+                        onClicked: page.sum.ok ? controller.mixProject() : controller.mixAnyway()
                     }
                 }
             }

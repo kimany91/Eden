@@ -55,7 +55,8 @@ Fait :
   de contrôle. Rendu en WAV entier (16 bits), le morceau sans les effets du Master peut
   dépasser le maximum et être coupé là, pas ses pistes : si la somme des pistes le redonne
   partout ailleurs, Eden mixe contre cette somme. En cas d'échec, Eden dit à quoi ressemble
-  l'écart (une partie, le morceau entier) et où il est le plus fort ;
+  l'écart (une partie, le morceau entier) et où il est le plus fort, et propose « Mixer quand
+  même » : ce qu'il n'a pas pu séparer reste tel quel, et le mix le signale ;
 - reprise après interruption (manifeste, rendus déjà faits réutilisés) ;
 - `eden fl-probe` : sur ton PC, essaie les syntaxes connues de FL Studio et enregistre la
   première qui produit un WAV (un seul rendu). Ce qu'Eden change dans ses copies (canaux

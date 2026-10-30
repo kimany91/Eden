@@ -133,11 +133,15 @@ def render_view(rows: list[dict], result: RenderResult) -> tuple[list[dict], dic
                    if not result.warnings else
                    "Chaque partie a été jouée par FL Studio avec tes effets et vérifiée par Eden, avec des points "
                    "à vérifier (voir ci-dessous).")
+    elif result.complete:
+        verdict = ("La somme des pistes ne redonne pas ton morceau (voir ci-dessous) : relance la récupération, "
+                   "ou mixe quand même (ce qu'Eden n'a pas pu séparer reste tel quel).")
     else:
         verdict = ("Le son récupéré n'a pas passé ses vérifications (voir ci-dessous) : le mixage attend une "
                    "nouvelle récupération.")
     summary = {
         "ok": result.ok,
+        "complete": result.complete,
         "verdict": verdict,
         "nullMessage": result.null_test.message if result.null_test else
         "Aucune piste à comparer",

@@ -507,3 +507,21 @@ def test_a_mix_before_the_master_that_clips_in_16_bits_is_rebuilt_from_its_parts
     assert not any("format entier" in w for w in result.warnings)
     parts = split(report, result)
     assert np.max(np.abs(parts.premaster)) > 1.0
+
+
+def test_a_beat_that_runs_to_the_end_is_no_cut_echo(tmp_path, monkeypatch):
+    # FL stops at the song's end; the beat plays until then: the sound there is the beat's own, not a cut tail
+    monkeypatch.setenv("EDEN_SIM_CUT_TAIL", "1")
+    d = tmp_path / "Fin"
+    d.mkdir()
+    t = np.arange(int(4.0 * 22050)) / 22050
+    sf.write(d / "Beat.wav", np.stack([0.3 * np.sin(2 * np.pi * 55 * t)] * 2, axis=1), 22050)
+    sf.write(d / "Lead.wav", 0.2 * np.sin(2 * np.pi * 220 * t[:22050]), 22050)
+    flp = d / "Fin.flp"
+    flp.write_bytes(build_flp([Chan("Instru", insert=0, sample_path=str(d / "Beat.wav")),
+                               Chan("Lead", insert=0, sample_path=str(d / "Lead.wav"))],
+                              [Insert(routes=())], [Clip(1, 0, BAR * 2, channel=0), Clip(2, 0, BAR // 2, channel=1)],
+                              tempo=120))
+    result = render_project(flp, sim_renderer(), timeout_s=120, report=_report(flp))
+    assert result.wav("original") and check_audio(result.wav("original")).ends_with_sound
+    assert not any("Leave remainder" in w for w in result.warnings)

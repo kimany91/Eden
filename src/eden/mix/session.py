@@ -103,14 +103,16 @@ def mix_project(
     workspace_home: Path | None = None,
     on_step: StepCallback | None = None,
     on_progress: ProgressCallback | None = None,
+    unchecked: bool = False,
 ) -> MixVersion:
     """``on_step`` is told each of STEPS; ``on_progress``, during the mix and the master, what Eden
-    is doing and the share of that step done (None: a detail of the running step)."""
+    is doing and the share of that step done (None: a detail of the running step). ``unchecked``: mix
+    renders whose parts do not sum to the song, as the user asked (what they miss is kept as it is)."""
     def step(i: int) -> None:
         if on_step:
             on_step(i, len(STEPS), STEPS[i])
 
-    if not renders.ok:
+    if not (renders.ok or (unchecked and renders.complete)):
         raise MixError("Le son récupéré depuis FL Studio n'a pas passé ses vérifications : relance "
                        "la récupération du son (bouton « Récupérer le son depuis FL Studio », "
                        "ou eden render)")
@@ -151,6 +153,10 @@ def mix_project(
     original_stats = stats(original_wav)
     final_stats = stats(final)
     warnings = [*renders.warnings, *parts.warnings, *outcome.warnings, *mastered.warnings]
+    if not renders.ok:
+        warnings.insert(0, "Mixé à ta demande alors que la somme des pistes ne redonnait pas ton morceau ("
+                        + (renders.null_test.message if renders.null_test else "pas de vérification")
+                        + ") : ce qu'Eden n'a pas pu séparer reste tel quel. Écoute l'avant / après.")
     if intensity > 0 and math.isfinite(original_stats.loudness_lufs) and \
             final_stats.loudness_lufs < original_stats.loudness_lufs - 1.0:
         warnings.append(f"Le master Eden ({final_stats.loudness_lufs:.1f} LUFS) est moins fort que ton "
