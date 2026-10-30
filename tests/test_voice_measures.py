@@ -108,7 +108,8 @@ def test_no_low_mid_bump_is_placed_where_no_harmonic_was_measured(seed):
     centres = 75.0 * 2 ** ((np.arange(103) + 0.5) / 24)
     counts = np.where(centres > 520, 40.0, 0.0)  # harmonics from 527 Hz up only (2nd harmonic of 262 Hz)
     lift = np.where(np.abs(np.log2(centres / 527)) < 1 / 30, 4.0, 0.0)
-    assert low_mid_buildup(HarmonicProfile(centres, lift * counts, counts), []) == (300.0, 0.0)
+    note = HarmonicProfile(centres, lift * counts, counts, np.where(lift > 0, counts, 0.0))
+    assert low_mid_buildup(note, [note, note], []) == (300.0, 0.0, 0)  # even when two notes show it
     # a clean voice on 262–440 Hz, a little warm: its 2nd harmonics sit on the vowels' first formant,
     # and the 1/3-octave average of the 524 Hz one alone read as a 2.6 dB bump at 469 Hz, cut by 3 dB
     x = apply_sos(voice(seed=seed, notes=[262, 294, 330, 349, 392, 440]), shelf_sos(FS, 300, 3.0, high=False))
@@ -134,7 +135,7 @@ def _profile(bump_hz, bump_db, width_bands):
     centres = 75.0 * 2 ** ((np.arange(103) + 0.5) / 24)
     counts = np.full(centres.size, 40.0)
     lift = np.where(np.abs(np.log2(centres / bump_hz)) * 24 <= width_bands, bump_db, 0.0)
-    return HarmonicProfile(centres, lift * counts, counts)
+    return HarmonicProfile(centres, lift * counts, counts, np.where(lift > 0, counts, 0.0))
 
 
 def test_nothing_is_cut_on_a_note_the_voice_dwells_on():
@@ -146,9 +147,10 @@ def test_nothing_is_cut_on_a_note_the_voice_dwells_on():
     assert find_resonances(narrow, no_lpc, [150.0]) == []  # its 2nd harmonic
     assert find_resonances(narrow, no_lpc, [290.0]) == []  # the note itself
     broad = _profile(300.0, 4.0, 6)
-    assert low_mid_buildup(broad, [])[1] == pytest.approx(4.0)
-    assert _octaves(low_mid_buildup(broad, [])[0], 300) < 1 / 12
-    assert low_mid_buildup(broad, [300.0])[1] < 4.0
+    two_notes = [broad, broad]  # each sung note shows the bump on its own
+    assert low_mid_buildup(broad, two_notes, [])[1] == pytest.approx(4.0)
+    assert _octaves(low_mid_buildup(broad, two_notes, [])[0], 300) < 1 / 12
+    assert low_mid_buildup(broad, two_notes, [300.0])[1] < 4.0
     # a broad lift (a vowel formant spreads like this) is not a narrow resonance
     assert find_resonances(_profile(600.0, 6.0, 8), no_lpc, []) == []
 

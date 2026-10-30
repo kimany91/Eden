@@ -27,6 +27,13 @@ SILENCE_DB = -90.0  # quieter 1 ms frames are digital silence or dither, however
 ANALYSIS_LOW_HZ, ANALYSIS_HIGH_HZ = 150.0, 8000.0
 HARMONIC_HIGH_HZ = 2000.0  # resonances below are read on the sung harmonics, above on the LPC envelope
 RESONANCE_MIN_DB = 4.5  # how far a resonance must stick out (strict: a missed one costs less than a wrong cut)
+# lift of the harmonics over 1/3 octave that makes a low-mid bump (Eden's choice): +6 dB bumps at 200–400 Hz
+# read 2.94 dB or more on the test voices (seeds 1–20); clean voices show no bump on two notes at all
+LOW_MID_MIN_DB = 2.5
+# a note shows a low-mid bump when its harmonics there stand above their neighbours' line in this share of
+# the cases (Eden's choice): a fixed bump lifts them every time (100 % on the test voices), the vowels' first
+# formant only when the vowel puts it there (on the test voices: one note 85 % at most, a second one 74 %)
+LOW_MID_STEADY_SHARE = 0.9
 FREQUENT_NOTE_SHARE = 0.3  # a semitone holding this share of the pitched frames is a note the voice dwells on
 LOW_SPECTRUM_HZ = 100.0  # the high-pass is decided on the spectrum below this (half its highest cut is 80 Hz)
 REST_SPECTRUM_HZ = 160.0  # ... and on the rests' spectrum below this (its highest cut, back vocals)
@@ -69,6 +76,7 @@ class VocalMeasure:
     sibilant_peak_hz: float | None = None  # where the 's' sounds have their energy
     low_mid_hz: float = 300.0  # centre of the low-mid build-up (proximity, boxiness)
     low_mid_excess_db: float = 0.0  # how much the harmonics there stick out of their neighbours' line
+    low_mid_notes: int = 0  # how many sung notes show that bump on their own (see ``low_mid_buildup``)
     air_db: float = -math.inf  # energy above 8 kHz relative to 2–5 kHz, on vowels only
     low_hz: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)  # about 1 Hz apart
     low_share: np.ndarray = field(default_factory=lambda: np.zeros(0), repr=False)  # of the energy, per low_hz
@@ -300,6 +308,30 @@ def near_sung_notes(hz: float, notes: list[float]) -> bool:
     return any(abs(math.log2(hz / (k * note))) <= 1 / 6 for note in notes for k in (1, 2))
 
 
+def note_groups(pitches: np.ndarray) -> np.ndarray:
+    """The note of each frame: 0, 1, … (−1 where the frame has no clear pitch).
+
+    The span of one semitone holding the most pitched frames is the first
+    note; its frames are set aside and the next span is sought among the
+    others, until every pitched frame has its note. Unlike rounding to the
+    nearest semitone, a note sung between two semitones (240 Hz with its
+    vibrato) stays one note instead of two.
+    """
+    semitones = 12 * np.log2(pitches / 440.0)
+    labels = np.full(pitches.size, -1)
+    left = np.flatnonzero(np.isfinite(pitches))
+    note = 0
+    while left.size:
+        values = np.sort(semitones[left])
+        held = np.searchsorted(values, values + 1.0, side="right") - np.arange(values.size)
+        start = values[int(np.argmax(held))]
+        span = (semitones[left] >= start) & (semitones[left] <= start + 1.0)
+        labels[left[span]] = note
+        left = left[~span]
+        note += 1
+    return labels
+
+
 HARMONIC_TOP_HZ = 4000.0  # harmonics are read up to here (the neighbours of those near 2 kHz)
 BANDS_PER_OCTAVE = 24
 MIN_SAMPLES = 20  # harmonics a band needs before it is judged
@@ -314,10 +346,19 @@ class HarmonicProfile:
     centres: np.ndarray
     sums: np.ndarray  # dB, summed over the harmonics that fell in each band
     counts: np.ndarray
+    lifted: np.ndarray  # how many of those harmonics stood above their neighbours' line
 
     def mean(self, kernel: np.ndarray) -> np.ndarray:
         """Mean over the bands ``kernel`` covers around each band (NaN with too few harmonics)."""
-        total = np.convolve(self.sums, kernel, mode="same")
+        return self._over(self.sums, kernel)
+
+    def lifted_share(self, kernel: np.ndarray) -> np.ndarray:
+        """Share of the harmonics above their neighbours' line over the bands ``kernel`` covers
+        (NaN with too few harmonics)."""
+        return self._over(self.lifted, kernel)
+
+    def _over(self, values: np.ndarray, kernel: np.ndarray) -> np.ndarray:
+        total = np.convolve(values, kernel, mode="same")
         count = np.convolve(self.counts, kernel, mode="same")
         return np.where(count >= MIN_SAMPLES, total / np.maximum(count, 1), np.nan)
 
@@ -336,7 +377,7 @@ def harmonic_profile(frames: np.ndarray, pitches: np.ndarray, fs: float) -> Harm
     centres = np.sqrt(edges[:-1] * edges[1:])
     pitched = np.isfinite(pitches)
     if not pitched.any():
-        return HarmonicProfile(centres, np.zeros(centres.size), np.zeros(centres.size))
+        return HarmonicProfile(centres, np.zeros(centres.size), np.zeros(centres.size), np.zeros(centres.size))
     frames, f0 = frames[pitched], pitches[pitched]
     n = frames.shape[1]
     nfft = 1 << int(math.ceil(math.log2(2 * n)))
@@ -368,9 +409,18 @@ def harmonic_profile(frames: np.ndarray, pitches: np.ndarray, fs: float) -> Harm
     line = (s2 * sy - s1 * sxy) / np.where(judged, det, 1.0)
     band = np.searchsorted(edges, freq) - 1
     keep = judged & (band >= 0) & (band < centres.size)
-    sums = np.bincount(band[keep], (level - line)[keep], centres.size)
+    lift = (level - line)[keep]
+    sums = np.bincount(band[keep], lift, centres.size)
     counts = np.bincount(band[keep], None, centres.size).astype(float)
-    return HarmonicProfile(centres, sums, counts)
+    lifted = np.bincount(band[keep], (lift > 0).astype(float), centres.size)
+    return HarmonicProfile(centres, sums, counts, lifted)
+
+
+def note_profiles(frames: np.ndarray, pitches: np.ndarray, fs: float) -> list[HarmonicProfile]:
+    """The harmonic profile of each sung note on its own (notes as ``note_groups`` finds them)."""
+    labels = note_groups(pitches)
+    return [harmonic_profile(frames[labels == note], pitches[labels == note], fs)
+            for note in range(int(labels.max(initial=-1)) + 1)]
 
 
 def find_resonances(profile: HarmonicProfile, envelope: tuple[np.ndarray, np.ndarray], notes: list[float],
@@ -405,21 +455,42 @@ def find_resonances(profile: HarmonicProfile, envelope: tuple[np.ndarray, np.nda
     return sorted(found, key=lambda r: r.freq_hz)
 
 
-def low_mid_buildup(profile: HarmonicProfile, notes: list[float]) -> tuple[float, float]:
-    """(centre, excess dB) of the strongest bump between 150 and 500 Hz: the harmonics' lift over
-    their neighbours' line, averaged over 1/3 octave (a broad bump: proximity effect, boxiness).
-    Only bands whose own 1/8 octave holds harmonics count: the average must not place a bump where
-    no harmonic was measured (a voice whose lowest 2nd harmonic is 524 Hz would otherwise get a
-    "bump" at 469 Hz from that harmonic alone). Bands within 1/6 octave of a note the voice dwells
-    on, or of its octave, are left out."""
+def low_mid_buildup(profile: HarmonicProfile, per_note: list[HarmonicProfile], notes: list[float]
+                    ) -> tuple[float, float, int]:
+    """(centre, excess dB, notes that show it) of the strongest bump between 150 and 500 Hz: the
+    harmonics' lift over their neighbours' line, averaged over 1/3 octave (a broad bump: proximity
+    effect, boxiness).
+
+    A band counts only when at least two sung notes (``per_note``) show the
+    bump on their own, from their harmonics in that 1/3 octave: lifted by
+    LOW_MID_MIN_DB − 1 dB or more on average, and above their neighbours'
+    line in at least LOW_MID_STEADY_SHARE of the cases. A fixed bump lifts
+    the harmonics of every note there, every time; the vowels' first formant
+    lifts the 2nd harmonic of a high voice's lowest notes (240–250 Hz, just
+    under 500 Hz) only when the vowel puts it there, and one note that
+    happens to meet such vowels more often is no bump either. The excess is
+    the lift of all the harmonics there, every note pooled. A voice that
+    sings a single note with harmonics in the band gets no bump: a missed
+    cut costs less than a wrong one. Only bands whose own 1/8 octave holds
+    harmonics count: the average must not place a bump where no harmonic
+    was measured (a voice whose lowest 2nd harmonic is 524 Hz would
+    otherwise get a "bump" at 469 Hz from that harmonic alone). Bands within
+    1/6 octave of a note the voice dwells on, or of its octave, are left out.
+    """
     third = profile.mean(THIRD)
     zone = ((profile.centres >= 150) & (profile.centres <= 500) & np.isfinite(third)
             & np.isfinite(profile.mean(NARROW)))
     zone &= np.array([not near_sung_notes(c, notes) for c in profile.centres])
+    seen = np.zeros(profile.centres.size, dtype=int)
+    with np.errstate(invalid="ignore"):
+        for note in per_note:
+            seen += ((note.mean(THIRD) >= LOW_MID_MIN_DB - 1)
+                     & (note.lifted_share(THIRD) >= LOW_MID_STEADY_SHARE))
+    zone &= seen >= 2
     if not zone.any():
-        return 300.0, 0.0
+        return 300.0, 0.0, 0
     i = int(np.argmax(np.where(zone, third, -math.inf)))
-    return float(profile.centres[i]), float(max(third[i], 0.0))
+    return float(profile.centres[i]), float(max(third[i], 0.0)), int(seen[i])
 
 
 def _frames_psd(x: np.ndarray, fs: float, frames: np.ndarray, size: int) -> tuple[np.ndarray, np.ndarray]:
@@ -522,12 +593,13 @@ def measure_vocal(x: np.ndarray, fs: float) -> VocalMeasure:
     frames = pitch_frames(sung, fs)
     pitches = frame_pitches(frames, fs)
     resonances: list[Resonance] = []
-    low_mid_hz, low_mid_excess = 300.0, 0.0
+    low_mid_hz, low_mid_excess, low_mid_notes = 300.0, 0.0, 0
     if sung.shape[0] >= 4 * fs:
         notes = frequent_pitches(pitches)
         profile = harmonic_profile(frames, pitches, fs)
         resonances = find_resonances(profile, spectral_envelope(sung, fs), notes)
-        low_mid_hz, low_mid_excess = low_mid_buildup(profile, notes)
+        low_mid_hz, low_mid_excess, low_mid_notes = low_mid_buildup(
+            profile, note_profiles(frames, pitches, fs), notes)
     sung_power = max(float(np.mean(sung ** 2)), 1e-30)
     low_hz, low_share = _low_spectrum(sung, fs, sung_power)
     rest_low_hz, rest_low_share = _rest_low_spectrum(x, fs, sung_power)
@@ -551,6 +623,7 @@ def measure_vocal(x: np.ndarray, fs: float) -> VocalMeasure:
         sibilant_peak_hz=peak,
         low_mid_hz=low_mid_hz,
         low_mid_excess_db=low_mid_excess,
+        low_mid_notes=low_mid_notes,
         air_db=air(x, fs, vowel_frames, size),
         low_hz=low_hz,
         low_share=low_share,

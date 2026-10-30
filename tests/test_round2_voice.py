@@ -135,12 +135,13 @@ def _warm(notes, seed, shelf_db):
     return apply_sos(voice(seed=seed, notes=notes), shelf_sos(FS, 300, shelf_db, high=False))
 
 
+# since round 3 a bump must be seen on two notes (tests/test_round3_lowmid.py): none is, they read 0 dB
 @pytest.mark.parametrize("notes,seed,shelf_db,measured", [
-    ([247, 277, 311, 330, 370], 2, 1.4, 2.76),  # the highest clean value with mud above 6 dB
-    ([247, 277, 311, 330, 370], 2, 3.0, 2.50),  # 2.497: just under the old 2.5 dB threshold
-    ([240, 270, 300, 320, 360], 2, 1.4, 2.72),
-    ([233, 262, 294, 330, 349, 392], 2, 3.0, 2.38),
-    ([220, 247, 262, 294, 330], 2, 0.0, 2.28),
+    ([247, 277, 311, 330, 370], 2, 1.4, 0.0),  # 2.76 every note pooled: the highest clean value with mud > 6 dB
+    ([247, 277, 311, 330, 370], 2, 3.0, 0.0),  # 2.497 every note pooled
+    ([240, 270, 300, 320, 360], 2, 1.4, 0.0),  # 2.72
+    ([233, 262, 294, 330, 349, 392], 2, 3.0, 0.0),  # 2.38
+    ([220, 247, 262, 294, 330], 2, 0.0, 0.0),  # 2.28
 ])
 def test_a_clean_voice_with_lowest_notes_220_to_247_hz_gets_no_low_mid_cut(notes, seed, shelf_db, measured):
     m = measure_vocal(_warm(notes, seed, shelf_db), FS)
@@ -150,7 +151,7 @@ def test_a_clean_voice_with_lowest_notes_220_to_247_hz_gets_no_low_mid_cut(notes
     assert not [t.label for t in _plan(m) if t.label.startswith("Bas-médiums")]
 
 
-@pytest.mark.parametrize("freq,q,seed,measured", [(300, 2.0, 5, 2.97), (300, 4.0, 7, 3.00), (200, 2.0, 8, 4.61),
+@pytest.mark.parametrize("freq,q,seed,measured", [(300, 2.0, 5, 2.97), (300, 4.0, 7, 3.00), (200, 2.0, 1, 4.15),
                                                   (400, 2.0, 4, 3.16)])
 def test_the_acceptance_bumps_still_arm_the_low_mid_cut(freq, q, seed, measured):
     # +6 dB bumps; each case is the seed (of 1–8) where the bump reads lowest
