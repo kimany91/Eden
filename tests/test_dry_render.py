@@ -1,7 +1,6 @@
 """The dry voice: which effects count, which renders Eden plans for it, how FL's dry
 render is checked, and the fl-probe check that FL really bypasses an effect slot."""
 
-import sys
 import tracemalloc
 
 import numpy as np
@@ -17,12 +16,10 @@ from eden.project.plugins import categorize
 from eden.project.sources import SearchRoots
 from eden.render.pipeline import render_project
 from eden.render.plan import _dry_edits, plan_renders
-from eden.render.probe import probe_fl_studio
 from eden.report import render_markdown
-from eden.settings import load_settings
 from flp_builder import Chan, Clip, Insert, Slot, build_flp
 from synth_voice import FS, voice
-from test_render import SIM, make_session, sim_renderer
+from test_render import sim_renderer
 
 BAR = 96 * 4  # 2 s at 120 BPM
 SR = 22050
@@ -119,7 +116,7 @@ def test_a_vocal_bus_and_a_reverb_return_are_told_apart_whatever_their_numbers(t
     project = make_project(tmp_path / "Projet", bus_and_return(bus, ret))
     report = _report(project)
     dry = next(j for j in plan_renders(report).jobs if j.kind == "vocal_dry")
-    assert dry.mute_inserts == [ret]  # the return
+    assert {r for r, _ in dry.cut_routes} == {ret}  # the return: its outputs cut
     assert dry.bypass_slots == [(bus, 1)]  # the bus's delay; the bus and its compressor stay
     result = render_project(project, sim_renderer(), timeout_s=120, report=report)
     assert result.ok
@@ -185,7 +182,7 @@ def test_an_unknown_plugin_on_an_insert_named_reverb_is_a_return(tmp_path):
     assert categorize(report.project.insert(2).slots[0].plugin) == "unknown"
     plan = plan_renders(report)
     dry = next(j for j in plan.jobs if j.kind == "vocal_dry")
-    assert dry.mute_inserts == [2] and dry.bypass_slots == []
+    assert {r for r, _ in dry.cut_routes} == {2} and dry.bypass_slots == []
     assert "« Mystery FX » (insert « Reverb ») : plugin non identifié, compté comme reverb ou delay " \
            "d'après le nom de l'insert" in plan.notes
 
@@ -270,40 +267,3 @@ def test_a_dry_render_fl_did_not_bypass_is_refused(tmp_path, monkeypatch):
                               "(FL Studio n'a rien retiré (effets coupés non respectés ou inaudibles)) ; "
                               "ses effets FL sont traités avec prudence"]
     assert fl_space_status(report, parts) == {"ch0": "untracked"}
-
-
-# -- fl-probe: is a bypassed slot really bypassed? ---------------------------------------
-
-def _probe(project, tmp_path):
-    settings = tmp_path / "settings.json"
-    res = probe_fl_studio(project, command=[sys.executable, SIM], timeout_s=120,
-                          settings_file=settings, log=lambda m: None)
-    return res, load_settings(settings)
-
-
-def test_probe_checks_that_a_bypassed_slot_is_bypassed(tmp_path):
-    res, settings = _probe(make_session(tmp_path), tmp_path)
-    assert res.isolation_slots_ok is True and res.ok
-    assert any("« Fruity Reeverb 2 » sur « Bus voix », Lead seule) : le rendu change" in line for line in res.lines)
-    assert settings.render_args
-
-
-def test_probe_fails_when_fl_plays_a_bypassed_slot(tmp_path, monkeypatch):
-    monkeypatch.setenv("EDEN_SIM_IGNORE_SLOTS", "1")
-    res, settings = _probe(make_session(tmp_path), tmp_path)
-    assert res.isolation_channels_ok and res.isolation_inserts_ok and res.isolation_routes_ok
-    assert res.isolation_slots_ok is False and not res.ok
-    assert any("le rendu ne change pas (écart sous -60 dB) ✘" in line for line in res.lines)
-    assert settings.render_args is None  # nothing saved
-
-
-def test_probe_without_reverb_or_delay_cannot_check_slots(tmp_path):
-    project = make_project(tmp_path / "Projet", [
-        Insert(routes=()), Insert(name="Lead", routes=(0,), slots={0: Slot("Fruity parametric EQ 2")}),
-        Insert(name="Instru", routes=(0,))])
-    res, settings = _probe(project, tmp_path)
-    assert res.isolation_slots_ok is None and res.ok
-    assert "Test d'isolation (slot d'effet contourné) : non vérifié sur ce projet (aucune piste de la " \
-           "playlist ne passe par une reverb ou un delay actif dont FL a enregistré l'état " \
-           "activé/désactivé)" in res.lines
-    assert settings.render_args

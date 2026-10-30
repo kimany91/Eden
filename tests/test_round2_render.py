@@ -1,27 +1,20 @@
 """Round 2 review fixes: why an inactive FL effect is inactive (switched off or unheard), as the
-report and the interface show it, and the fl-probe slot check that tries other slots before it
-decides that FL does not bypass a slot."""
+report and the interface show it, and what it means for the dry renders."""
 
 import os
-import sys
 
 import numpy as np
 import pytest
 import soundfile as sf
 
-from eden.flp.edit import FlpEditor
 from eden.gui import viewmodel
 from eden.project.classify import RoleGuess
 from eden.project.inspector import SourceAnalysis, _effects_on, _signal_path, inspect_project
 from eden.project.model import FlpProject, MixerInsert, MixerSlot, PluginInfo, Route
 from eden.project.sources import SearchRoots
-from eden.render.fl_studio import FLStudioRenderer, RenderError
 from eden.render.plan import plan_renders
-from eden.render.probe import SLOT_CHECK_TRIES, probe_fl_studio
 from eden.report import _source_lines, render_markdown
-from eden.settings import load_settings
 from flp_builder import Chan, Clip, Insert, Slot, build_flp
-from test_render import SIM
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")  # the voice card is built without a screen
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
@@ -177,168 +170,7 @@ def test_the_voice_card_tooltip_shows_why_an_effect_is_not_heard():
     }
 
 
-# -- R2: fl-probe tries other slots before failing -----------------------------------------------
-
-def _probe(project, tmp_path):
-    settings = tmp_path / "settings.json"
-    res = probe_fl_studio(project, command=[sys.executable, SIM], timeout_s=120,
-                          settings_file=settings, log=lambda m: None)
-    return res, load_settings(settings)
-
-
-def _slot_lines(res):
-    return [line for line in res.lines if line.startswith("Test d'isolation (slot d'effet contourné")]
-
-
-@pytest.fixture
-def renders(monkeypatch):
-    """Names of the probe's copies FL renders, in order."""
-    seen = []
-    render = FLStudioRenderer.render
-
-    def counting(self, project_copy, timeout_s):
-        seen.append(project_copy.parent.name)
-        return render(self, project_copy, timeout_s)
-
-    monkeypatch.setattr(FLStudioRenderer, "render", counting)
-    return seen
-
-
-def test_a_slot_that_changes_nothing_is_followed_by_another(tmp_path):
-    # The reverb return's fader is all but at the bottom (about −82 dB): bypassing its reverb changes
-    # the render by less than −60 dB, though FL bypasses it. The back's delay then shows that FL does
-    # bypass a slot.
-    project = make_project(tmp_path / "Projet", [
-        Insert(routes=()), Insert(name="Lead", routes=(0, 2)),
-        Insert(name="Reverb", routes=(0,), volume=1, slots={0: Slot("Fruity Reeverb 2")}),
-        Insert(name="Back", routes=(0,), slots={0: Slot("Fruity Delay 3")}),
-        Insert(name="Instru", routes=(0,))], [("Lead", 1), ("Back", 3)])
-    res, settings = _probe(project, tmp_path)
-    lines = _slot_lines(res)
-    assert len(lines) == 2
-    assert lines[0] == ("Test d'isolation (slot d'effet contourné, essai 1 sur 2 : « Fruity Reeverb 2 » sur "
-                        "« Reverb », Lead seule) : le rendu ne change pas (écart sous -60 dB) ✘")
-    assert lines[1].startswith("Test d'isolation (slot d'effet contourné, essai 2 sur 2 : « Fruity Delay 3 » "
-                               "sur « Back », Back seule) : le rendu change (écart de ")
-    assert lines[1].endswith(" dB) ✔")
-    assert res.isolation_slots_ok is True and res.ok
-    assert settings.render_args
-
-
-def test_the_check_fails_only_when_no_slot_tried_changes_the_render(tmp_path, monkeypatch, renders):
-    monkeypatch.setenv("EDEN_SIM_IGNORE_SLOTS", "1")  # FL plays bypassed slots
-    project = make_project(tmp_path / "Projet", [
-        Insert(routes=()),
-        Insert(name="Lead", routes=(0,), slots={0: Slot("Fruity Reeverb 2"), 1: Slot("Fruity Delay 3")}),
-        Insert(name="Back", routes=(0,), slots={0: Slot("Fruity Reeverb 2")}),
-        Insert(name="Adlib", routes=(1,)),
-        Insert(name="Instru", routes=(0,))], [("Lead", 1), ("Back", 2), ("Adlib", 3)])
-    res, settings = _probe(project, tmp_path)
-    lines = _slot_lines(res)
-    # 5 candidates; a new insert, then a new slot, with a new source if there is one; 3 tries at most
-    assert SLOT_CHECK_TRIES == 3 and len(lines) == 4
-    assert [line.split(" : ")[1].split(")")[0] for line in lines[:3]] == [
-        "« Fruity Reeverb 2 » sur « Lead », Lead seule",
-        "« Fruity Reeverb 2 » sur « Back », Back seule",
-        "« Fruity Delay 3 » sur « Lead », Adlib seule"]
-    assert all(line.endswith("le rendu ne change pas (écart sous -60 dB) ✘") for line in lines[:3])
-    assert lines[3] == ("Test d'isolation (slot d'effet contourné) : aucun des 3 essais ne montre que "
-                        "FL Studio contourne un slot désactivé ✘")
-    assert res.isolation_slots_ok is False and not res.ok
-    assert settings.render_args is None  # nothing saved
-    assert [r for r in renders if r.startswith("isolation-slot")] == [
-        "isolation-slot-1-actif", "isolation-slot-1-contourne", "isolation-slot-2-actif",
-        "isolation-slot-2-contourne", "isolation-slot-3-actif", "isolation-slot-3-contourne"]
-
-
-def test_a_slot_already_tried_waits_until_no_other_slot_is_left(tmp_path, monkeypatch):
-    # Every voice plays through a vocal bus holding a reverb then a delay. The reverb lets the
-    # sound through (bypassing it changes nothing, emulated here); the delay is bypassed as asked.
-    # Trying the reverb again with the other voices would end in a false failure.
-    bypass = FlpEditor.set_slot_enabled
-
-    def reverb_passes_through(self, insert, slot, enabled):
-        if (insert, slot) != (4, 0):
-            bypass(self, insert, slot, enabled)
-
-    monkeypatch.setattr(FlpEditor, "set_slot_enabled", reverb_passes_through)
-    project = make_project(tmp_path / "Projet", [
-        Insert(routes=()), Insert(name="Lead", routes=(4,)), Insert(name="Adlib", routes=(4,)),
-        Insert(name="Back", routes=(4,)),
-        Insert(name="Bus voix", routes=(0,), slots={0: Slot("Fruity Reeverb 2"), 1: Slot("Fruity Delay 3")}),
-        Insert(name="Instru", routes=(0,))], [("Lead", 1), ("Adlib", 2), ("Back", 3)])
-    res, settings = _probe(project, tmp_path)
-    lines = _slot_lines(res)
-    assert len(lines) == 2
-    assert lines[0] == ("Test d'isolation (slot d'effet contourné, essai 1 sur 3 : « Fruity Reeverb 2 » sur "
-                        "« Bus voix », Lead seule) : le rendu ne change pas (écart sous -60 dB) ✘")
-    assert lines[1].startswith("Test d'isolation (slot d'effet contourné, essai 2 sur 3 : « Fruity Delay 3 » "
-                               "sur « Bus voix », Adlib seule) : le rendu change (écart de ")
-    assert res.isolation_slots_ok is True and res.ok and settings.render_args
-
-
-def test_a_source_is_rendered_alone_once_for_all_its_slots(tmp_path, monkeypatch, renders):
-    monkeypatch.setenv("EDEN_SIM_IGNORE_SLOTS", "1")
-    project = make_project(tmp_path / "Projet", [
-        Insert(routes=()),
-        Insert(name="Lead", routes=(0, 2), slots={0: Slot("Fruity Reeverb 2"), 1: Slot("Fruity Delay 3")}),
-        Insert(name="Delay", routes=(0,), slots={0: Slot("Fruity Delay 3")}),
-        Insert(name="Instru", routes=(0,))], [("Lead", 1)])
-    res, _ = _probe(project, tmp_path)
-    assert [line.split(" : ")[1].split(")")[0] for line in _slot_lines(res)[:3]] == [
-        "« Fruity Reeverb 2 » sur « Lead », Lead seule",
-        "« Fruity Delay 3 » sur « Delay », Lead seule",  # another insert first
-        "« Fruity Delay 3 » sur « Lead », Lead seule"]
-    assert [r for r in renders if r.startswith("isolation-slot")] == [
-        "isolation-slot-1-actif", "isolation-slot-1-contourne", "isolation-slot-2-contourne",
-        "isolation-slot-3-contourne"]
-    assert res.isolation_slots_ok is False
-
-
-def test_a_silent_solo_render_moves_on_to_the_next_slot(tmp_path):
-    project = make_project(tmp_path / "Projet", [
-        Insert(routes=()), Insert(name="Lead", routes=(0,), slots={0: Slot("Fruity Reeverb 2")}),
-        Insert(name="Back", routes=(0,), slots={0: Slot("Fruity Delay 3")}),
-        Insert(name="Instru", routes=(0,))], [("Lead", 1), ("Back", 2)], silent={"Lead"})
-    res, settings = _probe(project, tmp_path)
-    lines = _slot_lines(res)
-    assert lines[0] == ("Test d'isolation (slot d'effet contourné, essai 1 sur 2 : « Fruity Reeverb 2 » sur "
-                        "« Lead », Lead seule) : non vérifié (rendu silencieux)")
-    assert "le rendu change" in lines[1] and len(lines) == 2
-    assert res.isolation_slots_ok is True and res.ok and settings.render_args
-
-
-def test_only_silent_solo_renders_leave_the_check_unverified(tmp_path):
-    project = make_project(tmp_path / "Projet", [
-        Insert(routes=()), Insert(name="Lead", routes=(0,), slots={0: Slot("Fruity Reeverb 2")}),
-        Insert(name="Instru", routes=(0,))], [("Lead", 1)], silent={"Lead"})
-    res, settings = _probe(project, tmp_path)
-    assert _slot_lines(res) == ["Test d'isolation (slot d'effet contourné, essai 1 sur 1 : « Fruity Reeverb 2 » "
-                                "sur « Lead », Lead seule) : non vérifié (rendu silencieux)"]
-    assert res.isolation_slots_ok is None and res.ok and settings.render_args
-
-
-def test_a_failed_render_is_followed_by_another_slot(tmp_path, monkeypatch):
-    render = FLStudioRenderer.render
-
-    def failing_once(self, project_copy, timeout_s):
-        if project_copy.parent.name == "isolation-slot-1-contourne":
-            raise RenderError("FL Studio s'est arrêté (code 1) sans produire de fichier WAV")
-        return render(self, project_copy, timeout_s)
-
-    monkeypatch.setattr(FLStudioRenderer, "render", failing_once)
-    project = make_project(tmp_path / "Projet", [
-        Insert(routes=()), Insert(name="Lead", routes=(0,), slots={0: Slot("Fruity Reeverb 2")}),
-        Insert(name="Back", routes=(0,), slots={0: Slot("Fruity Delay 3")}),
-        Insert(name="Instru", routes=(0,))], [("Lead", 1), ("Back", 2)])
-    res, settings = _probe(project, tmp_path)
-    lines = _slot_lines(res)
-    assert lines[0] == ("Test d'isolation (slot d'effet contourné, essai 1 sur 2 : « Fruity Reeverb 2 » sur "
-                        "« Lead », Lead seule) : échec du rendu (FL Studio s'est arrêté (code 1) sans produire "
-                        "de fichier WAV) ✘")
-    assert "le rendu change" in lines[1] and len(lines) == 2
-    assert res.isolation_slots_ok is True and res.ok and settings.render_args
-
+# -- dry renders ----------------------------------------------------------------------------------
 
 def test_a_return_with_its_fader_at_the_bottom_gets_no_dry_render(tmp_path):
     project = make_project(tmp_path / "Projet", [

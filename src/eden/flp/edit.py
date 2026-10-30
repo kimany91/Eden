@@ -92,9 +92,6 @@ class FlpEditor:
             self.events[pos] = make_event(ids.INSERT_FLAGS, bytes(data))
             self.changes.append(f"{label} insert {insert} : {'oui' if on else 'non'}")
 
-    def set_insert_enabled(self, insert: int, enabled: bool) -> None:
-        self._set_insert_flag(insert, ids.INSERT_FLAG_ENABLED, enabled, "activé")
-
     def set_insert_effects_enabled(self, insert: int, enabled: bool) -> None:
         self._set_insert_flag(insert, ids.INSERT_FLAG_EFFECTS_ON, enabled, "effets actifs")
 

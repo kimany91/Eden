@@ -87,25 +87,18 @@ bus). Deux modes :
 - C'est FL Studio qui produit tout le son : Eden ne recrée aucun effet (un delay réglé,
   un Auto-Tune, un écho restent exactement ceux de FL).
 - Pour que FL joue une partie seule, Eden écrit une **copie temporaire** du projet dans
-  son espace (jamais l'original) : certaines pistes coupées, effets du Master contournés,
-  chemins audio réparés. La copie est effacée dès que FL l'a rendue.
+  son espace (jamais l'original) : les autres canaux coupés, des envois coupés, des effets
+  contournés, chemins audio réparés. Une piste du Mixer n'est jamais désactivée : FL Studio
+  2025/2026 ne rend plus une copie où elle l'est (vu sur le projet d'un utilisateur, FL se
+  ferme sans fichier). La copie est effacée dès que FL l'a rendue, et une copie identique à
+  une autre réutilise son rendu au lieu de relancer FL.
 - Il lance FL Studio en ligne de commande sur chaque copie (`FL64.exe /R ...`, syntaxe
   rapportée par des utilisateurs) et récupère le WAV produit.
 - Comme cette syntaxe n'est pas documentée de façon fiable, rien n'est supposé :
-  `eden fl-probe` la teste sur ton PC et vérifie aussi que les coupures de pistes sont
-  bien respectées par FL Studio (canaux, inserts, envois vers le Master) et qu'un slot
-  d'effet désactivé l'est vraiment (une piste rendue seule avec et sans sa reverb ou son
-  delay : l'écart entre les deux rendus doit dépasser −60 dB), avant d'activer le rendu
-  automatique. Ce dernier test demande, dans le projet testé, une piste de la playlist qui
-  passe par une reverb ou un delay actif dont FL a enregistré l'état activé/désactivé ; sans
-  elle, il est noté « non vérifié sur ce projet ». Un slot peut ne rien changer pour une
-  raison qui lui est propre (plugin réglé pour laisser passer le son, envoi ou retour
-  presque tout en bas ; tout en bas, l'effet est inaudible et n'est pas essayé) : Eden
-  essaie alors jusqu'à deux autres slots, de préférence sur un autre insert, et avec une
-  autre piste quand il y en a une (le même slot n'est repris avec une autre piste que s'il
-  n'en reste aucun autre ; 3 essais au plus, choix d'Eden), note chaque essai dans le compte
-  rendu, et ne conclut que FL ne respecte pas un slot désactivé que si aucun essai ne change
-  le rendu.
+  `eden fl-probe` (fait aussi au premier rendu) l'essaie sur ton PC, un seul rendu. Que FL
+  respecte ce qu'Eden change dans ses copies est vérifié sur chaque morceau par les rendus
+  eux-mêmes : la somme des groupes doit redonner le morceau (seuil −60 dB), et chaque voix
+  sèche doit différer de la voix complète.
 - Plan B si la ligne de commande ne marche pas sur ta version : export guidé
   (« Split mixer tracks ») surveillé par Eden.
 

@@ -44,11 +44,8 @@ est marqué :
   plus faible des deux rendus (choix d'Eden), Eden la dit « décalée de plus de 100 ms ».
   La part des effets ne doit contenir ni la voix elle-même (un retour qui laisse passer
   l'envoi sec, un plugin dont le bouton dry/wet baisse aussi la voix), ni être plus forte
-  que la voix. Sinon la voix sèche est écartée et Eden le dit. En amont, `eden fl-probe`
-  vérifie sur ton PC que FL respecte un slot d'effet désactivé (écart au-dessus de −60 dB
-  entre les rendus avec et sans l'effet, choix d'Eden), quand une piste de la playlist du
-  projet testé passe par une reverb ou un delay dont FL a enregistré l'état ; sinon ce
-  point est noté « non vérifié sur ce projet ».
+  que la voix. Sinon la voix sèche est écartée et Eden le dit : c'est ce contrôle qui vérifie,
+  sur chaque morceau, que FL a bien contourné les effets coupés.
 - **Voix « prudente »** : quand la séparation est impossible (état d'un slot non enregistré
   par FL, retours d'effet impossibles à distinguer, plugin non identifié sur le chemin de la
   voix) ou écartée, la réduction est limitée à 3 dB par compresseur, sans compression

@@ -1,6 +1,6 @@
 """Round 4 review fixes, texts: the render's warnings on the render page and in every mix, the
-0 % wording, mixes saved before 0.4.0 shown again, true messages in "tu", the fader rule in the
-fl-probe texts, and one list of export sample rates."""
+0 % wording, mixes saved before 0.4.0 shown again, true messages in "tu", and one list of export
+sample rates."""
 
 import json
 import os
@@ -20,13 +20,11 @@ from eden.project.inspector import inspect_project
 from eden.project.sources import SearchRoots
 from eden.render.pipeline import RenderResult, render_project
 from eden.render.plan import RenderPlan
-from eden.render.probe import _space_slots
 from eden.render.verify import NullTest
 from eden.safety import Workspace
 from eden.settings import Settings, save_settings
-from flp_builder import Chan, Clip, Insert, Slot, build_flp
+from flp_builder import Chan, Clip, Insert, build_flp
 from test_render import SIM, make_session, sim_renderer
-from test_round2_render import make_project
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "eden"
@@ -220,31 +218,6 @@ def test_failed_renders_point_to_the_button_and_to_eden_render(tmp_path):
         mix_project(project, report, renders)
     assert "relance la récupération du son" in str(err.value)
     assert "« Récupérer le son depuis FL Studio »" in str(err.value) and "eden render" in str(err.value)
-
-
-# -- 6. a return whose fader is at the bottom is never tried by fl-probe ---------------------------
-
-@pytest.mark.parametrize("volume, tried", [(0, []), (1, [("Lead", "Fruity Reeverb 2")])])
-def test_fl_probe_never_tries_a_return_whose_fader_is_at_the_bottom(tmp_path, volume, tried):
-    project = make_project(tmp_path / "Projet", [
-        Insert(routes=()), Insert(name="Lead", routes=(0, 2)),
-        Insert(name="Reverb", routes=(0,), volume=volume, slots={0: Slot("Fruity Reeverb 2")}),
-        Insert(name="Instru", routes=(0,))], [("Lead", 1)])
-    report = inspect_project(project, roots=SearchRoots())
-    sources = [s for s in report.sources if s.reaches_master]
-    assert [(s.label, e.plugin) for s, e in _space_slots(report.project, sources)] == tried
-
-
-def test_the_fader_rule_is_in_the_probe_and_plan_texts():
-    import eden.render.probe as probe
-
-    assert "return fader at the bottom" not in probe.__doc__
-    assert "almost all the" in probe.__doc__
-    for doc in ("01-audit-architecture.md", "02-plan-developpement.md"):
-        text = " ".join((ROOT / "docs" / doc).read_text(encoding="utf-8").split())
-        assert "fader du retour en bas" not in text
-        assert "envoi ou retour presque tout en bas" in text
-        assert "volume de l'insert au-dessus de zéro, insert qui atteint le Master), une copie" in text
 
 
 # -- 7. stale texts ---------------------------------------------------------------------------------

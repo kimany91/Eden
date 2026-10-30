@@ -1,20 +1,23 @@
 """Decide which renders Eden asks FL Studio for.
 
-Each render is a *copy* of the project in which some inserts or channels are
-muted. Three kinds of jobs:
+Each render is a *copy* of the project in which some channels are muted, some
+sends cut and some effects bypassed; a Mixer track is never switched off, which
+FL Studio 2025/2026 cannot render (seen on a user's project: FL closed without
+a file). Kinds of jobs:
 
 * ``original``  – the project as it is (what the user hears in FL Studio);
 * ``premaster`` – same, Master effects bypassed: reference of the null test;
 * ``stem``      – one top-level group (an insert routed straight to the
   Master with everything feeding it, or a channel playing directly into the
-  Master). Routes of the feeding inserts that bypass the group are cut, so
-  their sum equals ``premaster``: each source is counted once, bus
-  processing is kept, Master effects are left to Eden's finishing;
+  Master): every other channel is muted, and the sends of the group's
+  inserts that bypass it are cut, so their sum equals ``premaster``: each
+  source is counted once, bus processing is kept, Master effects are left to
+  Eden's finishing;
 * ``vocal``     – one vocal channel alone, through its whole real chain
   (inserts, buses), for analysis and per-voice decisions. Not part of the sum;
 * ``vocal_dry`` – the same voice without its FL reverbs and delays: its
   effect returns (inserts holding a reverb or delay that the voice does not
-  need to reach the Master) are muted and the reverb or delay slots on its
+  need to reach the Master) have their outputs cut and the reverb or delay slots on its
   own way to the Master are bypassed. Only planned when every such effect
   can be removed; otherwise a note says why. Auto-Tune and every other
   effect stay. ``vocal`` minus ``vocal_dry`` is what those effects add, so
@@ -40,11 +43,11 @@ class RenderJob:
     name: str
     kind: str  # original | premaster | stem | vocal | vocal_dry
     description: str
-    mute_inserts: list[int] = field(default_factory=list)
     mute_channels: list[int] = field(default_factory=list)
     cut_routes: list[tuple[int, int]] = field(default_factory=list)  # (from insert, to insert)
     bypass_slots: list[tuple[int, int]] = field(default_factory=list)  # (insert, slot)
-    bypass_master_effects: bool = False
+    # the Master's effects switch: only for an effect of it whose own on/off state FL did not record
+    bypass_master_switch: bool = False
     channels: list[int] = field(default_factory=list)  # sources audible in this render
 
 
@@ -102,7 +105,7 @@ def _return_like(space: list[ExistingEffect], effects: list[ExistingEffect], idx
 
 
 def _dry_edits(project: FlpProject, s: SourceAnalysis) -> tuple[list[int], list[tuple[int, int]], str | None]:
-    """Effect returns to mute and slots to bypass to hear ``s`` without its reverbs and delays,
+    """Effect returns to silence and slots to bypass to hear ``s`` without its reverbs and delays,
     and why that would leave some of them in (None when it removes them all).
 
     A return is told by the mixer's topology, not by what it holds: an insert
@@ -157,17 +160,24 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
 
     source_channels = sorted(s.channel for s in sources)
     direct = [s for s in sources if s.insert in (None, MASTER_INSERT)]
-    direct_channels = [s.channel for s in direct]
-    # channels read as playing nowhere are muted too in every part rendered alone: if one plays after all, it
-    # stays out of the parts and is heard in the rest of the mix
-    idle = list(report.idle_channels)
-    all_inserts = [i.index for i in project.inserts if i.index != MASTER_INSERT]
+    # every channel that can sound: a part is played alone by muting all the others (read as playing nowhere
+    # included: if one plays after all, it stays out of the parts and is heard in the rest of the mix)
+    sounding = sorted({s.channel for s in report.sources} | set(report.idle_channels))
+
+    def all_but(kept: set[int]) -> list[int]:
+        return [c for c in sounding if c not in kept]
+
+    # the Master's effects, bypassed one by one where FL recorded their state (as a voice's reverb is)
+    master = project.insert(MASTER_INSERT)
+    master_fx = [sl for sl in (master.slots if master else []) if sl.enabled is not False]
+    no_master = {"bypass_slots": [(MASTER_INSERT, sl.index) for sl in master_fx if sl.enabled is not None],
+                 "bypass_master_switch": any(sl.enabled is None for sl in master_fx)}
 
     jobs = [
         RenderJob("original", "original", "Projet complet tel quel (référence d'écoute)",
                   channels=source_channels),
         RenderJob("premaster", "premaster", "Projet complet, effets du Master contournés",
-                  bypass_master_effects=True, channels=source_channels),
+                  channels=source_channels, **no_master),
     ]
 
     # Top-level groups: inserts routed straight to the Master that carry a source.
@@ -185,21 +195,24 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
     for idx in sorted(top_level):
         keep = {idx} | _upstream(project, idx)
         cut = []
-        for u in sorted(keep - {idx}):  # feeders must only reach the Master through idx
+        for u in sorted(keep):  # the group reaches the Master through idx only
             src = project.insert(u)
-            cut.extend((u, r.target) for r in (src.routes if src else []) if r.target not in keep)
+            cut.extend((u, r.target) for r in (src.routes if src else [])
+                       if r.target not in keep and (u != idx or r.target != MASTER_INSERT))
         ins = project.insert(idx)
         members = sorted({s.channel for s in top_level[idx]})
+        # what plays: every source on an insert that feeds the group, sends included (an 808 sent to the vocal
+        # bus is heard there; its own way to the Master is cut)
+        feeding = {s.channel for s in sources if s.insert in keep}
         jobs.append(RenderJob(
             name=f"stem-{idx:03d}-{_slug(ins.label if ins else str(idx))}",
             kind="stem",
             description=f"Groupe {ins.label if ins else idx} : "
                         + ", ".join(s.label for s in top_level[idx]),
-            mute_inserts=[i for i in all_inserts if i not in keep],
-            mute_channels=direct_channels + idle,
+            mute_channels=all_but(feeding),
             cut_routes=cut,
-            bypass_master_effects=True,
             channels=members,
+            **no_master,
         ))
 
     for s in direct:
@@ -207,10 +220,9 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
             name=f"stem-ch{s.channel:03d}-{_slug(s.label)}",
             kind="stem",
             description=f"{s.label} (joué directement dans le Master)",
-            mute_inserts=all_inserts,
-            mute_channels=[c for c in direct_channels if c != s.channel] + idle,
-            bypass_master_effects=True,
+            mute_channels=all_but({s.channel}),
             channels=[s.channel],
+            **no_master,
         ))
 
     vocals = [s for s in sources if s.role.is_vocal]
@@ -220,14 +232,14 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
         vocals = vocals[:MAX_VOCAL_JOBS]
     guessed: set[tuple[int, int]] = set()  # (insert, slot) of unidentified plugins taken for space effects
     for s in vocals:
-        others = [c for c in source_channels if c != s.channel] + idle
+        others = all_but({s.channel})
         jobs.append(RenderJob(
             name=f"vocal-ch{s.channel:03d}-{_slug(s.label)}",
             kind="vocal",
             description=f"{s.label} seule ({s.role.label}), avec toute sa chaîne d'effets",
             mute_channels=others,
-            bypass_master_effects=True,
             channels=[s.channel],
+            **no_master,
         ))
         for e in s.space_effects:
             if e.category not in SPACE_CATEGORIES and (e.insert, e.slot) not in guessed:
@@ -239,14 +251,15 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
             notes.append(f"« {s.label} » : pas de voix sèche, {left_in} ; ses reverbs et delays FL "
                          "seront traités avec prudence au mixage")
         elif returns or slots:
+            silenced = [(r, route.target) for r in returns for route in project.insert(r).routes]
             jobs.append(RenderJob(
                 name=f"dry-ch{s.channel:03d}-{_slug(s.label)}",
                 kind="vocal_dry",
                 description=f"{s.label} sans ses reverbs et delays FL (voix sèche)",
-                mute_inserts=returns,
                 mute_channels=others,
-                bypass_slots=slots,
-                bypass_master_effects=True,
+                cut_routes=silenced,  # nothing of the returns reaches the Master
+                bypass_slots=slots + no_master["bypass_slots"],
+                bypass_master_switch=no_master["bypass_master_switch"],
                 channels=[s.channel],
             ))
 

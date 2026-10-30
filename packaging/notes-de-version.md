@@ -1,12 +1,24 @@
-Eden 1.2.2 : FL Studio travaille en arrière-plan, pour de bon.
+Eden 1.2.3 : marche avec FL Studio 2025 / 2026, et bien plus vite.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.2.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.2.3.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Corrigé dans 1.2.3
+
+- **FL Studio 2025 / 2026** : FL ne rendait plus une copie où Eden avait éteint des pistes du
+  Mixer (« FL Studio s'est arrêté sans produire de fichier WAV »). Eden n'éteint plus jamais
+  une piste du Mixer : pour jouer une partie seule, il coupe les autres canaux et les envois,
+  et contourne les effets du Master un par un.
+- **Bien plus rapide** : le test du premier lancement ne fait plus qu'un seul rendu (il en
+  faisait jusqu'à une dizaine) ; ce qu'il vérifiait l'est sur chaque morceau par la vérification
+  finale (la somme des pistes doit redonner le morceau). Et deux rendus identiques ne lancent
+  plus FL Studio deux fois (une voix jouée directement dans le Master et la même voix seule,
+  le morceau avant et après le Master quand le Master n'a pas d'effet).
 
 ## Corrigé dans 1.2.2
 
@@ -49,4 +61,4 @@ Eden 1.2.2 : FL Studio travaille en arrière-plan, pour de bon.
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.2/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.3/docs/mixage.md).

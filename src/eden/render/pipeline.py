@@ -82,15 +82,13 @@ def build_copy(original: bytes, job: RenderJob, repairs: dict[int, str]) -> byte
     ed = FlpEditor(original)
     for channel, path in repairs.items():
         ed.set_sample_path(channel, path)
-    for idx in job.mute_inserts:
-        ed.set_insert_enabled(idx, False)
     for ch in job.mute_channels:
         ed.set_channel_enabled(ch, False)
     for src, target in job.cut_routes:
         ed.set_route(src, target, False)
     for insert, slot in job.bypass_slots:
         ed.set_slot_enabled(insert, slot, False)
-    if job.bypass_master_effects:
+    if job.bypass_master_switch:
         ed.set_insert_effects_enabled(MASTER_INSERT, False)
     return ed.to_bytes()
 
@@ -142,9 +140,12 @@ def render_project(
         warnings=list(plan.notes),
     )
     total = len(plan.jobs) + 1
+    rendered: dict[str, str] = {}  # copy → its audio: two parts asking for the same copy cost one render
 
     def run(job: RenderJob, copy_bytes: bytes, step: int) -> JobResult:
-        """Have FL render a temporary copy (or reuse the audio of an identical one)."""
+        """Have FL render a temporary copy (or reuse the audio of an identical one: rendered earlier in
+        this run, such as a voice played straight into the Master and the same voice alone, or kept
+        from a previous run)."""
         if on_step:
             on_step(step, total, f"Rendu FL Studio : {job.description}")
         job_dir = folder / job.name
@@ -155,9 +156,11 @@ def render_project(
         result.jobs.append(jr)
 
         prev = previous.get(job.name)
-        if prev and prev.get("copy_sha256") == copy_sha and prev.get("wav_path") \
+        if copy_sha not in rendered and prev and prev.get("copy_sha256") == copy_sha and prev.get("wav_path") \
                 and Path(prev["wav_path"]).is_file():
-            jr.wav_path, jr.status = prev["wav_path"], "resumed"
+            rendered[copy_sha] = prev["wav_path"]
+        if copy_sha in rendered:
+            jr.wav_path, jr.status = rendered[copy_sha], "resumed"
             jr.check = check_audio(Path(jr.wav_path))
             _write_manifest(manifest, result)
             return jr
@@ -173,6 +176,7 @@ def render_project(
             jr.wav_path = str(target)
             jr.check = check_audio(target)
             jr.status = "done"
+            rendered[copy_sha] = jr.wav_path
             if jr.check.silent and job.kind != "original":
                 result.warnings.append(f"Rendu silencieux : {job.description}")
         except (RenderError, OSError) as exc:

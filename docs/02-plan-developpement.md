@@ -48,19 +48,11 @@ Fait :
   reverb coupée) ;
 - **test de reconstruction** : somme des groupes = rendu pré-Master (seuil −60 dB) ;
 - reprise après interruption (manifeste, rendus déjà faits réutilisés) ;
-- `eden fl-probe` : sur ton PC, essaie les syntaxes connues de FL Studio, puis vérifie que
-  couper un canal, un insert et un envoi donne bien du silence, et qu'un slot d'effet
-  désactivé l'est vraiment : une piste rendue seule avec et sans une de ses reverbs ou un de
-  ses delays (dont FL a enregistré l'état activé/désactivé), l'écart entre les deux rendus
-  doit dépasser −60 dB. Un slot peut ne rien changer pour une raison qui lui est propre
-  (plugin réglé pour laisser passer le son, envoi ou retour presque tout en bas ; tout en
-  bas, l'effet est inaudible et n'est pas essayé) : jusqu'à deux autres slots sont alors
-  essayés, de préférence sur un autre insert, et avec une autre piste quand il y en a une
-  (le même slot n'est repris avec une autre piste que s'il n'en reste aucun autre ; 3 essais
-  au plus, choix d'Eden), chaque essai noté dans le compte rendu, et le test n'échoue que si
-  aucun ne change le rendu ; sans reverb ni delay de ce genre dans le projet, ou si tous
-  les rendus essayés sont muets, il est noté « non vérifié ». La syntaxe qui marche n'est
-  enregistrée que si tout ce qui a pu être vérifié passe ;
+- `eden fl-probe` : sur ton PC, essaie les syntaxes connues de FL Studio et enregistre la
+  première qui produit un WAV (un seul rendu). Ce qu'Eden change dans ses copies (canaux
+  coupés, envois coupés, effets contournés ; jamais une piste du Mixer désactivée, que FL
+  Studio 2025/2026 ne rend pas) est vérifié sur chaque morceau par le test de reconstruction
+  et le contrôle de chaque voix sèche ;
 - `eden render` et bouton « Récupérer le son depuis FL Studio » ;
 - tests avec un simulateur de FL Studio (effets non linéaires sur bus et Master), y compris
   la détection d'un découpage faux.

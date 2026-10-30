@@ -110,37 +110,35 @@ def test_writer_round_trip_real_project(real_flp):
 def test_editor_changes_only_what_is_asked(session):
     original = session.read_bytes()
     ed = FlpEditor(original)
-    ed.set_insert_enabled(2, False)
     ed.set_insert_effects_enabled(0, False)
     ed.set_channel_enabled(3, False)
     ed.set_sample_path(0, r"E:\Nouveau\Lead.wav")
     ed.set_route(5, 0, False)
     before, after = parse_bytes(original), parse_bytes(ed.to_bytes())
-    assert after.insert(2).enabled is False and before.insert(2).enabled is True
-    assert after.insert(0).effects_enabled is False
+    assert after.insert(0).effects_enabled is False and before.insert(0).effects_enabled is True
     assert after.channel(3).enabled is False
     assert after.channel(0).sample_path == r"E:\Nouveau\Lead.wav"
     assert [r.target for r in after.insert(5).routes] == [3]
-    for idx in (1, 3, 4):
+    for idx in (1, 2, 3, 4):
         assert after.insert(idx) == before.insert(idx)
     assert [c.name for c in after.channels] == [c.name for c in before.channels]
-    assert len(ed.changes) == 5
+    assert len(ed.changes) == 4
     assert session.read_bytes() == original  # the file on disk is untouched
 
 
 def test_editor_on_real_project(real_flp):
     ed = FlpEditor(real_flp.read_bytes())
-    ed.set_insert_enabled(19, False)
+    ed.set_insert_effects_enabled(19, False)
     ed.set_channel_enabled(11, False)
     p = parse_bytes(ed.to_bytes())
-    assert p.insert(19).enabled is False and p.insert(19).name == "Plugin Test"
+    assert p.insert(19).effects_enabled is False and p.insert(19).name == "Plugin Test"
     assert p.channel(11).enabled is False and p.channel(11).name == "22in Kick"
 
 
 def test_editor_errors(session):
     ed = FlpEditor(session.read_bytes())
     with pytest.raises(FlpEditError):
-        ed.set_insert_enabled(500, False)
+        ed.set_insert_effects_enabled(500, False)
     with pytest.raises(FlpEditError):
         ed.set_channel_enabled(42, False)
 
@@ -153,18 +151,22 @@ def test_render_plan(session):
     assert kinds[:2] == ["original", "premaster"]
     stems = {j.name: j for j in plan.jobs if j.kind == "stem"}
     assert set(stems) == {"stem-003-bus-voix", "stem-005-808", "stem-ch002-instru"}
-    bus = stems["stem-003-bus-voix"]
-    assert not {1, 2, 3, 5} & set(bus.mute_inserts)  # bus keeps everything feeding it
-    assert stems["stem-005-808"].mute_inserts.count(3) == 1  # 808 stem: its send to the bus is muted
-    assert bus.cut_routes == [(5, 0)]  # bus stem: the 808's direct route to the Master is cut
-    assert all(j.bypass_master_effects for j in plan.jobs[1:])
+    bus, the_808 = stems["stem-003-bus-voix"], stems["stem-005-808"]
+    # the bus plays everything feeding it, the 808's send included: only the beat (straight into the Master) is
+    # muted, and the 808's direct route to the Master is cut; no Mixer track is ever switched off
+    assert bus.mute_channels == [2] and bus.cut_routes == [(5, 0)]
+    assert the_808.mute_channels == [0, 1, 2] and the_808.cut_routes == [(5, 3)]  # 808 stem: its send to the bus cut
+    assert stems["stem-ch002-instru"].mute_channels == [0, 1, 3]
+    # the Master's limiter is bypassed as an effect of its own (FL recorded its state), not by the Master's switch
+    assert all((0, 0) in j.bypass_slots and not j.bypass_master_switch for j in plan.jobs[1:])
+    assert plan.jobs[0].bypass_slots == [] and not plan.jobs[0].mute_channels
     vocal = {j.name for j in plan.jobs if j.kind == "vocal"}
     assert vocal == {"vocal-ch000-lead", "vocal-ch001-adlib"}
     dry = {j.name: j for j in plan.jobs if j.kind == "vocal_dry"}
     assert set(dry) == {"dry-ch000-lead", "dry-ch001-adlib"}
     # the vocal bus carries the reverb and the voices need it to reach the Master:
     # its reverb slot is bypassed, the bus itself stays
-    assert dry["dry-ch000-lead"].bypass_slots == [(3, 0)] and not dry["dry-ch000-lead"].mute_inserts
+    assert dry["dry-ch000-lead"].bypass_slots == [(3, 0), (0, 0)] and not dry["dry-ch000-lead"].cut_routes
     assert any("plusieurs groupes" in n for n in plan.notes)
 
 
@@ -190,10 +192,10 @@ def make_send_session(tmp_path):
     return flp
 
 
-def test_dry_vocal_plan_mutes_returns_and_bypasses_space_slots(tmp_path):
+def test_dry_vocal_plan_silences_returns_and_bypasses_space_slots(tmp_path):
     plan = plan_renders(_report(make_send_session(tmp_path)))
     dry = next(j for j in plan.jobs if j.kind == "vocal_dry")
-    assert dry.mute_inserts == [2]  # reverb return: the lead reaches the Master without it
+    assert dry.cut_routes == [(2, 0)]  # reverb return: nothing of it reaches the Master; the lead does without it
     assert dry.bypass_slots == [(1, 1)]  # delay on the lead's own insert; Auto-Tune stays
     assert dry.mute_channels == [1] and dry.channels == [0]
 
@@ -362,7 +364,7 @@ def _probe(session, tmp_path, **kw):
 
 def test_probe_finds_working_syntax_and_saves_it(session, tmp_path):
     res, settings = _probe(session, tmp_path)
-    assert res.ok and res.isolation_channels_ok and res.isolation_inserts_ok and res.isolation_routes_ok
+    assert res.ok and len(res.lines) == 4  # FL Studio, one try, its render, settings saved: nothing else rendered
     assert not list(Path(os.environ["EDEN_HOME"]).rglob("probe/*"))  # test copies and renders removed
     assert settings.render_args == ["/R", "/Ewav", "{project}"]
     assert "FLOAT" in res.audio_format
@@ -373,13 +375,6 @@ def test_probe_tries_next_syntax(session, tmp_path, monkeypatch):
     res, settings = _probe(session, tmp_path)
     assert res.ok and settings.render_args == ["/R", "/Ewav", "/F{folder}"]
     assert any("aucun fichier WAV" in line for line in res.lines)
-
-
-def test_probe_detects_unreliable_isolation(session, tmp_path, monkeypatch):
-    monkeypatch.setenv("EDEN_SIM_IGNORE_MUTE", "1")
-    res, settings = _probe(session, tmp_path)
-    assert res.working_args and not res.ok
-    assert settings.render_args is None  # nothing saved
 
 
 def test_probe_without_any_output(session, tmp_path, monkeypatch):
@@ -402,3 +397,44 @@ def test_cli_render_requires_probe(session, capsys):
 
     assert main(["render", str(session)]) == 2
     assert "fl-probe" in capsys.readouterr().err
+
+
+# -- copies FL Studio 2025/2026 renders, as few as possible ------------------------------------------
+
+def test_no_copy_switches_a_mixer_track_off(session):
+    # FL Studio 2025/2026 closes without a file on a copy where one is off: parts are played alone by muting
+    # channels and cutting sends only
+    from eden.render.pipeline import build_copy
+
+    report = _report(session)
+    original = session.read_bytes()
+    before = parse_bytes(original)
+    for job in plan_renders(report).jobs:
+        copy = parse_bytes(build_copy(original, job, {}))
+        assert [i.enabled for i in copy.inserts] == [i.enabled for i in before.inserts], job.name
+
+
+def test_identical_copies_cost_one_render(tmp_path, monkeypatch):
+    # a voice played straight into the Master is the same copy as that voice alone; without Master effects the
+    # song before the Master is the song itself
+    from eden.render.fl_studio import FLStudioRenderer
+
+    d = tmp_path / "Direct"
+    d.mkdir()
+    t = np.arange(int(2.0 * 22050)) / 22050
+    sf.write(d / "Lead.wav", 0.2 * np.sin(2 * np.pi * 220 * t), 22050)
+    sf.write(d / "Beat.wav", np.stack([0.2 * np.sin(2 * np.pi * 55 * t)] * 2, axis=1), 22050)
+    flp = d / "Direct.flp"
+    flp.write_bytes(build_flp([Chan("Lead", insert=0, sample_path=str(d / "Lead.wav")),
+                               Chan("Instru", insert=0, sample_path=str(d / "Beat.wav"))],
+                              [Insert(routes=())], [Clip(1, 0, BAR, channel=0), Clip(2, 0, BAR, channel=1)],
+                              tempo=120))
+    rendered = []
+    render = FLStudioRenderer.render
+    monkeypatch.setattr(FLStudioRenderer, "render",
+                        lambda self, copy, timeout_s: rendered.append(copy.parent.name) or render(self, copy, timeout_s))
+    result = render_project(flp, sim_renderer(), timeout_s=120, report=_report(flp))
+    assert result.ok and len(result.jobs) == 5
+    assert rendered == ["original", "stem-ch000-lead", "stem-ch001-instru"]
+    assert {j.job.name: j.status for j in result.jobs if j.status == "resumed"} == {
+        "premaster": "resumed", "vocal-ch000-lead": "resumed"}
