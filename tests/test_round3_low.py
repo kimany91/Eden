@@ -334,11 +334,11 @@ def _ceiling_inputs(monkeypatch, parts):
 
 
 def test_the_reverb_ceiling_counts_the_fl_effects_where_the_placement_put_them(monkeypatch):
-    parts = _voices(back_level=0.02)  # far under the lead: raised
+    parts = _voices(back_level=0.6)  # loud enough to drown the lead: brought down (never raised)
     seen, placed, out = _ceiling_inputs(monkeypatch, parts)
     assert [(p.key, p.position, p.alternate) for p, _ in placed] == [("ch1", 0.4, False), ("ch2", 0.5, True)]
     res = {p.key: p for p in out.parts}
-    assert res["ch1"].level_change_db > 1.0
+    assert res["ch1"].level_change_db < -1.0
     back, adlib = (_parts_wet(parts, key) for key in ("ch1", "ch2"))
     # the effects each voice was placed with are its FL effects after its level change...
     for (_, effects), wet, key in zip(placed, (back, adlib), ("ch1", "ch2"), strict=True):
