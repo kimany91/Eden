@@ -17,6 +17,17 @@ ApplicationWindow {
 
     property bool playSplash: true
     property bool splashDone: false
+    // a page opened from the sidebar once the work is done; "" follows the work
+    property string page: ""
+    readonly property string shownPage: page !== "" ? page
+                                       : controller.stage === "home" ? "home"
+                                       : (controller.stage === "analyzing" || controller.stage === "analyzed") ? "analysis"
+                                       : (controller.stage === "rendering" || controller.stage === "rendered") ? "render"
+                                       : "mix"
+    Connections {
+        target: controller
+        function onStageChanged() { win.page = "" }
+    }
 
     Backdrop { anchors.fill: parent }
 
@@ -32,6 +43,8 @@ ApplicationWindow {
             id: sidebar
             anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
             width: 268
+            shownPage: win.shownPage
+            onPicked: (name) => win.page = name
         }
 
         ColumnLayout {
@@ -68,23 +81,35 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 HomePage {
                     anchors.fill: parent
-                    active: controller.stage === "home"
+                    active: win.shownPage === "home"
                     onPickProject: projectDialog.open()
                 }
                 AnalysisPage {
                     anchors.fill: parent
-                    active: controller.stage === "analyzing" || controller.stage === "analyzed"
+                    active: win.shownPage === "analysis"
                 }
                 RenderPage {
                     anchors.fill: parent
-                    active: controller.stage === "rendering" || controller.stage === "rendered"
+                    active: win.shownPage === "render"
                 }
                 MixPage {
                     anchors.fill: parent
-                    active: controller.stage === "mixing" || controller.stage === "mixed"
+                    active: win.shownPage === "mix"
                     onChooseFolder: exportDialog.open()
                 }
             }
+        }
+    }
+
+    // while Eden works, the whole window is the garden where the tree grows
+    Loader {
+        id: gardenLoader
+        anchors.fill: parent
+        active: controller.journeyActive
+        opacity: status === Loader.Ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
+        sourceComponent: GardenView {
+            onFinished: controller.endJourney()
         }
     }
 

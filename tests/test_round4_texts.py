@@ -67,16 +67,16 @@ def _result(warnings):
 def test_rendered_says_all_checked_only_without_warnings():
     c = _controller()
     c._on_rendered(_result([]))
-    assert c.progressLabel == "Terminé : tout a été vérifié."
+    assert c.renderSummary["verdict"].endswith("vérifiée par Eden : tout est bon.")
     c._on_rendered(_result(["Rendu silencieux : Lead seule"]))
-    assert c.progressLabel == "Terminé, avec des points à vérifier (voir ci-dessous)."
+    assert c.renderSummary["verdict"].endswith("avec des points à vérifier (voir ci-dessous).")
     assert c.renderSummary["ok"] is True and c.renderSummary["warnings"] == ["Rendu silencieux : Lead seule"]
 
 
 def test_the_render_page_shows_the_render_warnings(tmp_path, monkeypatch):
     QtGui = pytest.importorskip("PySide6.QtGui")
     from PySide6.QtCore import QObject
-    from test_gui import wait_idle
+    from test_gui import wait_journey
 
     from eden.gui.app import create_engine, dispose
     from eden.gui.controller import EdenController
@@ -86,20 +86,16 @@ def test_the_render_page_shows_the_render_warnings(tmp_path, monkeypatch):
     c = EdenController(renderer_factory=sim_renderer, check_updates=False)
     engine = create_engine(c, play_splash=False)
     try:
+        c.intensity = 0.0
         c.openProject(str(make_session(tmp_path)))
-        wait_idle(c)
-        c.renderFromFl()
-        wait_idle(c)
+        wait_journey(c)
         warnings = c.renderSummary["warnings"]
         assert c.renderSummary["ok"] is True and any(CUT_TAIL in w for w in warnings)
-        assert c.progressLabel == "Terminé, avec des points à vérifier (voir ci-dessous)."
+        assert c.renderSummary["verdict"].endswith("avec des points à vérifier (voir ci-dessous).")
         root = engine.rootObjects()[0]  # held: a found child dies with a temporary root's wrapper
         shown = root.findChild(QObject, "renderWarnings")
         assert shown.property("count") == len(warnings)
-
-        c.intensity = 0.0
-        c.mixProject()
-        wait_idle(c)
+        assert root.findChild(QObject, "renderVerdict").property("text") == c.renderSummary["verdict"]
         assert c.errorMessage == "", c.errorMessage
         assert any(CUT_TAIL in w for w in c.mixResult["warnings"])
         rates = root.findChild(QObject, "exportRate")

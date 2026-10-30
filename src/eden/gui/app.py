@@ -11,6 +11,7 @@ from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
+from eden.gui import garden_qml  # noqa: F401  (registers the garden's QML types: module Eden.Garden)
 from eden.gui.controller import ASSETS, EdenController
 
 QML_DIR = Path(__file__).resolve().parent / "qml"

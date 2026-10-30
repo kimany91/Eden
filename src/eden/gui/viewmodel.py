@@ -115,8 +115,17 @@ def render_view(rows: list[dict], result: RenderResult) -> tuple[list[dict], dic
         else:
             row["status"] = "skipped"
         out.append(row)
+    if result.ok:
+        verdict = ("Chaque partie a été jouée par FL Studio avec tes effets, puis vérifiée par Eden : tout est bon."
+                   if not result.warnings else
+                   "Chaque partie a été jouée par FL Studio avec tes effets et vérifiée par Eden, avec des points "
+                   "à vérifier (voir ci-dessous).")
+    else:
+        verdict = ("Le son récupéré n'a pas passé ses vérifications (voir ci-dessous) : le mixage attend une "
+                   "nouvelle récupération.")
     summary = {
         "ok": result.ok,
+        "verdict": verdict,
         "nullMessage": result.null_test.message if result.null_test else
         "Aucune piste à comparer",
         "folder": result.folder,
@@ -131,6 +140,10 @@ def _db(value: float | None, unit: str) -> str:
     if value is None or not math.isfinite(value):
         return "—"
     return f"{value:.1f} {unit}"
+
+
+def _finite(value: float | None) -> float | None:
+    return value if value is not None and math.isfinite(value) else None
 
 
 def _local_date(iso: str) -> str:
@@ -223,8 +236,62 @@ def mix_view(version: dict) -> dict:
         "original": {"lufs": _db(o["loudness_lufs"], "LUFS"), "truePeak": _db(o["true_peak_db"], "dBTP")},
         "final": {"lufs": _db(f["loudness_lufs"], "LUFS"), "truePeak": _db(f["true_peak_db"], "dBTP"),
                   "sampleRate": f["sample_rate"]},
+        # what the before / after player compares (versions saved before Eden 1.1 do not name the original)
+        "originalWav": version.get("original_wav", ""),
+        "loudness": {"original": _finite(o["loudness_lufs"]), "final": _finite(f["loudness_lufs"])},
         "warnings": version.get("warnings", []),
     }
+
+
+# -- the journal shown under the growing tree: (text, kind) lines, kind is
+# stage | step | detail | done | warn | error ------------------------------------------------------
+
+def _names(items: list[str], most: int = 6) -> str:
+    shown = ", ".join(items[:most])
+    return shown + (f" et {len(items) - most} autre(s)" if len(items) > most else "")
+
+
+def analysis_lines(report: dict) -> list[tuple[str, str]]:
+    """What the analysis found, from ``report_view``."""
+    lines = [(f"Projet « {report['name']} » : FL Studio {report['flVersion']}, {report['tempo']}, "
+              f"mesure {report['timeSignature']}, durée {report['duration']}, "
+              f"{report['insertCount']} pistes de Mixer utilisées", "done")]
+    for v in report["voices"]:
+        effects = [fx["name"] for fx in v["effects"] if fx["active"]]
+        lines.append((f"Voix trouvée : « {v['label']} » → {v['role']}"
+                      + (f" ; effets : {_names(effects)}" if effects else " ; sans effet"), "detail"))
+    if not report["voices"]:
+        lines.append(("Aucune voix reconnue dans le projet", "warn"))
+    others = [f"« {o['label']} » ({o['role']})" for o in report["others"]]
+    if others:
+        lines.append(("Instru : " + _names(others), "detail"))
+    master = [fx["name"] for fx in report["masterEffects"] if fx["active"]]
+    if master:
+        lines.append((f"Effets de ton Master FL : {_names(master)} ; ils restent pour ton écoute dans FL, "
+                      "Eden fait son propre mastering", "detail"))
+    lines += [(w, "warn") for w in report["warnings"]]
+    return lines
+
+
+def render_lines(rows: list[dict], summary: dict) -> list[tuple[str, str]]:
+    """What FL Studio rendered, from ``render_view``."""
+    lines = []
+    for row in rows:
+        if row["name"] == "verification":
+            continue
+        kind = "error" if row["status"] == "failed" else "done"
+        lines.append((f"{row['description']} : " + (row["detail"] or row["status"]), kind))
+    lines.append((summary["nullMessage"], "done" if summary["ok"] else "error"))
+    lines += [(w, "warn") for w in summary["warnings"]]
+    return lines
+
+
+def mix_lines(view: dict) -> list[tuple[str, str]]:
+    """The result of a mix, from ``mix_view``."""
+    o, f = view["original"], view["final"]
+    lines = [(f"Ton morceau d'origine : {o['lufs']}, crête réelle {o['truePeak']}", "detail"),
+             (f"Avec Eden : {f['lufs']}, crête réelle {f['truePeak']}", "done")]
+    return lines + [(w, "warn") for w in view["warnings"]]
 
 
 def versions_view(versions: list[dict]) -> list[dict]:

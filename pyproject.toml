@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gui = ["PySide6-Essentials>=6.6"]
+gui = ["PySide6-Essentials>=6.6", "PySide6-Addons>=6.6"]  # Addons: Qt Quick 3D (the garden), Qt Multimedia (listening)
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]

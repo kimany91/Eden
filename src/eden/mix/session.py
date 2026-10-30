@@ -19,6 +19,7 @@ from pathlib import Path
 
 import soundfile as sf
 
+from eden.mix import ProgressCallback
 from eden.mix.engine import MixOutcome, PartResult, SongAnalysis, mix
 from eden.mix.loudness import integrated_loudness, sample_peak_db, true_peak_db
 from eden.mix.master import MasterChecks, master
@@ -67,6 +68,7 @@ class MixVersion:
     original: AudioStats
     final: AudioStats
     warnings: list[str] = field(default_factory=list)
+    original_wav: str = ""  # the song as FL renders it, for the before / after comparison
 
     def to_json(self) -> str:
         return json.dumps(to_jsonable(self), ensure_ascii=False, indent=2)
@@ -100,8 +102,10 @@ def mix_project(
     intensity: float = 1.0,
     workspace_home: Path | None = None,
     on_step: StepCallback | None = None,
-    on_progress: Callable[[str], None] | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> MixVersion:
+    """``on_step`` is told each of STEPS; ``on_progress``, during the mix and the master, what Eden
+    is doing and the share of that step done (None: a detail of the running step)."""
     def step(i: int) -> None:
         if on_step:
             on_step(i, len(STEPS), STEPS[i])
@@ -127,7 +131,8 @@ def mix_project(
                               progress=on_progress)
 
     step(2)
-    mastered = master(outcome.premaster, parts.sample_rate, intensity, report.project.tempo_bpm)
+    mastered = master(outcome.premaster, parts.sample_rate, intensity, report.project.tempo_bpm,
+                      progress=on_progress)
 
     step(3)
     stamp = datetime.now(UTC)
@@ -142,7 +147,8 @@ def mix_project(
     final = folder / "final.wav"
     sf.write(str(final), mastered.audio, parts.sample_rate, subtype="FLOAT")
 
-    original_stats = stats(renders.wav("original"))
+    original_wav = renders.wav("original")
+    original_stats = stats(original_wav)
     final_stats = stats(final)
     warnings = [*renders.warnings, *parts.warnings, *outcome.warnings, *mastered.warnings]
     if intensity > 0 and math.isfinite(original_stats.loudness_lufs) and \
@@ -151,7 +157,7 @@ def mix_project(
                         f"export FL Studio ({original_stats.loudness_lufs:.1f} LUFS)")
     version = MixVersion(version_id, stamp.isoformat(timespec="seconds"), outcome.intensity, str(final),
                          outcome.parts, outcome.song, mastered.treatments, mastered.checks,
-                         outcome.staging_gain_db, original_stats, final_stats, warnings)
+                         outcome.staging_gain_db, original_stats, final_stats, warnings, str(original_wav))
     (folder / "version.json").write_text(version.to_json(), encoding="utf-8")
     return version
 

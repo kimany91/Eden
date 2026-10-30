@@ -5,53 +5,13 @@ import "."
 
 EdenPage {
     id: page
-    readonly property bool analyzing: controller.stage === "analyzing"
     readonly property var r: controller.report
-
-    // -- while analysing -------------------------------------------------------
-    Item {
-        anchors.fill: parent
-        opacity: page.analyzing ? 1 : 0
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: Theme.normal } }
-
-        RowLayout {
-            anchors.centerIn: parent
-            spacing: 60
-            ProgressRing {
-                Layout.preferredWidth: 220
-                Layout.preferredHeight: 220
-                value: controller.progress
-                busy: controller.busy
-                caption: "Analyse"
-            }
-            Column {
-                spacing: 14
-                Text { text: "Analyse de " + controller.projectName; color: Theme.text; font.family: Theme.displayFamily; font.pixelSize: 24; font.weight: Font.DemiBold }
-                Repeater {
-                    model: controller.analysisSteps
-                    Row {
-                        required property var modelData
-                        spacing: 12
-                        StatusIcon { status: modelData.status; width: 24; height: 24 }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData.label
-                            color: modelData.status === "pending" ? Theme.textDim : Theme.text
-                            font.family: Theme.fontFamily; font.pixelSize: 14
-                            Behavior on color { ColorAnimation { duration: Theme.normal } }
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     // -- results ------------------------------------------------------------------
     Item {
         id: results
         anchors.fill: parent
-        opacity: !page.analyzing && page.r.name !== undefined ? 1 : 0
+        opacity: page.r.name !== undefined ? 1 : 0
         visible: opacity > 0.01
         Behavior on opacity { NumberAnimation { duration: Theme.slow } }
 

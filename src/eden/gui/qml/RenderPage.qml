@@ -5,7 +5,6 @@ import "."
 
 EdenPage {
     id: page
-    readonly property bool rendering: controller.stage === "rendering"
     readonly property var sum: controller.renderSummary
 
     ColumnLayout {
@@ -18,28 +17,26 @@ EdenPage {
                 Layout.fillWidth: true
                 spacing: 6
                 Text {
-                    text: page.rendering ? "FL Studio travaille pour toi…" : "Le son de ton projet est prêt"
+                    text: page.sum.ok === false ? "Le son de ton projet n'est pas validé" : "Le son de ton projet est prêt"
                     color: Theme.text
                     font.family: Theme.displayFamily; font.pixelSize: 30; font.weight: Font.DemiBold
                 }
                 Text {
+                    objectName: "renderVerdict"
                     width: parent.width
                     wrapMode: Text.WordWrap
-                    text: page.rendering
-                          ? "FL Studio joue chaque partie de ton morceau en arrière-plan, avec tous tes effets, et Eden récupère le son exact."
-                          : "Chaque partie a été jouée par FL Studio avec tes effets, puis vérifiée par Eden."
+                    text: page.sum.verdict || ""
                     color: Theme.textMuted
                     font.family: Theme.fontFamily; font.pixelSize: 15
                 }
             }
             EdenButton {
-                visible: !page.rendering && !!page.sum.folder
+                visible: !!page.sum.folder
                 text: "Ouvrir le dossier"
                 iconName: "folder"
                 onClicked: controller.openRenderFolder()
             }
             EdenButton {
-                visible: !page.rendering
                 text: "Relancer"
                 iconName: "redo"
                 enabled: !controller.busy
@@ -52,32 +49,22 @@ EdenPage {
             Layout.fillHeight: true
             spacing: 18
 
+            // the first time, how Eden learnt to drive FL Studio
             Card {
                 Layout.preferredWidth: 330
                 Layout.fillHeight: true
+                visible: controller.probeLog.length > 0
                 ColumnLayout {
-                    anchors { fill: parent; margins: 22 }
-                    spacing: 18
-                    ProgressRing {
-                        Layout.alignment: Qt.AlignHCenter
-                        Layout.preferredWidth: 190
-                        Layout.preferredHeight: 190
-                        value: controller.progress
-                        busy: controller.busy
-                        caption: page.rendering ? "Rendu" : "Terminé"
-                    }
+                    anchors { fill: parent; margins: 18 }
+                    spacing: 12
                     Text {
-                        Layout.fillWidth: true
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.WordWrap
-                        text: controller.progressLabel
-                        color: Theme.textMuted
-                        font.family: Theme.fontFamily; font.pixelSize: 13
+                        text: "Configuration de FL Studio"
+                        color: Theme.text
+                        font.family: Theme.fontFamily; font.pixelSize: 14; font.weight: Font.DemiBold
                     }
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        visible: controller.probeLog.length > 0
                         radius: 10
                         color: "#0B0B0E"
                         border.width: 1
@@ -95,11 +82,10 @@ EdenPage {
                                 wrapMode: Text.WrapAnywhere
                                 text: modelData
                                 color: Theme.textMuted
-                                font.family: "Consolas"; font.pixelSize: 11
+                                font.family: Theme.monoFamily; font.pixelSize: 11
                             }
                         }
                     }
-                    Item { Layout.fillHeight: true; visible: controller.probeLog.length === 0 }
                 }
             }
 
@@ -156,7 +142,7 @@ EdenPage {
         RowLayout {
             Layout.fillWidth: true
             spacing: 18
-            visible: !page.rendering && page.sum.folder !== undefined
+            visible: page.sum.folder !== undefined
             Repeater {
                 model: [
                     { ok: page.sum.ok, title: "Son de ton projet récupéré", text: page.sum.nullMessage }
@@ -228,7 +214,7 @@ EdenPage {
             id: warningScroll
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(warningCol.implicitHeight, 190)
-            visible: !page.rendering && (page.sum.warnings || []).length > 0
+            visible: (page.sum.warnings || []).length > 0
             contentWidth: availableWidth
             clip: true
             Column {

@@ -28,13 +28,14 @@ overshoot at 96–128 kbit/s reaches 1.2–2.2 dB on such masters.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 from scipy.signal import get_window
 
-from eden.mix import dsp, stereo
+from eden.mix import ProgressCallback, dsp, stereo
 from eden.mix.limiter import gain_for, limit
 from eden.mix.loudness import (integrated_loudness, loudness_range, sample_peak_db,
                                short_term_loudness, true_peak_db)
@@ -279,7 +280,8 @@ def _aim(y: np.ndarray, fs: float, target: float, ceiling_dbtp: float,
     return tried[-1][0]
 
 
-def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float
+def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float,
+             on_pass: Callable[[int, float], None] | None = None,
              ) -> tuple[np.ndarray, float, PeakReduction, float, bool]:
     """Gain landing on ``goal`` LUFS unless clipper + limiter would go over their budget
     (``PeakReduction.over_db``): (audio, gain, reductions, loudness reached, stopped by the
@@ -292,7 +294,8 @@ def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float
     reductions it really measured. Over it, the gain comes down by the excess (each dB of gain
     adds about a dB of peak reduction); a step up stops at its edge, and after a correction
     one step back up is taken only with at least 0.3 dB of room. A pass over the budget is
-    never kept: if the last one is, one more pass runs at the lowered gain."""
+    never kept: if the last one is, one more pass runs at the lowered gain. ``on_pass(n, gain)``
+    is told before each real pass."""
     start = goal - integrated_loudness(y, fs)
     tried = [(start, _proxy_loudness(y, fs, start, ceiling_dbtp))]
     gain = _aim(y, fs, goal, ceiling_dbtp, tried)
@@ -300,6 +303,8 @@ def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float
     capped = False
     for n in range(REAL_PASSES):
         out = None  # the previous pass's audio is let go before the next one runs
+        if on_pass:
+            on_pass(n, gain)
         out, red = _loud_stage(y, fs, gain, ceiling_dbtp)
         got = integrated_loudness(out, fs)
         passes.append((gain, got))
@@ -324,14 +329,21 @@ def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float
         gain += step
     else:  # the last pass went over the budget
         out = None
+        if on_pass:
+            on_pass(REAL_PASSES, gain)
         out, red = _loud_stage(y, fs, gain, ceiling_dbtp)
         got = integrated_loudness(out, fs)
     return out, gain, red, got, capped and got < goal - 0.2
 
 
 def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
-           target_lufs: float = TARGET_LUFS) -> MasterResult:
-    """Master Eden's mix; at ``k`` = 0 the mix is returned unchanged (only measured)."""
+           target_lufs: float = TARGET_LUFS, progress: ProgressCallback | None = None) -> MasterResult:
+    """Master Eden's mix; at ``k`` = 0 the mix is returned unchanged (only measured). ``progress``
+    is told each step with the share of the master done (None: a detail of the running step)."""
+    def say(text: str, done: float | None) -> None:
+        if progress:
+            progress(text, done)
+
     k = max(0.0, min(1.0, k))
     treatments: list[Treatment] = []
     warnings: list[str] = []
@@ -344,6 +356,7 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
     goal = before + (target_lufs - before) * k  # from the mix as it came in: a tiny k changes little
 
     y = x
+    say(f"Graves : sont-ils en phase sous {LOW_HZ:.0f} Hz ? (une enceinte mono les additionne)", 0.0)
     corr = stereo.low_band_correlation(y, fs, LOW_HZ)
     if corr < 0.9:
         y = stereo.mono_below(y, fs, LOW_HZ)
@@ -356,6 +369,7 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
     # at that level at 100 %). The level is read as the compressor's detector reads it (5 ms
     # smoothing): raw 1 ms frames ripple within each cycle and would set the threshold elsewhere
     quarter = felt_quarter(tempo_bpm) if tempo_bpm else 0.5
+    say("Compression de bus : la cohésion du mix", 0.05)
     power, _ = dsp.detector_power(y, fs)
     level = 10 * np.log10(np.maximum(power, 1e-20))
     loud = level[level > -80.0]
@@ -374,7 +388,13 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
     # loudness: at −9 LUFS a −2 dBTP ceiling leaves at most 7 dB of peak-to-loudness; under 8 dB,
     # Opus 96k / MP3 128k overshoot by 1.2–2.2 dB, so such a master gets −3 dBTP from the start
     ceiling = DENSE_CEILING_DBTP if _dense(goal) else CEILING_DBTP
-    out, gain, red, reached, capped = _loudest(y, fs, goal, ceiling)
+    say(f"Volume final : viser {goal:.1f} LUFS, crête réelle sous {ceiling:.0f} dBTP", 0.1)
+
+    def on_pass(n: int, gain: float) -> None:
+        say(f"Écrêtage doux puis limiteur, passage {n + 1} (gain {gain:+.1f} dB), mesure du volume obtenu",
+            min(0.85, 0.12 + 0.25 * n))
+
+    out, gain, red, reached, capped = _loudest(y, fs, goal, ceiling, on_pass)
     del y
     budget = MAX_PEAK_REDUCTION_DB + SINGLE_PEAK_MARGIN_DB
     reason = (f"Cible {goal:.1f} LUFS ; écrêtage doux : crête la plus forte baissée de {red.clip_db:.1f} dB, "
@@ -417,7 +437,11 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
                                                   "peak_reduction_db": red.recurring_db,
                                                   "single_peak_reduction_db": red.single_db,
                                                   "ceiling_dbtp": ceiling}))
+    say("Contrôles : volume, crête réelle, plage dynamique, lecture en mono, plateformes", 0.9)
     c = checks(out, fs)
+    for t in treatments:
+        say(t.label, None)
+    say(f"Master : {c.integrated_lufs:.1f} LUFS, crête réelle {c.true_peak_dbtp:+.1f} dBTP", None)
     if c.true_peak_dbtp > ceiling + 0.1:
         warnings.append(f"Crête réelle à {c.true_peak_dbtp:+.1f} dBTP au-dessus du plafond")
     # warned 0.5 dB denser than planned (ceiling minus loudness: 6 dB at −9 LUFS and −3 dBTP); a

@@ -4,7 +4,7 @@ Assistant de mixage automatique de voix rap pour projets **FL Studio**.
 Objectif : sélectionner un projet `.flp`, laisser Eden analyser et mixer, écouter,
 ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 
-## État actuel (v1.0.0)
+## État actuel (v1.1.0)
 
 | Phase | État |
 |---|---|
@@ -12,7 +12,7 @@ ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 | 2. Inspection en lecture seule | ✅ testée sur projets de test (FL 20.8) — à valider sur tes projets |
 | 3. Pilotage de FL Studio et récupération du son | ✅ implémenté et testé avec un simulateur — à valider avec ton FL Studio (`eden fl-probe`) |
 | 4. Mixage et mastering Eden, export WAV | ✅ moteur v2 (tonalité, chaîne vocale pro, espace, stéréo, basses, master fort pour les plateformes) testé avec voix de test et simulateur FL — à valider à l'écoute ([docs/mixage.md](docs/mixage.md)) |
-| 5. Interface et installateur | ✅ interface animée (QML), installateur Windows construit et testé automatiquement — reste : lecteur A/B, réglages de mixage |
+| 5. Interface et installateur | ✅ interface animée (QML), jardin 3D pendant le travail, écoute avant / après, installateur Windows construit et testé automatiquement — reste : réglages par traitement |
 | 6. Tests et amélioration | ⏳ |
 
 Plan détaillé et critères de validation : [docs/02-plan-developpement.md](docs/02-plan-developpement.md).
@@ -44,6 +44,18 @@ kick / 808, puis un master fort et propre pour les plateformes (−9 LUFS, crêt
 avant le Master, à l'identique), tu gardes chaque version et tu exportes le WAV final.
 Détails : [docs/mixage.md](docs/mixage.md).
 
+**Pendant qu'Eden travaille**, toute la fenêtre devient un jardin en 3D : un arbre aux
+feuilles jaunes du logo pousse avec le travail réellement fait. La graine germe pendant
+l'analyse, la tige et la première branche avec ses feuilles poussent pendant que FL Studio
+joue tes pistes, la couronne se remplit pendant le mix et s'achève avec le master. En bas,
+un journal dit en français chaque étape et chaque décision. La caméra tourne lentement
+autour de l'arbre ; fais glisser pour tourner toi-même, molette pour zoomer. À la fin, une
+pomme pousse et tombe, la caméra la suit, puis la page du résultat s'ouvre : **écoute avant
+/ après** (le même instant dans les deux versions ; « même volume » baisse la plus forte
+pour juger le mix et pas le volume ; espace, A et B au clavier), réglages et export.
+L'arbre est généré une fois et dessiné par la carte graphique (quelques appels de dessin
+pour tout le jardin), sans calcul par image côté Python.
+
 ## Installation (Windows)
 
 1. Télécharge **`Eden-Setup-x.y.z.exe`** sur la page de la dernière version :
@@ -53,9 +65,10 @@ Détails : [docs/mixage.md](docs/mixage.md).
    L'installateur n'est pas signé (la signature de code Windows est payante) : si Windows
    affiche « Windows a protégé votre ordinateur », clique sur « Informations
    complémentaires » puis « Exécuter quand même ».
-3. Dans Eden : glisse ton projet `.flp`, l'analyse démarre ; clique ensuite sur
-   « Récupérer le son depuis FL Studio ». La première fois, Eden apprend tout seul à
-   piloter ton FL Studio (FL doit être fermé).
+3. Dans Eden : glisse ton projet `.flp` (FL Studio fermé). Eden fait tout d'une traite :
+   analyse, son de FL Studio, mix, master. La première fois, il apprend tout seul à piloter
+   ton FL Studio. Il ne s'arrête que si quelque chose bloque (FL Studio introuvable, une
+   erreur), et dit pourquoi.
 
 Aucune ligne de commande, et Python n'est pas nécessaire. Les mises à jour s'installent
 ensuite automatiquement à la fermeture d'Eden.

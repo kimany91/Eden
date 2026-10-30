@@ -240,12 +240,13 @@ décisions — phase 4), `src/eden/session/` (historique, versions, reprise), `f
 |---|---|---|---|
 | Python 3.11+ | langage | PSF | gratuit |
 | numpy | calcul | BSD | gratuit |
+| scipy | filtres, rééchantillonnage | BSD | gratuit |
 | soundfile (libsndfile) | lecture/écriture WAV/FLAC/AIFF | BSD / LGPL-2.1 | gratuit |
 | packaging | comparaison de versions (mises à jour) | BSD/Apache | gratuit |
-| PySide6 (Qt) | interface | LGPL-3.0 (utilisable dans une appli fermée en liaison dynamique) | gratuit |
+| PySide6-Essentials (Qt) | interface | LGPL-3.0 (utilisable dans une appli fermée en liaison dynamique) | gratuit |
+| PySide6-Addons (Qt) | Qt Quick 3D (le jardin), Qt Multimedia (l'écoute avant / après, avec FFmpeg compilé en LGPL-2.1) | LGPL-3.0 | gratuit |
 | pytest | tests (dev) | MIT | gratuit |
-| _Prévus_ : scipy (filtres), pyloudnorm (LUFS BS.1770), numba (DSP rapide), sounddevice (lecture A/B) | moteur & lecteur | BSD / MIT | gratuit |
-| _Prévus_ : PyInstaller + Inno Setup | installateur Windows | GPL avec exception / libre | gratuit |
+| PyInstaller + Inno Setup | installateur Windows (seulement pour le construire) | GPL avec exception / licence Inno Setup (libre) | gratuit |
 | _Option_ : certificat de signature de code | éviter l'alerte SmartScreen | — | ~100–400 €/an |
 | _Option_ : moteur de correction de hauteur | voir §7 | variable | variable |
 

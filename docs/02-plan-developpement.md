@@ -125,8 +125,7 @@ lectures ; conversion à l'export sans repliement ni crête remontée ; aucun ex
 
 Reste à valider **avec toi** : écoute sur 3 morceaux, ajustement des seuils.
 
-Phase 4b : lecteur A/B intégré, courbe d'équilibre tonal de référence (corpus de masters
-rap), séparation kick / 808 quand l'instru est un seul fichier stéréo, suppression
+Phase 4b : courbe d'équilibre tonal de référence (corpus de masters rap), séparation kick / 808 quand l'instru est un seul fichier stéréo, suppression
 dynamique des résonances (détecteur tenant compte des harmoniques, à valider sur de vraies
 voix).
 
@@ -137,10 +136,12 @@ glisser-déposer, progression réelle) ; logo ; installateur Windows (Inno Setup
 administrateur, raccourcis) construit et testé automatiquement sur Windows à chaque envoi ;
 publication automatique des versions sur tag `v*`, utilisée par les mises à jour.
 
-Fait aussi : page de mixage (intensité, décisions, versions, export).
+Fait aussi : page de mixage (intensité, décisions, versions, export) ; tout le travail
+d'une traite après le choix du projet, montré par un arbre 3D qui pousse dans un jardin avec
+le travail réellement fait et un journal en français (`gui/garden.py`, `GardenView.qml`) ;
+écoute avant / après sur une même tête de lecture, à volume égal au choix (`gui/player.py`).
 
-Reste : lecteur audio A/B (original / Eden, à niveau égal), réglage d'intensité par
-traitement.
+Reste : réglage d'intensité par traitement.
 
 ## Phase 6 — Tests et amélioration
 

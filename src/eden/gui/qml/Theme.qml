@@ -28,6 +28,7 @@ QtObject {
     readonly property int radiusSmall: 9
     readonly property string fontFamily: Qt.platform.os === "windows" ? "Segoe UI Variable Text" : "Inter"
     readonly property string displayFamily: Qt.platform.os === "windows" ? "Segoe UI Variable Display" : "Inter"
+    readonly property string monoFamily: Qt.platform.os === "windows" ? "Consolas" : "DejaVu Sans Mono"
 
     readonly property int fast: 160
     readonly property int normal: 320

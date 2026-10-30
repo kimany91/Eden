@@ -5,6 +5,9 @@ import "."
 Rectangle {
     id: side
     color: Theme.sidebar
+    property string shownPage: "home"
+    signal picked(string name)
+    readonly property var pages: ["home", "analysis", "render", "mix", "mix"]
     readonly property var steps: [
         { title: "Projet", sub: "Choisir un .flp" },
         { title: "Analyse", sub: "Pistes, voix, effets" },
@@ -12,14 +15,11 @@ Rectangle {
         { title: "Mixage Eden", sub: "Mix et mastering" },
         { title: "Export WAV", sub: "Dossier et format" }
     ]
-    readonly property int current: controller.stage === "home" ? 0
-                                  : (controller.stage === "analyzing" || controller.stage === "analyzed") ? 1
-                                  : (controller.stage === "rendering" || controller.stage === "rendered") ? 2
-                                  : controller.exportMessage !== "" ? 4 : 3
-    function stepDone(i) {
-        if (i === 0) return controller.projectPath !== "" && current > 0
-        if (i === 1) return controller.stage === "analyzed" || current > 1
-        if (i === 2) return controller.renderSummary.ok === true && current > 1
+    readonly property int current: shownPage === "home" ? 0 : shownPage === "analysis" ? 1
+                                  : shownPage === "render" ? 2 : controller.exportMessage !== "" ? 4 : 3
+    function stepDone(i) {  // from what exists, whatever page is shown
+        if (i <= 1) return controller.report.name !== undefined
+        if (i === 2) return controller.renderSummary.ok === true
         if (i === 3) return controller.mixResult.id !== undefined
         return controller.exportMessage !== ""
     }
@@ -82,6 +82,13 @@ Rectangle {
                         height: 58
                         readonly property bool isCurrent: index === side.current
                         readonly property bool done: side.stepDone(index)
+
+                        MouseArea {  // a done step opens its page again
+                            anchors.fill: parent
+                            enabled: parent.done && index > 0 && !controller.busy
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: side.picked(side.pages[index])
+                        }
 
                         Rectangle {
                             id: badge

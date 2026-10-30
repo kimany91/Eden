@@ -72,7 +72,18 @@ def test_splash_plays_then_reveals_the_app(app):
     dispose(engine)
 
 
-def test_analysis_then_render(ui, tmp_path):
+def wait_journey(c, timeout_ms=180000):
+    """The whole journey, then its end played by the interface (the apple), up to the result."""
+    waited = 0
+    while (c.busy or c.journeyActive) and waited < timeout_ms:
+        pump(50)
+        waited += 50
+    assert not c.busy and not c.journeyActive, "the journey did not finish"
+
+
+def test_one_journey_from_the_project_to_the_result(ui, tmp_path):
+    from PySide6.QtCore import QObject
+
     project = make_session(tmp_path)
     configured = {"ok": False}
 
@@ -87,22 +98,39 @@ def test_analysis_then_render(ui, tmp_path):
         return res
 
     c, engine = ui(renderer_factory=factory, probe=probe)
-    c.openProject(str(project))
-    assert c.stage == "analyzing"
-    wait_idle(c)
-    assert c.stage == "analyzed" and c.errorMessage == ""
-    assert [v["roleKey"] for v in c.report["voices"]] == ["lead_vocal", "adlib"]
-    assert [s["status"] for s in c.analysisSteps] == ["done"] * 6
+    growth, stages, shown = [], [], {}
+    c.growthChanged.connect(lambda: growth.append(c.growth))
+    c.journeyStageChanged.connect(lambda: stages.append(c.journeyStage))
+    root = engine.rootObjects()[0]
 
-    c.renderFromFl()
-    assert c.stage == "rendering"
-    wait_idle(c)
-    assert c.errorMessage == "", c.errorMessage
-    assert c.stage == "rendered" and c.renderSummary["ok"] is True
+    def at_the_end():  # the garden is still shown: its journal holds every line
+        if c.journeyFinished:
+            shown["lines"] = root.findChild(QObject, "journal").property("count")
+
+    c.journeyFinishedChanged.connect(at_the_end)
+    c.openProject(str(project))
+    assert c.stage == "analyzing" and c.journeyActive
+    wait_journey(c)
+
+    # analysis, FL Studio's renders, the mix, the master, the checks: in one go, the tree never shrinks
+    assert c.errorMessage == "" and c.stage == "mixed"
+    assert stages == ["analysis", "render", "mix", "master", "checks"]
+    assert growth == sorted(growth) and growth[-1] == 1.0 and len(growth) > 20
+    assert [v["roleKey"] for v in c.report["voices"]] == ["lead_vocal", "adlib"]
     assert c.probeLog, "first use must run the FL Studio set-up test"
-    statuses = {r["name"]: r["status"] for r in c.renderRows}
-    assert set(statuses.values()) == {"done"}
-    assert "verification" in statuses
+    assert c.renderSummary["ok"] is True and {r["status"] for r in c.renderRows} == {"done"}
+    assert c.mixResult["id"] and c.mixResult["originalWav"].endswith("original.wav")
+
+    lines = c.journeyLines()
+    assert shown["lines"] == len(lines)
+    text = "\n".join(f"{line['kind']} {line['text']}" for line in lines)
+    for said in ("stage Analyse du projet", "detail Voix trouvée : « Lead » → Voix principale",
+                 "stage FL Studio joue tes pistes", "step Rendu FL Studio : Lead seule",
+                 "done Somme des pistes = mix d'origine", "stage Mixage Eden",
+                 "step Voix « Lead » : mesures", "detail « Lead » : Coupe-bas", "stage Mastering Eden",
+                 "step Écrêtage doux puis limiteur, passage 1", "done Avec Eden : -9.0 LUFS"):
+        assert said in text, said
+    assert all(line["time"][2] == ":" for line in lines)
     assert engine.load_warnings == []
 
 
@@ -112,8 +140,9 @@ def test_errors_name_the_step(ui, tmp_path):
     c, _ = ui()
     c.openProject(str(bad))
     wait_idle(c)
-    assert c.stage == "home"
+    assert c.stage == "home" and not c.journeyActive  # the garden closes on the error
     assert c.errorStep == "Décodage du projet"
+    assert c.journeyLines()[-1]["kind"] == "error"
     c.clearError()
     assert c.errorMessage == ""
 
@@ -122,12 +151,11 @@ def test_missing_fl_studio_asks_for_its_location(ui, tmp_path, monkeypatch):
     monkeypatch.delenv("EDEN_FL_PATH", raising=False)
     c, _ = ui()  # real settings: nothing configured, no FL Studio on this machine
     c.openProject(str(make_session(tmp_path)))
-    wait_idle(c)
-    c.renderFromFl()
-    wait_idle(c)
+    wait_idle(c)  # the analysis goes on to the renders by itself
     assert c.errorStep == "Recherche de FL Studio"
     assert c.needsFlPath is True
-    assert c.stage == "analyzed"
+    assert c.stage == "analyzed" and not c.journeyActive
+    assert c.growth == pytest.approx(0.08)  # the tree waits at the end of the analysis
 
     fake_fl = tmp_path / "FL64.exe"
     fake_fl.write_bytes(b"")
@@ -153,19 +181,11 @@ def test_mix_page_flow(ui, tmp_path):
     from pathlib import Path
 
     c, engine = ui(renderer_factory=sim_renderer)
-    c.openProject(str(make_session(tmp_path)))
-    wait_idle(c)
-    c.renderFromFl()
-    wait_idle(c)
-    assert c.renderSummary["ok"] is True
-
     c.intensity = 0.6
     assert c.intensity == pytest.approx(0.6)
-    c.mixProject()
-    assert c.stage == "mixing"
-    wait_idle(c)
+    c.openProject(str(make_session(tmp_path)))
+    wait_journey(c)
     assert c.stage == "mixed" and c.errorMessage == "", c.errorMessage
-    assert [s["status"] for s in c.mixSteps] == ["done"] * 4
     first = c.mixResult["id"]
     assert c.mixResult["intensity"] == 60
     # voices, then the groups; the toy beat's tones cover the voices by more than 12 dB, where a dip uncovers
@@ -173,9 +193,16 @@ def test_mix_page_flow(ui, tmp_path):
     assert [p["roleKey"] for p in c.mixResult["parts"][2:]] == ["bass", "beat"]
     assert len(c.mixVersions) == 1
 
+    # a remix is a new growth, from where the mix starts: the journal starts again
+    cleared, growth = [], []
+    c.logCleared.connect(lambda: cleared.append(True))
+    c.growthChanged.connect(lambda: growth.append(c.growth))
     c.intensity = 0.0
     c.mixProject()
-    wait_idle(c)
+    assert c.stage == "mixing" and c.journeyActive and cleared
+    wait_journey(c)
+    assert growth[0] == pytest.approx(0.40) and growth == sorted(growth) and growth[-1] == 1.0
+    assert c.journeyLines()[0]["text"] == "Mixage Eden"
     assert c.mixResult["untouched"] is True
     assert [v["id"] for v in c.mixVersions][1] == first
     c.showVersion(first)

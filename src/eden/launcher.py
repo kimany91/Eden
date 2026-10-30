@@ -56,8 +56,12 @@ def self_test(report: Path) -> int:
         lines.append(f"Eden {__version__}")
         lines.append(_audio_check())
         lines.append(f"triangles du logo : {len(controller.treeTriangles)}")
+        garden_errors = _garden_check(engine)
+        lines.append("jardin 3D et écoute : " + ("chargés" if not garden_errors else "ÉCHEC"))
+        lines.extend(garden_errors)
         lines.extend(f"avertissement QML : {w}" for w in warnings)
-        ok = not warnings and len(controller.treeTriangles) > 100 and bool(engine.rootObjects())
+        ok = (not warnings and not garden_errors and len(controller.treeTriangles) > 100
+              and bool(engine.rootObjects()))
         dispose(engine)
         del app
         code = 0 if ok else 1
@@ -66,6 +70,29 @@ def self_test(report: Path) -> int:
         lines.append(traceback.format_exc())
     report.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return code
+
+
+def _garden_check(engine) -> list[str]:
+    """The garden (Qt Quick 3D, its shaders, the tree) and the listening card (Qt Multimedia) are
+    shown only during and after a mix: built here, so that a missing module fails the check."""
+    from PySide6.QtCore import QUrl
+    from PySide6.QtQml import QQmlComponent
+
+    from eden.gui.app import QML_DIR
+    from eden.gui.garden import grow_tree
+
+    errors = []
+    for name in ("GardenScene", "GardenView", "ListenCard"):
+        component = QQmlComponent(engine, QUrl.fromLocalFile(str(QML_DIR / f"{name}.qml")))
+        made = component.create()
+        if made is None:
+            errors += [f"{name} : {e.toString()}" for e in component.errors()] or [f"{name} : non créé"]
+        else:
+            made.deleteLater()
+    tree = grow_tree()
+    if len(tree.leaf_pos) < 500 or tree.heights[-1] < 3:
+        errors.append("arbre du jardin incomplet")
+    return errors
 
 
 def _audio_check() -> str:

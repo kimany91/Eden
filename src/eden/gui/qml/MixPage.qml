@@ -6,7 +6,6 @@ import "."
 EdenPage {
     id: page
     signal chooseFolder()
-    readonly property bool mixing: controller.stage === "mixing"
     readonly property var r: controller.mixResult
     readonly property bool hasResult: r.id !== undefined
 
@@ -65,30 +64,6 @@ EdenPage {
                     onClicked: controller.mixProject()
                 }
 
-                // progress while mixing
-                Column {
-                    Layout.fillWidth: true
-                    visible: page.mixing
-                    spacing: 10
-                    Repeater {
-                        model: controller.mixSteps
-                        Row {
-                            required property var modelData
-                            width: parent.width
-                            spacing: 10
-                            StatusIcon { status: modelData.status; width: 22; height: 22 }
-                            Text {
-                                width: parent.width - 32
-                                anchors.verticalCenter: parent.verticalCenter
-                                wrapMode: Text.WordWrap
-                                text: modelData.label
-                                color: modelData.status === "pending" ? Theme.textDim : Theme.text
-                                font.family: Theme.fontFamily; font.pixelSize: 13
-                            }
-                        }
-                    }
-                }
-
                 // versions
                 Text {
                     visible: controller.mixVersions.length > 0
@@ -140,26 +115,7 @@ EdenPage {
 
             Column {
                 anchors.centerIn: parent
-                spacing: 16
-                visible: page.mixing
-                ProgressRing {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: 220; height: 220
-                    value: controller.progress
-                    busy: controller.busy
-                    caption: "Mixage"
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: controller.progressLabel
-                    color: Theme.textMuted
-                    font.family: Theme.fontFamily; font.pixelSize: 14
-                }
-            }
-
-            Column {
-                anchors.centerIn: parent
-                visible: !page.mixing && !page.hasResult
+                visible: !page.hasResult
                 spacing: 10
                 Icon { anchors.horizontalCenter: parent.horizontalCenter; width: 40; height: 40; name: "spark"; color: Theme.gold }
                 Text {
@@ -173,13 +129,16 @@ EdenPage {
             ScrollView {
                 id: scroll
                 anchors.fill: parent
-                visible: !page.mixing && page.hasResult
+                visible: page.hasResult
                 contentWidth: availableWidth
                 clip: true
 
                 Column {
                     width: scroll.availableWidth
                     spacing: 16
+
+                    SectionTitle { text: "Écoute avant / après"; count: -1; topPad: 0 }
+                    ListenCard { width: parent.width }
 
                     // before / after
                     Row {

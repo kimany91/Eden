@@ -252,7 +252,7 @@ def test_a_master_capped_just_under_its_goal_keeps_the_dense_ceiling_and_says_wh
     # 1 dB more, so that master would reach the goal itself (not 0.7 LU above it), still dense
     x = mix(6.0)
     red = M.PeakReduction(6.0, 2.0, 7.2, 13.2, 3.0)
-    monkeypatch.setattr(M, "_loudest", lambda y, fs, goal, ceiling: (y, 8.0, red, goal - 0.3, True))
+    monkeypatch.setattr(M, "_loudest", lambda y, fs, goal, ceiling, on_pass=None: (y, 8.0, red, goal - 0.3, True))
     r = M.master(x, FS, 1.0, tempo_bpm=140)
     loud = r.treatments[-1]
     assert loud.measured["ceiling_dbtp"] == M.DENSE_CEILING_DBTP

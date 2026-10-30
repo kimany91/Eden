@@ -452,4 +452,6 @@ mesurée (moyenne quand elles agissent, et maximum).
   ne corrige pas la balance tonale globale au master.
 - Quand l'instru est un seul fichier stéréo, kick et 808 ne peuvent pas être traités
   séparément.
-- Pas encore de lecteur intégré pour écouter et comparer avant/après dans Eden.
+- L'écoute avant / après de la page du résultat compare ton morceau tel que FL Studio
+  l'exporte et la version d'Eden ; « même volume » (activé par défaut) baisse la plus forte
+  de l'écart mesuré en BS.1770 pendant l'écoute seulement.

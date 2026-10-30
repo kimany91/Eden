@@ -23,7 +23,9 @@ Item {
         "plus": "M12 5 V19 M5 12 H19",
         "dash": "M7 12 H17",
         "chevron": "M7 10 L12 15 L17 10",
-        "redo": "M4 12 A8 8 0 1 0 6.5 6.2 M4 4 V9 H9"
+        "redo": "M4 12 A8 8 0 1 0 6.5 6.2 M4 4 V9 H9",
+        "play": "M8 5 L19 12 L8 19 Z",
+        "pause": "M8.5 5 V19 M15.5 5 V19"
     })
 
     Shape {
