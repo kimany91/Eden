@@ -128,7 +128,9 @@ def test_one_journey_from_the_project_to_the_result(ui, tmp_path):
                  "stage FL Studio joue tes pistes", "step Rendu FL Studio : Lead seule",
                  "done Somme des pistes = mix d'origine", "stage Mixage Eden",
                  "step Voix « Lead » : mesures", "detail « Lead » : Coupe-bas", "stage Mastering Eden",
-                 "step Écrêtage doux puis limiteur, passage 1", "done Avec Eden : -9.0 LUFS"):
+                 # the project's "Instru" is a complete beat: kept as it is, not squashed a second time
+                 "instru complète, déjà mixée et masterisée", "step Écrêtage doux puis limiteur, passage 1",
+                 "done Avec Eden : -"):
         assert said in text, said
     assert all(line["time"][2] == ":" for line in lines)
     assert engine.load_warnings == []
@@ -158,6 +160,28 @@ def test_the_garden_closes_cleanly_however_fast_an_error_comes(ui, tmp_path):
         wait_idle(c)
         assert not c.journeyActive
         pump(20)
+    assert engine.load_warnings == []
+
+
+def test_a_click_on_a_project_of_the_folder_opens_it(ui, tmp_path):
+    from PySide6.QtCore import QObject, QPointF, Qt
+    from PySide6.QtTest import QTest
+
+    projects = tmp_path / "Projects"
+    (projects / "Mon son").mkdir(parents=True)
+    (projects / "Mon son" / "Mon son.flp").write_bytes(b"pas un projet")  # the newest, first in the list
+    (projects / "Backup").mkdir()
+    (projects / "Backup" / "Mon son (overwritten at 1534h27).flp").write_bytes(b"pas un projet")
+    c, engine = ui()
+    c.setProjectsFolder(str(projects))
+    root = engine.rootObjects()[0]
+    pump(1200)  # the page has risen into place
+    projects_list = root.findChild(QObject, "projectList")
+    assert projects_list.property("count") == 1  # FL's backup is not a song to mix
+    row = projects_list.mapToScene(QPointF(projects_list.width() / 2, 30)).toPoint()
+    QTest.mouseClick(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, row)
+    wait_idle(c)
+    assert c.projectName == "Mon son" and c.errorStep == "Décodage du projet"  # opened, then read
     assert engine.load_warnings == []
 
 

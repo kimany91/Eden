@@ -23,10 +23,29 @@ CANDIDATE_ARGS: list[tuple[str, list[str]]] = [
 ]
 
 FL_PROCESS_NAMES = ("FL64.exe", "FL.exe")
+SW_SHOWMINNOACTIVE = 7  # Windows: start minimized, without taking the focus
 
 
 class RenderError(RuntimeError):
     pass
+
+
+def no_console() -> dict:
+    """Windows: a command-line program started by Eden (a window-less app) opens no console."""
+    return {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+
+
+def out_of_the_way() -> dict:
+    """Windows: FL Studio started for a render opens no console, and its window starts minimized
+    without taking the focus, so nothing comes over Eden. FL Studio's windows are Delphi forms,
+    which start minimized when asked this way; a dialog it shows (a plugin missing...) still
+    appears, and a render it blocks ends with the timeout's message."""
+    if os.name != "nt":
+        return {}
+    info = subprocess.STARTUPINFO()
+    info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    info.wShowWindow = SW_SHOWMINNOACTIVE
+    return {**no_console(), "startupinfo": info}
 
 
 class Renderer(Protocol):
@@ -65,7 +84,7 @@ def fl_is_running() -> bool | None:
         return None
     try:
         out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True,
-                             text=True, timeout=20).stdout.lower()
+                             text=True, timeout=20, **no_console()).stdout.lower()
     except (OSError, subprocess.SubprocessError):
         return None
     return any(f'"{name.lower()}"' in out for name in FL_PROCESS_NAMES)
@@ -104,11 +123,10 @@ class FLStudioRenderer:
         folder = project_copy.parent
         before = _wav_snapshot(folder)
         start = time.monotonic()
-        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         try:
             proc = subprocess.Popen(self.build_args(project_copy), cwd=folder,
                                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                    creationflags=flags)
+                                    **out_of_the_way())
         except OSError as exc:
             raise RenderError(f"Impossible de lancer FL Studio ({exc})") from exc
         timed_out = False

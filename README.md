@@ -4,7 +4,7 @@ Assistant de mixage automatique de voix rap pour projets **FL Studio**.
 Objectif : sélectionner un projet `.flp`, laisser Eden analyser et mixer, écouter,
 ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 
-## État actuel (v1.1.0)
+## État actuel (v1.2.0)
 
 | Phase | État |
 |---|---|
@@ -21,7 +21,9 @@ Plan détaillé et critères de validation : [docs/02-plan-developpement.md](doc
 présents, playlist, tempo), retrouve les fichiers audio même si le projet a été déplacé,
 identifie les voix (lead, doublages, backs, ad-libs) et l'instru avec les raisons de
 chaque choix, liste les traitements déjà appliqués sur le chemin de chaque voix, et
-produit un rapport.
+produit un rapport. Une prod téléchargée d'un seul fichier (sur YouTube par exemple) est
+reconnue comme l'instru complète quel que soit son nom : elle est déjà mixée et
+masterisée, Eden ne retouche pas son mix et ne l'écrase pas une deuxième fois au master.
 
 Ensuite, **Eden pilote FL Studio lui-même** : c'est FL Studio qui joue chaque partie du
 morceau (voix seule, instru, chaque groupe) avec **tous tes effets** — Auto-Tune, delays
@@ -65,10 +67,13 @@ pour tout le jardin), sans calcul par image côté Python.
    L'installateur n'est pas signé (la signature de code Windows est payante) : si Windows
    affiche « Windows a protégé votre ordinateur », clique sur « Informations
    complémentaires » puis « Exécuter quand même ».
-3. Dans Eden : glisse ton projet `.flp` (FL Studio fermé). Eden fait tout d'une traite :
-   analyse, son de FL Studio, mix, master. La première fois, il apprend tout seul à piloter
-   ton FL Studio. Il ne s'arrête que si quelque chose bloque (FL Studio introuvable, une
-   erreur), et dit pourquoi.
+3. Dans Eden : la première fois, choisis le dossier où tu enregistres tes projets FL Studio
+   (celui de FL, `Documents\Image-Line\FL Studio\Projects`, est proposé s'il existe) ; Eden
+   s'en souvient et te montre tous tes projets, les plus récents en premier. Clique sur un
+   projet (FL Studio fermé) : Eden fait tout d'une traite, analyse, son de FL Studio, mix,
+   master, sans ouvrir de fenêtre par-dessus. La première fois, il apprend tout seul à
+   piloter ton FL Studio. Il ne s'arrête que si quelque chose bloque (FL Studio introuvable,
+   une erreur), et dit pourquoi.
 
 Aucune ligne de commande, et Python n'est pas nécessaire. Les mises à jour s'installent
 ensuite automatiquement à la fermeture d'Eden.

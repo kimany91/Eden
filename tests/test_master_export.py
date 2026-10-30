@@ -130,16 +130,16 @@ def test_budget_statistic_ignores_short_events():
     click[1500] *= 10 ** (8 / 20)  # one 10 ms block taken 15 dB down
     red = M._peak_reduction(click, after, 0.0, 0.0)
     assert red.recurring_db == pytest.approx(7.0) and red.single_db == pytest.approx(7.0)
-    assert red.over_db < 0
+    assert red.over_db(M.MAX_PEAK_REDUCTION_DB) < 0
     hit = before.copy()
     hit[1500:1503] *= 10 ** (8 / 20)  # 30 ms taken 15 dB down: an isolated event, over its limit
     red = M._peak_reduction(hit, after, 0.0, 0.0)
     assert red.recurring_db == pytest.approx(7.0) and red.single_db == pytest.approx(15.0)
-    assert red.isolated and red.over_db == pytest.approx(15.0 - 13.0) and red.single_at_s == pytest.approx(15.0)
+    assert red.isolated and red.over_db(M.MAX_PEAK_REDUCTION_DB) == pytest.approx(15.0 - 13.0) and red.single_at_s == pytest.approx(15.0)
     recurring = before.copy()
     recurring[::50] *= 10 ** (4 / 20)  # a hit every 0.5 s, 11 dB down: the drums' job
     red = M._peak_reduction(recurring, after, 0.0, 0.0)
-    assert red.recurring_db == pytest.approx(11.0) and not red.isolated and red.over_db == pytest.approx(2.0)
+    assert red.recurring_db == pytest.approx(11.0) and not red.isolated and red.over_db(M.MAX_PEAK_REDUCTION_DB) == pytest.approx(2.0)
 
 
 def _impact(x, ms, rel_db, kind, rng):
@@ -209,7 +209,7 @@ def test_gain_search_reaims_on_the_proxy_after_one_pass(monkeypatch):
     stages.clear()
     out, gain, red, reached, capped = M._loudest(x, FS, before + 14.0, -3.0)  # needs 14 dB: over budget
     assert stages[1] == pytest.approx(12.0, abs=0.06) and len(stages) <= M.REAL_PASSES
-    assert capped and red.over_db <= 0.1 and reached == pytest.approx(before + 12.0, abs=0.1)
+    assert capped and red.over_db(M.MAX_PEAK_REDUCTION_DB) <= 0.1 and reached == pytest.approx(before + 12.0, abs=0.1)
 
 
 def _hits(seconds=12, every_s=0.5):
@@ -252,7 +252,7 @@ def test_a_master_capped_just_under_its_goal_keeps_the_dense_ceiling_and_says_wh
     # 1 dB more, so that master would reach the goal itself (not 0.7 LU above it), still dense
     x = mix(6.0)
     red = M.PeakReduction(6.0, 2.0, 7.2, 13.2, 3.0)
-    monkeypatch.setattr(M, "_loudest", lambda y, fs, goal, ceiling, on_pass=None: (y, 8.0, red, goal - 0.3, True))
+    monkeypatch.setattr(M, "_loudest", lambda y, fs, goal, ceiling, on_pass=None, budget_db=None: (y, 8.0, red, goal - 0.3, True))
     r = M.master(x, FS, 1.0, tempo_bpm=140)
     loud = r.treatments[-1]
     assert loud.measured["ceiling_dbtp"] == M.DENSE_CEILING_DBTP

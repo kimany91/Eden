@@ -73,6 +73,17 @@ est marqué :
 - **Chaque groupe** du Mixer qui sort au Master sans voix (808, batterie, instru…).
 - **Le reste** = mix d'origine (avant Master) − voix − groupes.
 
+**L'instru complète** (une prod téléchargée d'un seul fichier, sur YouTube par exemple) est
+**déjà mixée et masterisée** : Eden ne retouche pas son mix. Elle est reconnue comme le seul
+fichier stéréo du projet qui dure au moins 80 % du morceau, **quel que soit son nom** : le titre
+d'une vidéo (« UK Drill - Hats & Percs », « Dark 808 Melody », « Kick Back ») la ferait sinon
+prendre pour une batterie, un 808 ou des backs (choix d'Eden). Plusieurs fichiers ainsi sont
+des pistes séparées (un fichier par instrument) : leurs noms décident. Un fichier lu comme
+une voix ne devient l'instru que si rien d'autre dans le projet ne peut l'être. Sur une
+instru complète, Eden ne cherche ni kick ni 808 (§ 1, § 6) et ne signale pas un 808
+désaccordé qu'on ne peut pas changer ; il lui fait seulement de la place pour la voix
+pendant qu'elle chante (§ 6), et le master ne l'écrase pas une deuxième fois (§ 7).
+
 À **0 %**, le résultat est exactement ton mix d'origine, bit pour bit (vérifié par un test).
 
 ## 1. Le morceau
@@ -389,6 +400,12 @@ mesurée (moyenne quand elles agissent, et maximum).
   comptée. Au-delà du budget, Eden baisse le gain de l'excès et le dit : « les crêtes qui
   reviennent » quand ce sont elles, ou le moment de l'événement isolé. Après une baisse, il
   remonte une fois s'il reste au moins 0,3 dB de budget.
+- **Avec une instru complète**, déjà passée par le limiteur de son beatmaker, le budget sur
+  les crêtes qui reviennent tombe à **5 dB** (choix d'Eden ; 9 dB pour un événement isolé) :
+  le master reste un peu moins fort plutôt que d'écraser ses percussions une deuxième fois,
+  et le dit. Mesuré sur une instru de test limitée à −0,3 dBTP avec une voix de test : à
+  −8,2 LUFS, viser −9 LUFS demandait 5,8 dB, le master s'arrête à −9,4 LUFS ; à −10,8 LUFS,
+  7,6 dB, il s'arrête à −10,4 LUFS (avec 3 dB, les deux s'arrêtaient à −10,5 LUFS).
 - **Plafond** : −2 dBTP (Spotify demande ≤ −2 dBTP pour un master plus fort que −14 LUFS :
   non vérifié, cohérent avec AES TD1008). À −9 LUFS, −2 dBTP laisserait moins de 8 dB entre
   crête et volume. Sur un master aussi dense, Opus 96k et MP3 128k dépassent de 1,2 à 2,2 dB

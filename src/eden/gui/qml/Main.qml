@@ -82,7 +82,7 @@ ApplicationWindow {
                 HomePage {
                     anchors.fill: parent
                     active: win.shownPage === "home"
-                    onPickProject: projectDialog.open()
+                    onChooseFolder: projectsDialog.open()
                 }
                 AnalysisPage {
                     anchors.fill: parent
@@ -119,11 +119,11 @@ ApplicationWindow {
         onFinished: win.splashDone = true
     }
 
-    FileDialog {
-        id: projectDialog
-        title: "Choisir un projet FL Studio"
-        nameFilters: ["Projets FL Studio (*.flp)"]
-        onAccepted: controller.openProject(selectedFile.toString())
+    FolderDialog {
+        id: projectsDialog
+        title: "Dossier de tes projets FL Studio"
+        currentFolder: controller.projectsFolderUrl
+        onAccepted: controller.setProjectsFolder(selectedFolder.toString())
     }
 
     FolderDialog {

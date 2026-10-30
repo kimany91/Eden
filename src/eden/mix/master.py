@@ -48,6 +48,9 @@ CEILING_DBTP = -2.0
 DENSE_CEILING_DBTP = -3.0  # dense masters overshoot 1.2–2.2 dB through 96–128 kbit/s codecs
 DENSE_PLR_DB = 8.0
 MAX_PEAK_REDUCTION_DB = 9.0  # clipper + limiter on the recurring peaks; beyond this they do the drums' job
+# a beat already mixed and mastered (a WAV downloaded whole) has had its own limiter: its drums take only this
+# much more (a beat mastered at −11 LUFS would otherwise lose 7.6 dB of its hits to reach −9 under the vocals)
+FINISHED_BEAT_PEAK_REDUCTION_DB = 5.0
 SINGLE_PEAK_MARGIN_DB = 4.0  # an isolated event (a hit at a drop) may take this much more over 30 ms
 BUDGET_BLOCK_S = 0.05  # recurring peaks: reduction measured per 50 ms block...
 BUDGET_PERCENTILE = 98.5  # ...this percentile of the reduced blocks...
@@ -180,11 +183,9 @@ class PeakReduction:
     single_db: float  # both together on the most reduced 30 ms, all of it
     single_at_s: float  # where those 30 ms start
 
-    @property
-    def over_db(self) -> float:
-        """How far the budget is exceeded (negative: the room left)."""
-        return max(self.recurring_db - MAX_PEAK_REDUCTION_DB,
-                   self.single_db - MAX_PEAK_REDUCTION_DB - SINGLE_PEAK_MARGIN_DB)
+    def over_db(self, budget_db: float) -> float:
+        """How far ``budget_db`` (on the recurring peaks) is exceeded (negative: the room left)."""
+        return max(self.recurring_db - budget_db, self.single_db - budget_db - SINGLE_PEAK_MARGIN_DB)
 
     @property
     def isolated(self) -> bool:
@@ -281,11 +282,11 @@ def _aim(y: np.ndarray, fs: float, target: float, ceiling_dbtp: float,
 
 
 def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float,
-             on_pass: Callable[[int, float], None] | None = None,
+             on_pass: Callable[[int, float], None] | None = None, budget_db: float = MAX_PEAK_REDUCTION_DB,
              ) -> tuple[np.ndarray, float, PeakReduction, float, bool]:
-    """Gain landing on ``goal`` LUFS unless clipper + limiter would go over their budget
-    (``PeakReduction.over_db``): (audio, gain, reductions, loudness reached, stopped by the
-    budget).
+    """Gain landing on ``goal`` LUFS unless clipper + limiter would go over ``budget_db`` on the
+    recurring peaks (``PeakReduction.over_db``): (audio, gain, reductions, loudness reached,
+    stopped by the budget).
 
     The gain is aimed on the cheap proxy, then the real oversampled chain runs at most
     ``REAL_PASSES`` times, twice on most songs: the first pass measures how far the proxy is
@@ -308,8 +309,8 @@ def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float,
         out, red = _loud_stage(y, fs, gain, ceiling_dbtp)
         got = integrated_loudness(out, fs)
         passes.append((gain, got))
-        if red.over_db > 0.1:
-            gain -= red.over_db
+        if red.over_db(budget_db) > 0.1:
+            gain -= red.over_db(budget_db)
             capped = True
             continue
         if not math.isfinite(got) or abs(got - goal) < 0.15 or n == REAL_PASSES - 1:
@@ -318,7 +319,7 @@ def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float,
             step = _aim(y, fs, goal - (got - tried[-1][1]), ceiling_dbtp, tried) - gain
         else:
             step = (goal - got) * _slope(passes)
-        room = -red.over_db
+        room = -red.over_db(budget_db)
         if capped and step > 0 and room < 0.3:  # back at the budget's edge
             break
         if step > room:
@@ -337,9 +338,13 @@ def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float,
 
 
 def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
-           target_lufs: float = TARGET_LUFS, progress: ProgressCallback | None = None) -> MasterResult:
+           target_lufs: float = TARGET_LUFS, progress: ProgressCallback | None = None,
+           finished_beat: bool = False) -> MasterResult:
     """Master Eden's mix; at ``k`` = 0 the mix is returned unchanged (only measured). ``progress``
-    is told each step with the share of the master done (None: a detail of the running step)."""
+    is told each step with the share of the master done (None: a detail of the running step).
+    ``finished_beat``: the beat is a complete one, already mixed and mastered (a WAV downloaded
+    whole): clipper and limiter take its drums down by ``FINISHED_BEAT_PEAK_REDUCTION_DB`` at
+    most, the master stays quieter rather than squash them a second time."""
     def say(text: str, done: float | None) -> None:
         if progress:
             progress(text, done)
@@ -394,13 +399,15 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
         say(f"Écrêtage doux puis limiteur, passage {n + 1} (gain {gain:+.1f} dB), mesure du volume obtenu",
             min(0.85, 0.12 + 0.25 * n))
 
-    out, gain, red, reached, capped = _loudest(y, fs, goal, ceiling, on_pass)
+    recurring = FINISHED_BEAT_PEAK_REDUCTION_DB if finished_beat else MAX_PEAK_REDUCTION_DB
+    out, gain, red, reached, capped = _loudest(y, fs, goal, ceiling, on_pass, recurring)
     del y
-    budget = MAX_PEAK_REDUCTION_DB + SINGLE_PEAK_MARGIN_DB
+    budget = recurring + SINGLE_PEAK_MARGIN_DB
     reason = (f"Cible {goal:.1f} LUFS ; écrêtage doux : crête la plus forte baissée de {red.clip_db:.1f} dB, "
               f"puis limiteur jusqu'à {red.limiter_db:.1f} dB ; les deux ensemble baissent de "
-              f"{red.recurring_db:.1f} dB les crêtes qui reviennent dans le morceau ({MAX_PEAK_REDUCTION_DB:.0f} dB "
-              f"au plus) ; leur plus forte baisse tenue sur 30 ms de suite est de {red.single_db:.1f} dB "
+              f"{red.recurring_db:.1f} dB les crêtes qui reviennent dans le morceau ({recurring:.0f} dB au plus"
+              + (", l'instru étant déjà mixée et masterisée" if finished_beat else "")
+              + f") ; leur plus forte baisse tenue sur 30 ms de suite est de {red.single_db:.1f} dB "
               f"({budget:.0f} dB au plus pour un événement isolé)")
     if capped:
         # the ceiling is chosen again on the loudness reached; every stage scales with the ceiling,
@@ -424,6 +431,10 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
                             f"plus fort, une crête isolée vers {minutes}:{seconds:02d} demanderait plus de "
                             f"{budget:.0f} dB d'écrêtage et de limiteur (un clic, un impact ? à vérifier dans "
                             "le projet)")
+        elif finished_beat:
+            warnings.append(f"Le morceau est masterisé à {reached:.1f} LUFS au lieu de {goal:.1f} : ton instru est "
+                            "déjà mixée et masterisée, aller plus fort demanderait d'écraser encore ses percussions "
+                            f"(plus de {recurring:.0f} dB d'écrêtage et de limiteur sur ses crêtes)")
         else:
             warnings.append(f"Le morceau est masterisé à {reached:.1f} LUFS au lieu de {goal:.1f} : aller plus "
                             f"fort demanderait plus de {MAX_PEAK_REDUCTION_DB:.0f} dB d'écrêtage et de limiteur "

@@ -58,6 +58,18 @@ def default_export_folder() -> Path:
     return music if music.is_dir() else Path.home()
 
 
+def _projects_folder() -> str:
+    """The folder the user chose for their FL projects, else FL Studio's own when it exists."""
+    from eden.project.library import default_projects_folder
+    from eden.settings import load_settings
+
+    chosen = load_settings().projects_folder
+    if chosen:
+        return chosen
+    found = default_projects_folder()
+    return str(found) if found else ""
+
+
 def default_probe(path: Path, log: Callable[[str], None]):
     from eden.render.probe import probe_fl_studio
 
@@ -110,6 +122,9 @@ class EdenController(QObject):
     mixVersionsChanged = Signal()
     exportFolderChanged = Signal()
     exportMessageChanged = Signal()
+    projectsFolderChanged = Signal()
+    projectsChanged = Signal()
+    projectsMessageChanged = Signal()
     journeyActiveChanged = Signal()
     journeyFinishedChanged = Signal()
     growthChanged = Signal()
@@ -140,6 +155,9 @@ class EdenController(QObject):
         self._mixVersions: list = []
         self._exportFolder = str(default_export_folder())
         self._exportMessage = ""
+        self._projectsFolder = _projects_folder()
+        self._projects: list = []
+        self._projectsMessage = ""
         self._journeyActive = False
         self._journeyFinished = False
         self._growth = 0.0
@@ -156,6 +174,7 @@ class EdenController(QObject):
         self.worker: _Worker | None = None
         self.update_worker: _Worker | None = None
         self._player = player or ABPlayer()
+        self.refreshProjects()
         if check_updates:
             self._start_update_check()
 
@@ -176,7 +195,12 @@ class EdenController(QObject):
     mixVersions = Property("QVariantList", lambda self: self._mixVersions, notify=mixVersionsChanged)
     exportFolder = Property(str, lambda self: self._exportFolder, notify=exportFolderChanged)
     exportMessage = Property(str, lambda self: self._exportMessage, notify=exportMessageChanged)
-    journeyActive = Property(bool, lambda self: self._journeyActive, notify=journeyActiveChanged)
+    projectsFolder = Property(str, lambda self: self._projectsFolder, notify=projectsFolderChanged)
+    projectsFolderUrl = Property(str, lambda self: QUrl.fromLocalFile(self._projectsFolder).toString()
+                                 if self._projectsFolder else "", notify=projectsFolderChanged)
+    projects = Property("QVariantList", lambda self: self._projects, notify=projectsChanged)
+    projectsMessage = Property(str, lambda self: self._projectsMessage, notify=projectsMessageChanged)
+    journeyActive =Property(bool, lambda self: self._journeyActive, notify=journeyActiveChanged)
     journeyFinished = Property(bool, lambda self: self._journeyFinished, notify=journeyFinishedChanged)
     growth = Property(float, lambda self: self._growth, notify=growthChanged)
     journeyStage = Property(str, lambda self: self._journeyStage, notify=journeyStageChanged)
@@ -301,6 +325,37 @@ class EdenController(QObject):
         """The interface has played the end of the journey: the result is shown."""
         self._set("journeyActive", False)
         self._set("journeyFinished", False)
+
+    # -- the user's projects --------------------------------------------------------------------
+    @Slot(str)
+    def setProjectsFolder(self, url: str) -> None:
+        """The folder where the user saves FL projects, kept for the next times."""
+        from eden.settings import load_settings, save_settings
+
+        folder = str(Path(QUrl(url).toLocalFile() if "://" in url else url))
+        settings = load_settings()
+        settings.projects_folder = folder
+        save_settings(settings)
+        self._set("projectsFolder", folder)
+        self.refreshProjects()
+
+    @Slot()
+    def refreshProjects(self) -> None:
+        """The projects of the folder as they are now (called each time the home page is shown)."""
+        from eden.project.library import find_projects
+
+        folder = Path(self._projectsFolder) if self._projectsFolder else None
+        rows, message = [], ""
+        if folder is None:
+            pass  # the page asks for the folder
+        elif not folder.is_dir():
+            message = "Ce dossier est introuvable (renommé, déplacé, ou sur un disque débranché) : choisis où sont tes projets."
+        else:
+            rows = viewmodel.project_rows(find_projects(folder), time.time())
+            if not rows:
+                message = "Aucun projet FL Studio (.flp) dans ce dossier ni ses sous-dossiers."
+        self._set("projects", rows)
+        self._set("projectsMessage", message)
 
     # -- project & analysis -------------------------------------------------------
     @Slot(str)

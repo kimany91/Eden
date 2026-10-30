@@ -1,30 +1,32 @@
-Eden 1.1 : tout d'une traite, un jardin pendant le travail, l'écoute avant / après.
+Eden 1.2 : tes projets en un clic, tes prods déjà mixées respectées, plus aucune fenêtre par-dessus.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.1.0.exe` ci-dessous et double-clique dessus (pas besoin de droits
-   administrateur ni de Python). Si Eden 1.0 est installé, la mise à jour se fait aussi toute seule
-   à sa fermeture.
+1. Télécharge `Eden-Setup-1.2.0.exe` ci-dessous et double-clique dessus (pas besoin de droits
+   administrateur ni de Python). Si Eden 1.0 ou 1.1 est installé, la mise à jour se fait aussi
+   toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
 
 ## Nouveautés
 
-- **Une seule pousse** : glisse ton `.flp` (FL Studio fermé), Eden enchaîne l'analyse, le son de
-  FL Studio, le mix et le master. Il ne s'arrête que si quelque chose bloque, et dit pourquoi.
-- **Le jardin** : pendant ce temps, toute la fenêtre montre un arbre en 3D aux feuilles jaunes du
-  logo qui pousse avec le travail réellement fait (la graine germe pendant l'analyse, la première
-  branche et ses feuilles pendant que FL Studio joue tes pistes, la couronne pendant le mix et le
-  master). La caméra tourne autour ; fais glisser pour tourner, molette pour zoomer.
-- **Le journal** : en bas, chaque étape et chaque décision en français (voix trouvées, rendus de
-  FL Studio, traitements de chaque voix, passages du limiteur, volume final).
-- **La fin** : une pomme pousse et tombe, la caméra la suit, puis la page du résultat s'ouvre.
-- **Écoute avant / après** : ton morceau tel que FL l'exporte et la version d'Eden, au même instant
-  (sans clic au changement) ; « même volume » baisse la plus forte pour juger le mix et pas le
-  volume. Espace : lecture / pause ; A / B : changer de version.
+- **Tes projets en un clic** : choisis une seule fois le dossier où tu enregistres tes projets
+  FL Studio (celui de FL est proposé s'il existe). Eden s'en souvient et te les montre tous, les
+  plus récents en premier, avec une recherche quand il y en a beaucoup. Un clic sur un projet et
+  Eden démarre. Les sauvegardes de FL Studio (dossier « Backup ») ne sont pas listées.
+- **Les prods déjà faites** : une instru téléchargée d'un seul fichier (sur YouTube par exemple)
+  est reconnue comme l'instru complète, quel que soit le titre de la vidéo (« Hats & Percs »,
+  « 808 Melody »… ne la font plus passer pour une batterie ou un 808). Elle est déjà mixée et
+  masterisée : Eden n'y cherche plus de kick ni de 808, ne retouche pas son mix, lui fait
+  seulement de la place pour ta voix pendant que tu rappes, et le master ne l'écrase pas une
+  deuxième fois. Avec une instru masterisée peu fort, le morceau peut finir un peu sous
+  −9 LUFS : Eden le dit plutôt que d'écraser ses percussions.
+- **Plus de fenêtre par-dessus Eden** : plus de fenêtre noire de commande, et FL Studio est lancé
+  réduit dans la barre des tâches, sans prendre la main. Si une fenêtre de FL s'ouvre quand même,
+  c'est qu'il te demande quelque chose (un plugin introuvable par exemple).
 
 ## À savoir
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.1.0/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.0/docs/mixage.md).

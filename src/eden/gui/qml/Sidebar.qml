@@ -9,7 +9,7 @@ Rectangle {
     signal picked(string name)
     readonly property var pages: ["home", "analysis", "render", "mix", "mix"]
     readonly property var steps: [
-        { title: "Projet", sub: "Choisir un .flp" },
+        { title: "Projet", sub: "Choisir dans tes projets" },
         { title: "Analyse", sub: "Pistes, voix, effets" },
         { title: "Son de FL Studio", sub: "Pistes, voix sèches" },
         { title: "Mixage Eden", sub: "Mix et mastering" },

@@ -17,6 +17,7 @@ class Settings:
     render_args: list[str] | None = None
     render_timeout_s: float = 900.0
     null_test_threshold_db: float = -60.0
+    projects_folder: str | None = None  # where the user saves FL projects; FL's own folder when empty
 
 
 def settings_path() -> Path:

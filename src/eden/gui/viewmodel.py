@@ -9,6 +9,7 @@ from pathlib import Path
 from eden.mix.export import SAMPLE_RATES, ExportResult
 from eden.project.classify import ROLE_LABELS_FR
 from eden.project.inspector import InspectionReport, SourceAnalysis
+from eden.project.library import ProjectEntry
 from eden.project.plugins import CATEGORY_LABELS_FR
 from eden.render.pipeline import RenderResult
 from eden.render.plan import RenderPlan
@@ -298,6 +299,32 @@ def versions_view(versions: list[dict]) -> list[dict]:
     return [{"id": v["id"], "date": _local_date(v["created_at"]),
              "intensity": round(v["intensity"] * 100),
              "lufs": _db(v["final"]["loudness_lufs"], "LUFS")} for v in versions]
+
+
+def saved_when(modified: float, now: float) -> str:
+    """When a project was last saved, as the home page says it ("Aujourd'hui à 14:02", "Il y a 3 jours")."""
+    saved, today = datetime.fromtimestamp(modified), datetime.fromtimestamp(now)
+    days = (today.date() - saved.date()).days
+    if days <= 0:
+        return f"Aujourd'hui à {saved:%H:%M}"
+    if days == 1:
+        return f"Hier à {saved:%H:%M}"
+    if days < 7:
+        return f"Il y a {days} jours"
+    return f"{saved:%d/%m/%Y}"
+
+
+def project_rows(entries: list[ProjectEntry], now: float) -> list[dict]:
+    """The projects of the home page, with their subfolder (less a last folder named as the project:
+    FL Studio gives each project its own)."""
+    rows = []
+    for e in entries:
+        folder = Path(e.folder)
+        if folder.name == e.name:
+            folder = folder.parent
+        rows.append({"name": e.name, "path": str(e.path), "folder": "" if str(folder) == "." else folder.as_posix(),
+                     "saved": saved_when(e.modified, now)})
+    return rows
 
 
 def sample_rate_choices() -> list[dict]:

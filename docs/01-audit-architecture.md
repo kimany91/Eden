@@ -216,7 +216,8 @@ Règles :
 Eden/
 ├── src/eden/
 │   ├── flp/            lecteur du format .flp (événements, identifiants, parseur)
-│   ├── project/        modèle, sources audio, catégories de plugins, rôles, inspection
+│   ├── project/        modèle, sources audio, catégories de plugins, rôles, inspection,
+│   │                   projets du dossier choisi (accueil)
 │   ├── gui/            interface PySide6
 │   ├── safety.py       protection du projet original, espace de travail
 │   ├── report.py       rapport lisible en français

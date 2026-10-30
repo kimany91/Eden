@@ -132,7 +132,7 @@ def mix_project(
 
     step(2)
     mastered = master(outcome.premaster, parts.sample_rate, intensity, report.project.tempo_bpm,
-                      progress=on_progress)
+                      progress=on_progress, finished_beat=any(g.role == "beat" for g in parts.groups))
 
     step(3)
     stamp = datetime.now(UTC)

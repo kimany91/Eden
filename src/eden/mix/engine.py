@@ -12,7 +12,9 @@ Everything is done on FL Studio's own renders (parts, see ``parts.py``):
    from one to the next (read on the bass groups, where no kick gets in the
    way, unless FL already ducks the 808 at each kick), kick / 808 duck when
    they collide and nothing ducks already, harmonics for small speakers when
-   the 808 is a bare sine; then room for the words: the bands where a dip
+   the 808 is a bare sine — all of it only on an 808 and drums of their own:
+   a complete beat (a WAV downloaded whole) is already mixed and mastered,
+   its mix stays as it is; then room for the words: the bands where a dip
    makes the most of the lead's words audible are dipped while it sings, in
    the whole instru they were measured on (groups and rest of the mix, or
    the groups alone when voices were left in the rest of the mix). The
@@ -333,14 +335,21 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
     def counts() -> dict[str, int]:
         return {key: len(res.treatments) for key, res in results.items()}
 
-    say("Analyse du morceau : tonalité, tempo, notes du 808, kick et 808")
+    # the kick and the 808 are looked for only on their own groups: a complete beat (a WAV downloaded whole)
+    # is already mixed and mastered, nothing in it is changed but the room the words need
+    say("Analyse du morceau : tonalité, tempo, notes du 808, kick et 808"
+        if any(g.role in ("bass", "drums") for g in parts.groups) else "Analyse du morceau : tonalité et tempo")
     song, low = analyse_song(parts, tempo_bpm)
     tell("Tonalité " + (song.key or "non reconnue") + (f", {song.tempo_bpm:g} BPM" if song.tempo_bpm else "")
-         + (f", 808 sur {song.bass_root}" if song.bass_root else ""))
-    if song.bass_out_of_scale and song.key:
+         + (f", 808 sur {song.bass_root}" if song.bass_root and basses else ""))
+    for g in parts.groups:
+        if g.role == "beat":
+            tell(f"« {g.label} » : instru complète, déjà mixée et masterisée : Eden garde son mix tel quel, lui "
+                 "fait seulement de la place pour la voix, et le master ne l'écrase pas une deuxième fois")
+    if basses and song.bass_out_of_scale and song.key:  # an 808 of its own: the user can change its notes
         warnings.append(f"Le 808 joue {', '.join(song.bass_out_of_scale)} alors que le morceau est en "
                         f"{song.key} : à vérifier dans le projet (Eden ne retouche pas les notes)")
-    if song.bass_detune_cents is not None and song.bass_detune_cents > 25:
+    if basses and song.bass_detune_cents is not None and song.bass_detune_cents > 25:
         warnings.append(f"Le 808 est désaccordé d'environ {song.bass_detune_cents:.0f} cents par rapport "
                         "au reste de l'instru")
     if k <= 0:  # bit-exact: nothing is changed

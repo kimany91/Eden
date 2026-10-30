@@ -47,6 +47,35 @@ SPACE_CATEGORIES = {"reverb", "delay"}
 SPACE_INSERT_NAME = re.compile(r"verb|delay|[eé]cho|space", re.IGNORECASE)
 
 
+COMPLETE_BEAT_SHARE = 0.8  # of the song's length
+
+
+def _complete_beat(sources: list[SourceAnalysis], project_end: float | None) -> None:
+    """The only stereo file that lasts the whole song is the complete beat, whatever its name.
+
+    A beat downloaded whole (a WAV from YouTube) is named after its video: "UK Drill - Hats & Percs"
+    reads as drums, "Dark 808 Melody" as an 808, "Kick Back" as backs. Eden would then look for the
+    kicks of a whole beat, or mix it as a voice. Several such files are stems (one per instrument,
+    each as long as the song): their names say what each holds. A file read as a voice is the beat
+    only when nothing else in the project could be."""
+    if not project_end or project_end <= 30:
+        return
+    long_stereo = [s for s in sources if s.sample and s.sample.audio and s.sample.audio.channels == 2
+                   and s.sample.audio.duration_s >= COMPLETE_BEAT_SHARE * project_end]
+    if len(long_stereo) != 1:
+        return
+    beat = long_stereo[0]
+    others = [s for s in sources if s is not beat]
+    if beat.role.is_vocal and (not others or any(not s.role.is_vocal for s in others)):
+        return
+    if beat.role.role == "beat" and beat.role.confidence == "haute":
+        return
+    reason = "Seul fichier stéréo qui dure tout le morceau : c'est l'instru complète"
+    if beat.role.role not in ("beat", "unknown"):
+        reason += f" (son nom faisait penser à « {beat.role.label} »)"
+    beat.role = RoleGuess("beat", "haute", [*beat.role.reasons, reason], beat.role.scores)
+
+
 class InspectionError(RuntimeError):
     def __init__(self, step: str, message: str) -> None:
         super().__init__(f"{step} : {message}")
@@ -313,6 +342,7 @@ def inspect_project(
             sample=sample,
             plugin=ch.plugin.label if ch.plugin else None,
         ))
+    _complete_beat(sources, project_end)
     master_effects = _effects_on(project, [MASTER_INSERT])
 
     for ins in project.inserts:  # categorize remaining slots for the report
