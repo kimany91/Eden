@@ -61,9 +61,12 @@ class ExistingEffect:
     slot: int
     plugin: str
     category: str
-    active: bool  # heard: slot on, dry/wet not at 0, insert and its effects on, insert reaching the Master
-    # Why it is not heard (None when active): "off" (its slot or its insert's effects switched off),
-    # "mix_zero" (dry/wet at 0), "insert_muted", "no_output" (the insert's output never reaches the Master).
+    # Heard: slot on, dry/wet not at 0, insert and its effects on, insert fader not at the bottom,
+    # insert reaching the Master.
+    active: bool
+    # Why it is not heard (None when active), in the order checked: "off" (its slot or its insert's
+    # effects switched off), "mix_zero" (dry/wet at 0), "insert_muted", "fader_zero" (the insert's
+    # fader at the bottom), "no_output" (the insert's output never reaches the Master).
     inactive_reason: str | None
 
 
@@ -318,8 +321,8 @@ def inspect_project(
 
     if not any(s.role.is_vocal for s in sources):
         warnings.append(
-            "Aucune piste n'a été reconnue comme voix : vérifiez les noms des pistes ou "
-            "indiquez manuellement les voix."
+            "Aucune piste n'a été reconnue comme voix : renomme tes pistes de voix dans FL Studio "
+            "(« Lead », « Double », « Backs », « Ad-lib »…) puis relance l'analyse."
         )
     missing = [s for s in sources if s.sample and s.sample.status == "missing" and not s.sample.is_factory]
     for s in missing:

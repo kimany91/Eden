@@ -6,7 +6,7 @@ import math
 from datetime import datetime
 from pathlib import Path
 
-from eden.mix.export import ExportResult
+from eden.mix.export import SAMPLE_RATES, ExportResult
 from eden.project.classify import ROLE_LABELS_FR
 from eden.project.inspector import InspectionReport, SourceAnalysis
 from eden.project.plugins import CATEGORY_LABELS_FR
@@ -181,7 +181,8 @@ def _treatment_view(t: dict) -> dict:
 
 
 def mix_view(version: dict) -> dict:
-    """A saved mix version (as stored in version.json) for the mix page."""
+    """A saved mix version (as stored in version.json) for the mix page. Versions saved before
+    Eden 0.4.0 have no song, master or checks: those lines are left empty."""
     parts = []
     changed = False
     for p in version["parts"]:
@@ -202,7 +203,7 @@ def mix_view(version: dict) -> dict:
             "change": f"{_db(p['loudness_before'], 'LUFS')} → {_db(after, 'LUFS')}"
             if p["treatments"] and after is not None and after == after else "",
         })
-    o, f, c = version["original"], version["final"], version["checks"]
+    o, f, c = version["original"], version["final"], version.get("checks")
     return {
         "id": version["id"],
         "date": _local_date(version["created_at"]),
@@ -230,6 +231,11 @@ def versions_view(versions: list[dict]) -> list[dict]:
     return [{"id": v["id"], "date": _local_date(v["created_at"]),
              "intensity": round(v["intensity"] * 100),
              "lufs": _db(v["final"]["loudness_lufs"], "LUFS")} for v in versions]
+
+
+def sample_rate_choices() -> list[dict]:
+    """The sample rates the export accepts besides FL Studio's own, with French labels ("44,1 kHz")."""
+    return [{"label": f"{rate / 1000:g} kHz".replace(".", ","), "value": rate} for rate in SAMPLE_RATES]
 
 
 def export_message(result: ExportResult) -> str:

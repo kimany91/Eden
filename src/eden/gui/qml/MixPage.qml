@@ -52,7 +52,7 @@ EdenPage {
                 Text {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
-                    text: "0 % : ton morceau d'origine, à l'identique.  100 % : toutes les corrections recommandées."
+                    text: "0 % : ton mix tel que FL le joue avant le Master (sans les effets de ton Master ni le mastering d'Eden).  100 % : toutes les corrections recommandées."
                     color: Theme.textDim
                     font.family: Theme.fontFamily; font.pixelSize: 12
                 }
@@ -434,14 +434,11 @@ EdenPage {
                                 spacing: 10
                                 EdenCombo {
                                     id: rate
+                                    objectName: "exportRate"
                                     Layout.fillWidth: true
                                     model: [
-                                        { label: "Comme FL Studio (" + ((page.r.final ? page.r.final.sampleRate : 0) / 1000) + " kHz)", value: 0 },
-                                        { label: "44,1 kHz", value: 44100 },
-                                        { label: "48 kHz", value: 48000 },
-                                        { label: "88,2 kHz", value: 88200 },
-                                        { label: "96 kHz", value: 96000 }
-                                    ]
+                                        { label: "Comme FL Studio (" + String((page.r.final ? page.r.final.sampleRate : 0) / 1000).replace(".", ",") + " kHz)", value: 0 }
+                                    ].concat(controller.sampleRates)
                                 }
                                 EdenCombo {
                                     id: depth

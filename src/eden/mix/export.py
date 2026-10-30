@@ -52,10 +52,23 @@ def _src_filter(up: int, down: int) -> np.ndarray:
     return firwin(numtaps | 1, (1 + SRC_PASSBAND) / 2 * edge, window=("kaiser", beta))
 
 
+def _one_of(values) -> str:
+    *first, last = (str(v) for v in values)
+    return f"{', '.join(first)} ou {last}"
+
+
+def check_format(sample_rate: int | None, bit_depth: int) -> None:
+    """Refuse a sample rate or a bit depth Eden does not export to (``None`` keeps FL Studio's rate)."""
+    if bit_depth not in BIT_DEPTHS:
+        raise ExportError(f"Profondeur de bits non prise en charge : {bit_depth} ({_one_of(BIT_DEPTHS)})")
+    if sample_rate is not None and sample_rate not in SAMPLE_RATES:
+        raise ExportError(f"Fréquence d'échantillonnage non prise en charge : {sample_rate} Hz "
+                          f"({_one_of(SAMPLE_RATES)} Hz)")
+
+
 def export_wav(source: Path, destination: Path, sample_rate: int | None = None,
                bit_depth: int = 24, overwrite: bool = False) -> ExportResult:
-    if bit_depth not in BIT_DEPTHS:
-        raise ExportError(f"Profondeur de bits non prise en charge : {bit_depth}")
+    check_format(sample_rate, bit_depth)
     if destination.suffix.lower() != ".wav":  # added, never replacing: "Beat v1.2 - Eden" keeps its ".2 - Eden"
         destination = destination.with_name(destination.name + ".wav")
     if destination.exists() and not overwrite:

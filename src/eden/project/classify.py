@@ -1,9 +1,10 @@
 """Guess the role of each audio source (lead vocal, backs, ad-libs, beat...).
 
 This is a transparent heuristic, not an oracle: every guess carries the
-reasons that produced it and a confidence level, and the user can override
-it. Hints come from names (channel, mixer insert, playlist track, file),
-the recording folder and basic audio properties.
+reasons that produced it and a confidence level. Nothing lets the user
+override a guess yet: a track read wrong is renamed in FL Studio and the
+project analysed again. Hints come from names (channel, mixer insert,
+playlist track, file), the recording folder and basic audio properties.
 """
 
 from __future__ import annotations

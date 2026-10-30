@@ -157,7 +157,7 @@ def dry_render_problem(full: np.ndarray, dry: np.ndarray, fs: float) -> str | No
 def split(report: InspectionReport, renders: RenderResult) -> Parts:
     premaster_path = renders.wav("premaster")
     if premaster_path is None:
-        raise PartsError("Le rendu de référence (pré-Master) est absent : relancez la récupération du son")
+        raise PartsError("Le rendu de référence (pré-Master) est absent : relance la récupération du son")
     premaster, fs = _load(premaster_path, "float64")
     sources = {s.channel: s for s in report.sources}
 

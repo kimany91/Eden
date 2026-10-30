@@ -107,11 +107,12 @@ def mix_project(
             on_step(i, len(STEPS), STEPS[i])
 
     if not renders.ok:
-        raise MixError("Le son récupéré depuis FL Studio n'a pas passé ses vérifications : "
-                       "relancez « Récupérer le son depuis FL Studio »")
+        raise MixError("Le son récupéré depuis FL Studio n'a pas passé ses vérifications : relance "
+                       "la récupération du son (bouton « Récupérer le son depuis FL Studio », "
+                       "ou eden render)")
     _, fp = read_project_bytes(project)
     if fp.sha256 != report.file.sha256 or fp.sha256 != renders.project_sha256:
-        raise MixError("Le projet a changé depuis la récupération du son : relancez l'analyse")
+        raise MixError("Le projet a changé depuis la récupération du son : relance l'analyse")
 
     step(0)
     try:
@@ -143,7 +144,7 @@ def mix_project(
 
     original_stats = stats(renders.wav("original"))
     final_stats = stats(final)
-    warnings = [*parts.warnings, *outcome.warnings, *mastered.warnings]
+    warnings = [*renders.warnings, *parts.warnings, *outcome.warnings, *mastered.warnings]
     if intensity > 0 and math.isfinite(original_stats.loudness_lufs) and \
             final_stats.loudness_lufs < original_stats.loudness_lufs - 1.0:
         warnings.append(f"Le master Eden ({final_stats.loudness_lufs:.1f} LUFS) est moins fort que ton "

@@ -134,6 +134,12 @@ d'1/6 d'octave d'une note tenue ou de son octave.
 
 ## 3. Niveaux et suivi
 
+Une voix dont le type n'a pas pu être reconnu (« Voix (type à confirmer) » : une piste nommée
+« Vox », « Voix », « Hook », « Couplet »…) est mixée comme une voix principale : même chaîne,
+même réglage contre l'instru, même suivi, mêmes envois d'espace. Rien ne permet encore de
+choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Double », « Backs »,
+« Ad-lib »…) puis relance l'analyse.
+
 - **Voix principale** : volume K-pondéré de la voix moins celui de l'instru, **pendant
   qu'elle chante** ; cible **+1 dB**, fenêtre −1 à +4 dB (**choix d'Eden**), changement
   statique 10 dB max (**choix d'Eden** : une voix brute posée sur une instru déjà masterisée

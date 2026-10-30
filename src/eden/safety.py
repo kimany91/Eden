@@ -50,7 +50,7 @@ def verify_unchanged(path: Path, before: FileFingerprint) -> None:
     if hashlib.sha256(data).hexdigest() != before.sha256:
         raise ProjectChangedError(
             "Le fichier du projet a été modifié pendant l'analyse "
-            "(probablement enregistré depuis FL Studio). Relancez l'analyse."
+            "(probablement enregistré depuis FL Studio). Relance l'analyse."
         )
 
 
