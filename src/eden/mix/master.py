@@ -356,13 +356,16 @@ def _note_peaks_db(low: np.ndarray, fs: float) -> np.ndarray:
     only where the tracker reads a pitch (from 100 ms after the start at the latest) and the
     head, from 20 to 100 ms, repeats at that pitch's period (``lowend.periodicity`` ≥ 0.9): a
     kick's pitch falls. An attack also has to stand 1 dB above the highest level of the 100 to
-    30 ms before it (climbing back after a dip is not a new note), one per 100 ms, and lose at
-    most 4.5 dB in the 100 ms after its peak (a kick dies faster than an 808). An attack that
-    fails is taken for a hit (a kick, most often): what moves in the next 250 ms is its tail
-    beating against the 808, not a note."""
-    ms, _ = dsp._frames(low, fs)
+    30 ms before it (climbing back after a dip is not a new note), one per 100 ms, lose at
+    most 4.5 dB in the 100 ms after its peak (a kick dies faster than an 808), and 150 ms after
+    its peak still stand 1.5 dB above the decay the envelope followed before it (a line fitted
+    on those 100 to 30 ms, carried on): a new note lifts the level for good, a kick landing on
+    a note's tail only for a moment. An attack that fails is taken for a hit (a kick, most
+    often): what moves in the next 250 ms is its tail beating against the 808, not a note."""
+    ms, size = dsp._frames(low, fs)
     if ms.size < 300:
         return np.zeros(0)
+    frame_s = size / fs  # a frame is a whole number of samples: 44 at 44.1 kHz, not quite 1 ms
     env = 10 * np.log10(np.maximum(np.convolve(ms, np.ones(25) / 25, mode="same"), 1e-20))
     step = np.zeros(env.size)
     step[NOTE_STEP_MS:] = env[NOTE_STEP_MS:] - env[:-NOTE_STEP_MS]
@@ -382,16 +385,19 @@ def _note_peaks_db(low: np.ndarray, fs: float) -> np.ndarray:
     heads = []
     hit = -1000
     for first, kind in sorted(events):
-        if first < 100 or first + NOTE_HEAD_MS + 100 > env.size or first - hit < 250:
+        if first < 100 or first + NOTE_HEAD_MS + 150 > env.size or first - hit < 250:
             continue
-        pitch = next((p for p in pitches if p.start_s - 0.1 <= first / 1000 < p.end_s), None)
+        pitch = next((p for p in pitches if p.start_s - 0.1 <= first * frame_s < p.end_s), None)
         head = env[first:first + NOTE_HEAD_MS]
         peak = first + int(np.argmax(head))
         counted = (pitch is not None
-                   and lowend.periodicity(mono, lfs, first / 1000 + 0.02, 0.08, pitch.f0_hz) >= 0.9)
+                   and lowend.periodicity(mono, lfs, (first + 20) * frame_s, 0.08, pitch.f0_hz) >= 0.9)
         if kind == "attack":
-            counted = (counted and head.max() - env[first - 100:first - NOTE_STEP_MS].max() >= 1.0
-                       and env[peak] - env[peak + 100] <= 4.5)
+            before = env[first - 100:first - NOTE_STEP_MS]
+            slope, start = np.polyfit(np.arange(before.size), before, 1)
+            decay = start + min(slope, 0.0) * (peak + 150 - (first - 100))  # the decay before, carried on
+            counted = (counted and head.max() - before.max() >= 1.0 and env[peak] - env[peak + 100] <= 4.5
+                       and env[peak + 150] - decay >= 1.5)
         if counted:
             heads.append(float(head.max()))
         elif kind == "attack":

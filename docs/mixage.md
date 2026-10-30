@@ -257,8 +257,11 @@ Chaîne (tout hors ligne, en float64) :
      d'un kick chute, elle ne se répète pas ;
    - une attaque doit aussi dépasser de 1 dB le plus haut niveau des 100 à 30 ms d'avant
      (l'enveloppe qui remonte après un creux n'est pas une nouvelle note), une au plus par
-     100 ms, et perdre au plus 4,5 dB dans les 100 ms après sa crête (un kick s'éteint plus
-     vite qu'un 808) ;
+     100 ms, perdre au plus 4,5 dB dans les 100 ms après sa crête (un kick s'éteint plus
+     vite qu'un 808) et, 150 ms après sa crête, tenir encore 1,5 dB au-dessus de la
+     décroissance que suivait l'enveloppe avant elle (droite ajustée sur ces 100 à 30 ms,
+     prolongée) : une nouvelle note relève le niveau pour de bon, un kick qui tombe sur la
+     queue d'une note ne le relève qu'un instant ;
    - une attaque qui échoue est prise pour un coup (un kick, le plus souvent) : ce qui bouge
      dans les 250 ms suivantes est sa queue qui bat contre le 808, pas une note.
 
@@ -266,8 +269,9 @@ Chaîne (tout hors ligne, en float64) :
    moins de 250 ms après un kick, n'est pas comparée ; avec des kicks plus forts que le 808
    sous 100 Hz, peu de notes sont comparées et l'étage agit rarement. Une note qui s'enchaîne
    sur la précédente sans monter ni baisser de 3 dB n'en est pas séparée. Un kick sans chute
-   de hauteur (une sinusoïde courte) qui tombe sur une note de 808 tenue peut passer pour la
-   note rejouée ;
+   de hauteur (une sinusoïde courte), ou dont la queue tient aussi longtemps que la note qu'il
+   frappe, peut passer pour la note rejouée : sur des notes égales, l'étage peut alors agir à
+   tort ;
 3. compression de bus : 1,6:1, seuil 4 dB sous les passages forts (P90 du niveau tel que le
    lit le détecteur du compresseur, lissé sur 5 ms : les trames brutes de 1 ms ondulent dans
    chaque cycle et placeraient le seuil ailleurs), attaque 30 ms, relâchement sur le temps

@@ -91,6 +91,21 @@ def test_kicks_on_equal_808_notes_are_not_read_as_uneven_notes(tau_s, every_beat
     assert peaks.size < 4 or _spread(peaks) < 2.0
 
 
+@pytest.mark.parametrize("tau_s", [0.6, 1.5])
+@pytest.mark.parametrize("every_beats", [2, 4])
+def test_quiet_kicks_on_the_tails_of_equal_808_notes_are_not_notes(tau_s, every_beats):
+    # a kick 11 dB under the 808 beats against a note's tail, its pitch hidden by the 808's:
+    # 150 ms later the level is back on the tail's decay, where a new note would still stand
+    x = _808(20, every_beats * BEAT_S, tau_s) + 0.1 * _trap_kicks(20)
+    peaks = M._note_peaks_db(_low(x), FS)
+    assert peaks.size < 4 or _spread(peaks) < 2.0
+
+
+def test_uneven_808_notes_are_found_under_quiet_kicks():
+    peaks = M._note_peaks_db(_low(_808(20, 2 * BEAT_S, 0.3, 4.0) + 0.1 * _trap_kicks(20)), FS)
+    assert peaks.size >= 4 and _spread(peaks) > 4.0
+
+
 def test_a_slide_goes_on_with_its_note():
     # F1 sliding down to C1 on a decaying 808: the C1 after the slide has no attack of its own,
     # only the note's decay, and is not compared with the attacks
@@ -124,6 +139,17 @@ def test_kicks_alone_are_not_notes():
 def test_uneven_808_notes_are_found(signal):
     peaks = M._note_peaks_db(_low(signal()), FS)
     assert peaks.size >= 8 and _spread(peaks) > 4.0
+
+
+def test_notes_late_in_a_song_are_read_where_they_are_at_44_1_khz():
+    # a 1 ms frame is 44 samples at 44.1 kHz (0.998 ms): read as 1 ms, the pitch and the head
+    # of a note 90 s in would be looked for 0.2 s after it, here in the silence after the note
+    x = np.zeros(100 * FS)
+    t = np.arange(int(0.25 * FS)) / FS
+    note = 0.35 * np.minimum(1, t / 0.003) * np.minimum(1, (t[-1] - t) / 0.01) * np.sin(2 * np.pi * 49 * t)
+    for start_s in (90, 92, 94, 96, 98):
+        x[start_s * FS:start_s * FS + note.size] += note
+    assert FS == 44100 and M._note_peaks_db(_low(x), FS).size == 5
 
 
 def test_the_low_band_stage_says_how_many_notes_it_compared_and_how_much_they_vary(monkeypatch):
