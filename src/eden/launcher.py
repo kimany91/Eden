@@ -4,6 +4,10 @@
 ``Eden.exe --self-test <log>``    loads the whole interface off-screen and
                                   exits 0 if it works (used to check every
                                   installer before it is published)
+``Eden.exe --render-test <png>``  draws the grown garden in a window with the
+                                  PC's own graphics (Direct3D on Windows), saves
+                                  the image (and its report, <png>.txt) and exits
+                                  0 if the tree is there
 """
 
 from __future__ import annotations
@@ -72,6 +76,75 @@ def self_test(report: Path) -> int:
     return code
 
 
+RENDER_QML = """
+import QtQuick
+import "%s"
+Window {
+    width: 960; height: 600; visible: true; color: "#10131C"
+    GardenScene {
+        objectName: "scene"; anchors.fill: parent
+        growth: 1; time: 2; yaw: 35; pitch: -9; distance: %f
+        target: Qt.vector3d(0, %f, 0)
+    }
+}
+"""
+
+
+def render_test(image: Path) -> int:
+    """The self-test renders nothing: here the garden is drawn for real, so that the shaders Qt
+    compiles on the fly for this PC's graphics API run. The tree must cover part of the image in
+    its yellows, and Qt must report no shader or pipeline error."""
+    import numpy as np
+    from PySide6.QtCore import QEventLoop, QTimer, QtMsgType, QUrl, qInstallMessageHandler
+    from PySide6.QtGui import QGuiApplication, QImage
+    from PySide6.QtQml import QQmlApplicationEngine
+    from PySide6.QtQuick import QQuickWindow  # noqa: F401  (the root object is a QQuickWindow)
+
+    from eden.gui import garden_qml  # noqa: F401  (Eden.Garden)
+    from eden.gui.app import QML_DIR
+    from eden.gui.garden import grow_tree
+
+    problems: list[str] = []
+
+    def messages(kind, _context, text) -> None:
+        if kind in (QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg) and any(
+                word in text.lower() for word in ("shader", "pipeline", "material", "qrhi", "failed")):
+            problems.append(text)
+
+    report: list[str] = []
+
+    def done(code: int) -> int:  # the installed app has no console: the report goes next to the image
+        image.with_suffix(".txt").write_text("\n".join([*report, "OK" if code == 0 else "ÉCHEC"]) + "\n",
+                                             encoding="utf-8")
+        return code
+
+    qInstallMessageHandler(messages)
+    app = QGuiApplication(sys.argv[:1])
+    height = float(grow_tree().heights[-1])
+    engine = QQmlApplicationEngine()
+    engine.warnings.connect(lambda ws: problems.extend(w.toString() for w in ws))
+    engine.loadData((RENDER_QML % (QUrl.fromLocalFile(str(QML_DIR)).toString(), 1.0 + height * 2.1,
+                                   0.05 + height * 0.5)).encode())
+    if not engine.rootObjects():
+        report.extend(problems or ["fenêtre non créée"])
+        return done(1)
+    window = engine.rootObjects()[0]
+    loop = QEventLoop()
+    QTimer.singleShot(3000, loop.quit)
+    loop.exec()
+    shot = window.grabWindow().convertToFormat(QImage.Format.Format_RGBA8888)
+    shot.save(str(image))
+    pixels = np.frombuffer(shot.constBits(), np.uint8)[:shot.height() * shot.bytesPerLine()]
+    rgb = pixels.reshape(shot.height(), shot.bytesPerLine())[:, :shot.width() * 4].reshape(
+        shot.height(), shot.width(), 4)[..., :3].astype(int)
+    yellow = float(np.mean((rgb[..., 0] > 120) & (rgb[..., 1] > 80) & (rgb[..., 2] < 0.6 * rgb[..., 1])))
+    api = window.rendererInterface().graphicsApi().name if hasattr(window, "rendererInterface") else "?"
+    report.append(f"rendu : {api}, {shot.width()}×{shot.height()}, feuillage {yellow * 100:.1f} % de l'image")
+    report.extend(f"avertissement : {text}" for text in problems)
+    del engine, app
+    return done(0 if yellow > 0.03 and not problems else 1)
+
+
 def _garden_check(engine) -> list[str]:
     """The garden (Qt Quick 3D, its shaders, the tree) and the listening card (Qt Multimedia) are
     shown only during and after a mix: built here, so that a missing module fails the check."""
@@ -134,6 +207,8 @@ def _audio_check() -> str:
 def main() -> int:
     if len(sys.argv) >= 3 and sys.argv[1] == "--self-test":
         return self_test(Path(sys.argv[2]))
+    if len(sys.argv) >= 3 and sys.argv[1] == "--render-test":
+        return render_test(Path(sys.argv[2]))
     log_file = _setup_logging()
     logging.info("Démarrage d'Eden")
     try:

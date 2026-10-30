@@ -58,6 +58,21 @@ jobs:
           Get-Content $log
           if ($p.ExitCode -ne 0) { throw "Autotest de l'application échoué" }
 
+      - name: Rendu réel du jardin 3D (Direct3D)
+        shell: pwsh
+        run: |
+          $png = "$env:RUNNER_TEMP\jardin.png"
+          $p = Start-Process -FilePath "dist\Eden\Eden.exe" -ArgumentList "--render-test", "`"$png`"" -Wait -PassThru
+          Get-Content "$env:RUNNER_TEMP\jardin.txt"
+          if ($p.ExitCode -ne 0) { throw "Le jardin 3D ne s'affiche pas correctement" }
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: Rendu-du-jardin
+          path: ${{ runner.temp }}/jardin.*
+          retention-days: 30
+
       - name: Installateur (Inno Setup)
         shell: pwsh
         run: |
