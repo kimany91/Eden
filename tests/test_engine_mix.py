@@ -318,7 +318,7 @@ def test_no_space_is_added_when_an_fl_reverb_cannot_be_measured():
     assert math.isnan(out.reverb_lu)
     assert len(res["ch1"].space) == 1 and "Pas d'espace ajouté" in res["ch1"].space[0]
     assert "« Lead »" in res["ch1"].space[0]
-    assert any(t.kind == "dip" for t in res["ch1"].treatments)  # a double sits under the lead in 1–4 kHz too
+    assert not any(t.kind == "dip" for t in res["ch1"].treatments)  # no dip: the stack's sound never flicks
 
 
 # -- room for the words ---------------------------------------------------------------------

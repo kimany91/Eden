@@ -171,6 +171,10 @@ choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Dou
   chante, niveau d'Eden compris (visé +1 dB, accepté de -1 à +4 dB) : monte la voix ou
   baisse l'instru dans FL Studio », précédé de « À cette intensité, » sous 100 %. Le suivi
   phrase par phrase ne corrige pas cet écart : il garde l'équilibre médian de la voix.
+- **Un seul gain statique pour toute la performance vocale**, mesuré sur les voix principales
+  réunies contre l'instru : un couplet posé doucement et un refrain empilé gardent l'écart que
+  l'artiste leur a donné (réglés chacun vers la même cible, une section calme remontait au
+  niveau d'une section pleine : retour d'écoute d'un utilisateur).
 - **Voix principales qui chantent ensemble** (prises empilées d'un refrain, piste dupliquée) :
   deux voix chantent ensemble quand celle qui chante le moins partage au moins la moitié de
   ses blocs chantés avec l'autre (choix d'Eden), de proche en proche. Leur somme est réglée
@@ -214,18 +218,17 @@ choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Dou
   plus qu'une phrase, et rien n'était suivi). Ils reçoivent le même gain que la voix et
   suivent donc leur phrase. Sur une voix « prudente », ils sont dans la voix et ne peuvent pas
   être mis de côté.
-- **Doublages / ad-libs / chœurs** par rapport à la voix principale : −6 (−10 à −3), −6
-  (−9 à −3), −7 (−10 à −4) dB (moyennes de blogs, **non vérifié**). Une voix qui reste dans
-  sa fenêtre en suivant le gain de la voix principale le suit : l'équilibre que tu as réglé
-  entre elles est gardé. Sinon, elle va vers sa cible ; son changement peut aller de
-  « garder son niveau » à « suivre la voix principale », et 4 dB au plus au-delà (choix
-  d'Eden) : un ad-lib déjà trop fort ne monte que jusqu'à sa cible, pas d'autant qu'une voix
-  principale enterrée ; quand il ne bouge pas, Eden le dit (« Niveau gardé »).
-  Hors de sa fenêtre une fois ce changement fait, Eden le signale aussi
-  (« monte cette voix » ou « baisse cette voix dans FL Studio »). Un doublage **copie** de la
-  voix principale (corrélation > 0,8 à ±40 ms, choix d'Eden) n'est jamais remonté par
-  rapport à elle (filtrage en peigne) ; il en suit au plus le gain, et, tenu ainsi, rien n'est
-  signalé : c'est voulu.
+- **Doublages / ad-libs / chœurs** : ils suivent le gain de la performance, rien de plus —
+  **jamais montés par rapport aux autres voix**. Un chœur que l'artiste a posé discret est un
+  choix ; remonté vers une cible, un empilement enregistré sortait du mix et saturait (retour
+  d'écoute d'un utilisateur). Les fenêtres par rôle (−6 (−10 à −3) doublage, −6 (−9 à −3)
+  ad-lib, −7 (−10 à −4) dB chœurs, moyennes de blogs, **non vérifié**) ne servent plus qu'à
+  deux choses : **baisser** une voix qui couvre la voix principale (au-dessus de sa fenêtre,
+  elle descend vers sa cible, 4 dB au plus au-delà de « suivre » ; choix d'Eden), et
+  **signaler** une voix restée hors fenêtre (« monte cette voix » ou « baisse cette voix dans
+  FL Studio ») : la décision de la monter appartient à l'artiste. Un doublage **copie** de la
+  voix principale (corrélation > 0,8 à ±40 ms, choix d'Eden) suit son gain sans jamais être
+  monté par rapport à elle (filtrage en peigne), et rien n'est signalé : c'est voulu.
 
 ## 4. Espace
 
@@ -321,11 +324,10 @@ Le rap se tient sec : chaque retour reste loin sous la voix (niveaux revus à la
   une ligne « Reste du mix », quand ils portent au moins 25 % de ce qu'il retire (choix
   d'Eden). Fait **avant** l'équilibre : le niveau de la voix principale est d'abord prévu
   sur l'instru avant le creux, les bandes sont choisies avec la voix à ce niveau, puis
-  l'équilibre est mesuré à nouveau sur l'instru creusée, telle qu'on l'entendra. Doublages,
-  chœurs et ad-libs baissent de 2 dB entre 1 et 4 kHz aux mêmes moments (choix d'Eden) : un
-  doublage chante sous la voix principale. Seule la voix baisse : ses reverbs et delays FL
-  rendus à part restent tels quels (sur une voix « prudente », ils sont dans la voix et
-  baissent avec elle).
+  l'équilibre est mesuré à nouveau sur l'instru creusée, telle qu'on l'entendra. Les doublages,
+  chœurs et ad-libs ne sont plus baissés dans 1–4 kHz pendant la voix principale : ce creux,
+  déclenché par le chant, changeait le son de l'empilement à chaque entrée de voix (retour
+  d'écoute d'un utilisateur).
 - **Tenue des notes du 808** : avant le ducking, Eden lit les notes du 808 sur tous les
   groupes basse / 808 réunis, que FL rend à part : aucun kick n'y gêne la lecture des notes.
   Le niveau est celui de la bande sous 100 Hz, moyenné sur une période de chaque note (sans

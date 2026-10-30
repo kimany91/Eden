@@ -1,12 +1,27 @@
-Eden 1.3.1 : un seul volume pour toutes tes voix, tes nuances respectées, l'instru ne clignote plus.
+Eden 1.3.2 : toutes tes voix reliées en un seul bus — ton équilibre entre voix n'est plus jamais changé.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.3.1.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.3.2.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Corrigé dans 1.3.2 (retours d'écoute : les voix doivent être reliées ensemble)
+
+- **Une voix n'est plus jamais montée par rapport aux autres.** Eden remontait un chœur ou un
+  ad-lib que tu avais posé discret vers sa « cible » : l'empilement sortait du mix et saturait.
+  Maintenant, toutes les voix suivent le même gain que les voix principales, rien de plus. Une
+  voix qui couvre la voix principale est encore baissée (borné), et une voix très en retrait est
+  seulement signalée : la décision de la monter t'appartient.
+- **Un seul réglage de niveau pour toute la performance**, mesuré sur tes voix principales
+  réunies contre l'instru : un couplet calme et un refrain plein gardent l'écart que tu leur as
+  donné (avant, chaque section était ramenée vers la même cible : « le son monte énormément
+  quand c'est bas »).
+- **Le creux de présence sur les doublures est supprimé.** Il baissait les doublures de 2 dB
+  entre 1 et 4 kHz à chaque fois que le lead chantait : le son de l'empilement changeait à
+  chaque entrée de voix (« effet bizarre, comme sous l'eau »).
 
 ## Corrigé dans 1.3.1 (retours d'écoute : volume inconstant, doublures qui saturent, master qui bouge)
 

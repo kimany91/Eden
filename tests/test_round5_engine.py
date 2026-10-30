@@ -1,6 +1,7 @@
-"""Mix engine, fifth review round: another voice may keep its level, follow the lead's own static change or
-anything between, and out of its window moves towards its goal at most 4 dB beyond that span (a copy of
-the lead is never raised against it); a voice left as it is while the lead moves says so."""
+"""Mix engine, fifth review round: another voice follows the performance's gain and is NEVER raised
+against the other voices (the balance the artist set inside the stack is a choice); one that drowns the
+lead still comes down, at most 4 dB beyond following; off its window it is named, the decision is the
+artist's."""
 
 import functools
 
@@ -46,29 +47,32 @@ def test_a_stack_inside_its_windows_moves_as_a_whole_and_keeps_its_balance(lead_
     for key in ("ch1", "ch2"):
         assert res[key].level_change_db == pytest.approx(lead, abs=1e-9)
         assert -10.0 < res[key].loudness_after - res["ch0"].loudness_after < -3.0
-        assert _reason(res[key]).endswith(f"dB par rapport à « Lead » si elle suivait son gain ({lead:+.1f} dB)")
+        assert f"dB par rapport à « Lead » si elle suivait son gain ({lead:+.1f} dB)" in _reason(res[key])
+        assert _reason(res[key]).endswith("l'équilibre que tu as réglé entre tes voix est gardé")
     assert not [w for w in warnings if "« Double »" in w or "« Ad-libs »" in w]
 
 
-def test_a_voice_too_quiet_once_it_follows_moves_at_most_4_db_beyond_following():
-    res, _ = _stack(-8.0, -14.0)
-    assert res["ch1"].level_change_db == pytest.approx(res["ch0"].level_change_db + MAX_LEVEL_CHANGE_DB, abs=1e-9)
-
-
-def test_a_voice_still_off_its_window_after_following_and_4_db_more_is_named():
-    res, warnings = _stack(-8.0, -16.0)
-    assert res["ch1"].level_change_db == pytest.approx(res["ch0"].level_change_db + MAX_LEVEL_CHANGE_DB, abs=1e-9)
+def test_a_voice_too_quiet_follows_and_is_named_never_raised():
+    # the artist printed the double 14 LU under the lead: a choice. It follows the performance's gain,
+    # nothing more, and the warning hands the decision to the artist (raised towards its window, a
+    # printed stack jumped out and clipped: heard by a user)
+    res, warnings = _stack(-8.0, -14.0)
+    assert res["ch1"].level_change_db == pytest.approx(res["ch0"].level_change_db, abs=1e-9)
     final = res["ch1"].loudness_after - res["ch0"].loudness_after
     [warning] = [w for w in warnings if "« Double »" in w]
     assert warning.startswith(f"« Double » reste à {final:+.1f} dB de « Lead »")
     assert warning.endswith("monte cette voix dans FL Studio")
+    assert _reason(res["ch1"]).endswith("elle suit ce gain, rien de plus : l'équilibre que tu as "
+                                        "réglé entre tes voix est gardé")
 
 
-def test_a_voice_a_little_too_loud_rises_only_to_its_goal_not_as_far_as_a_buried_lead():
+def test_a_voice_a_little_too_loud_comes_down_to_its_goal():
     res, warnings = _stack(-8.0, 0.0)
     lead, double = res["ch0"].level_change_db, res["ch1"].level_change_db
-    assert 0.0 < double < lead - 4.0  # the old rule left it as it was, following would leave it 6 dB too loud
+    assert double < lead  # lowered relative to the stack: it would drown the lead
     assert res["ch1"].loudness_after - res["ch0"].loudness_after == pytest.approx(-6.0, abs=1e-9)  # its goal
+    assert _reason(res["ch1"]).endswith("baissée seulement, jamais montée par rapport aux autres "
+                                        "voix : l'équilibre que tu as réglé entre elles est gardé")
     assert not [w for w in warnings if "« Double »" in w]
 
 
@@ -82,14 +86,13 @@ def test_a_voice_far_too_loud_is_lowered_even_with_a_buried_lead():
     assert not [w for w in warnings if "« Double »" in w]
 
 
-def test_a_voice_that_stays_as_it_is_while_the_lead_moves_says_so():
-    # set where keeping its level puts it on its goal: from a first mix, its own change is taken back
-    first, _ = _stack(-8.0, 0.0)
-    res, _ = _stack(-8.0, first["ch1"].level_change_db)
-    kept = next(t for t in res["ch1"].treatments if t.kind == "gain")
-    assert res["ch1"].level_change_db == 0 and kept.label == "Niveau gardé"
-    assert kept.reason.startswith("Équilibre : ") and kept.reason.endswith(
-        f"par rapport à « Lead » si elle suivait son gain ({res['ch0'].level_change_db:+.1f} dB)")
+def test_a_voice_already_at_its_goal_simply_follows():
+    # set where following the performance's gain puts it on its goal: it follows, and says so
+    res, warnings = _stack(-8.0, -6.0)
+    assert res["ch1"].level_change_db == pytest.approx(res["ch0"].level_change_db, abs=1e-9)
+    assert _reason(res["ch1"]).endswith("elle suit ce gain, rien de plus : l'équilibre que tu as "
+                                        "réglé entre tes voix est gardé")
+    assert not [w for w in warnings if "« Double »" in w]
 
 
 def test_a_copy_of_the_lead_follows_its_gain_but_is_never_raised_against_it():

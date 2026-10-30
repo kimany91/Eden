@@ -88,19 +88,29 @@ def test_a_lead_too_loud_is_told_to_come_down():
     assert _stays_at(warning) > engine.LEAD_BALANCE[2]
 
 
-def test_other_voices_keep_their_4_db_limit_and_are_named_when_off_their_window():
+def test_a_quiet_voice_is_never_raised_and_a_drowning_one_comes_down():
+    # an ad-lib the artist printed far under the lead stays exactly there (raised towards its window, a
+    # printed stack jumped out and clipped: heard by a user); the warning hands the decision to the artist
     instru = beat(SECONDS)
     lead = _against(voice(SECONDS, seed=11), instru, 1.0)
     adlib = voice(SECONDS, seed=12, notes=[220, 247], level=0.01)  # far under the lead
     out = mix(_parts([("ch0", "Lead", "lead_vocal", lead, None), ("ch1", "Adlib", "adlib", adlib, None)],
                      [("g1", "Instru", "beat", instru)]), 1.0, 95.0, {"ch0": "none", "ch1": "none"})
     res = {p.key: p for p in out.parts}
-    gain, reason = _gain(res["ch1"])
-    assert gain == engine.MAX_LEVEL_CHANGE_DB
+    assert res["ch1"].level_change_db == 0 and not any(t.kind == "gain" for t in res["ch1"].treatments)
     [warning] = out.warnings  # the lead is in its window: only the ad-lib
     assert warning.startswith("« Adlib » reste à -") and warning.endswith(
         "de « Lead », niveau d'Eden compris (visé -6 dB, accepté de -9 à -3 dB) : monte cette voix dans FL Studio")
-    assert _stays_at(warning) == pytest.approx(_before(reason) + gain, abs=0.11)
+
+    # one as loud as the lead would drown it: still brought down, towards its goal, 4 dB at most
+    loud = _against(voice(SECONDS, seed=12, notes=[220, 247]), instru, 1.0)
+    out = mix(_parts([("ch0", "Lead", "lead_vocal", lead, None), ("ch1", "Adlib", "adlib", loud, None)],
+                     [("g1", "Instru", "beat", instru)]), 1.0, 95.0, {"ch0": "none", "ch1": "none"})
+    res = {p.key: p for p in out.parts}
+    gain, reason = _gain(res["ch1"])
+    assert gain == -engine.MAX_LEVEL_CHANGE_DB
+    assert reason.endswith("baissée seulement, jamais montée par rapport aux autres voix : l'équilibre que "
+                           "tu as réglé entre elles est gardé")
 
 
 def test_a_double_that_copies_the_lead_is_kept_without_a_warning():
@@ -190,11 +200,11 @@ def test_the_carve_reason_says_how_the_bands_were_chosen():
         "plus de 9 dB sous l'instru) ni celles où la voix est à plus de 20 dB sous sa bande la plus forte" in carve.reason
 
 
-# -- the other voices' dip leaves their FL effects alone ------------------------------------------
-
-def test_the_dip_of_an_other_voice_does_not_touch_its_fl_reverb(monkeypatch):
-    dry = voice(12.0, seed=12, notes=[220, 247], level=0.15)
-    wet = _fl_reverb(dry[:, 0], -10.0)
+def test_no_voice_is_dipped_while_the_lead_sings(monkeypatch):
+    # the 1-4 kHz dip on secondary voices is gone: gated by the lead's phrases, it changed the stack's
+    # sound at every vocal entry (heard by a user); secondary voices keep the sound the artist printed
+    dry = voice(12.0, seed=3)
+    wet = _fl_reverb(dry[:, 0], -12.0)
     dipped = []
     original = dsp.dip_band_when
 
@@ -205,15 +215,11 @@ def test_the_dip_of_an_other_voice_does_not_touch_its_fl_reverb(monkeypatch):
 
     monkeypatch.setattr(dsp, "dip_band_when", spy)
     for role in ("adlib", "back_vocal", "double"):
-        dipped.clear()
         parts = _parts([("ch0", "Lead", "lead_vocal", voice(12.0, seed=11), None), ("ch1", "V", role, dry + wet, dry)],
                        [("g1", "Instru", "beat", beat(12.0))])
         out = mix(parts, 1.0, 95.0, {"ch0": "none", "ch1": "tracked"})
-        dip = next(t for t in out.parts[1].treatments if t.kind == "dip")
-        assert dip.reason.endswith("; tes reverbs et delays FL restent tels quels")
-        [x] = dipped
-        rest = slice(int(4.3 * FS), int(4.9 * FS))  # the voice is silent, its FL reverb rings
-        assert np.sum(x[rest] ** 2) < 1e-6 * np.sum(wet[rest] ** 2)
+        assert not any(t.kind == "dip" for t in out.parts[1].treatments)
+    assert dipped == []
 
 
 # -- duplicated lead tracks -----------------------------------------------------------------------

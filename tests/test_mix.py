@@ -267,7 +267,7 @@ def test_mix_balances_voices_rides_the_lead_and_makes_room():
     adlib_gain = [t for t in res["ch1"].treatments if t.kind == "gain"]
     assert adlib_gain and adlib_gain[0].params["gain_db"] == pytest.approx(-4.0)  # 4 dB limit
     assert res["ch1"].placement and "change de côté" in res["ch1"].placement
-    assert any(t.kind == "dip" for t in res["ch1"].treatments)
+    assert not any(t.kind == "dip" for t in res["ch1"].treatments)  # the stack's sound never flicks
     assert [t.kind for t in res["beat"].treatments] == ["carve"]
     assert res["ch0"].space and res["ch1"].space  # both voices got Eden's sends
     assert out.reverb_lu <= -16.0 + 0.1

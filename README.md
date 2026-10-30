@@ -4,7 +4,7 @@ Assistant de mixage automatique de voix rap pour projets **FL Studio**.
 Objectif : sélectionner un projet `.flp`, laisser Eden analyser et mixer, écouter,
 ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 
-## État actuel (v1.3.1)
+## État actuel (v1.3.2)
 
 | Phase | État |
 |---|---|
@@ -42,7 +42,8 @@ Enfin, **Eden mixe et masterise** : tonalité et tempo du morceau, notes du 808,
 vocale complète (respirations baissées avant tout, comme le font DeBreath et Breath Control,
 coupe-bas réglé sur la note la plus grave, résonances, de-esser en deux
 passes, compression en deux étages puis parallèle, saturation, air ou recul des aigus),
-niveau de la voix suivi phrase par phrase au-dessus de l'instru, espace (ambiance, plate,
+niveau d'un seul bus voix suivi phrase par phrase au-dessus de l'instru (ton équilibre entre
+voix jamais changé : une voix qui couvre est baissée, aucune n'est montée), espace (ambiance, plate,
 delay sur le tempo, jet d'écho en fin de phrase) seulement pour les voix qui n'en ont pas,
 placement stéréo des doublages, chœurs et ad-libs, place pour les paroles dans l'instru,
 kick / 808, puis un master fort et propre pour les plateformes (−9 LUFS, crête réelle à
