@@ -35,9 +35,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
-from scipy.signal import find_peaks, get_window
+from scipy.signal import get_window
 
-from eden.mix import dsp, stereo
+from eden.mix import dsp, lowend, stereo
 from eden.mix.limiter import gain_for, limit
 from eden.mix.loudness import (integrated_loudness, loudness_range, sample_peak_db,
                                short_term_loudness, true_peak_db)
@@ -59,6 +59,9 @@ EVENT_BLOCKS = 3  # (30 ms: a click is shorter)
 REAL_PASSES = 3  # full oversampled passes of the gain search (one more only if the last went over budget)
 CLIP_DBFS = -1.0  # soft clipper knee region ends here (samples), before the limiter
 LOW_HZ = 100.0
+NOTE_STEP_DB = 3.0  # a low-band note starts where the envelope moves this much...
+NOTE_STEP_MS = 30  # ...within this time (1 ms frames)
+NOTE_HEAD_MS = 80  # its level: the highest point of its first 80 ms
 PLATFORMS = {  # reference loudness (LUFS) of the playback normalisation
     "Spotify": -14.0, "Apple Music": -16.0, "YouTube": -14.0, "Deezer": -15.0,
     "TIDAL": -14.0, "Amazon Music": -14.0, "SoundCloud": -14.0,
@@ -332,17 +335,74 @@ def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float
     return out, gain, red, got, capped and got < goal - 0.2
 
 
+def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    """(first, end) of each run of True in ``mask``."""
+    edges = np.diff(np.concatenate([[0], mask.astype(np.int8), [0]]))
+    return list(zip(np.flatnonzero(edges == 1).tolist(), np.flatnonzero(edges == -1).tolist(),
+                    strict=True))
+
+
 def _note_peaks_db(low: np.ndarray, fs: float) -> np.ndarray:
-    """Peak level of each low-band note: on the 25 ms RMS envelope (no waveform ripple), the
-    peaks that stand at least 6 dB above the envelope around them, at least 120 ms apart,
-    within 30 dB of the loudest. A note's own decay is not a difference between notes."""
-    ms, _ = dsp._frames(low, fs)
+    """Head level of each low-band note: the highest point of its first ``NOTE_HEAD_MS`` on the
+    25 ms RMS envelope (1 ms frames, no waveform ripple). A note's own decay is not a
+    difference between notes.
+
+    A note is what the 808 plays, read from its level and its pitch (``lowend.track_bass``).
+    It starts where the envelope, within 30 dB of its loudest, rises ``NOTE_STEP_DB`` within
+    ``NOTE_STEP_MS`` (an attack: a new note, or the same pitch played again), or where it drops
+    as much between two stretches that each hold within 1.5 dB over 80 ms (a quieter note played
+    legato, starting where the drop ends). A change of pitch without either (a slide, a legato
+    note) goes on with the note: it has no head of its own, only the note's decay. A note counts
+    only where the tracker reads a pitch (from 100 ms after the start at the latest) and the
+    head, from 20 to 100 ms, repeats at that pitch's period (``lowend.periodicity`` ≥ 0.9): a
+    kick's pitch falls. An attack also has to stand 1 dB above the highest level of the 100 to
+    30 ms before it (climbing back after a dip is not a new note), one per 100 ms, lose at
+    most 4.5 dB in the 100 ms after its peak (a kick dies faster than an 808), and 150 ms after
+    its peak still stand 1.5 dB above the decay the envelope followed before it (a line fitted
+    on those 100 to 30 ms, carried on): a new note lifts the level for good, a kick landing on
+    a note's tail only for a moment. An attack that fails is taken for a hit (a kick, most
+    often): what moves in the next 250 ms is its tail beating against the 808, not a note."""
+    ms, size = dsp._frames(low, fs)
     if ms.size < 300:
         return np.zeros(0)
+    frame_s = size / fs  # a frame is a whole number of samples: 44 at 44.1 kHz, not quite 1 ms
     env = 10 * np.log10(np.maximum(np.convolve(ms, np.ones(25) / 25, mode="same"), 1e-20))
-    at, _ = find_peaks(env, prominence=6.0, distance=120)
-    peaks = env[at]
-    return peaks[peaks > peaks.max() - 30.0] if peaks.size else peaks
+    step = np.zeros(env.size)
+    step[NOTE_STEP_MS:] = env[NOTE_STEP_MS:] - env[:-NOTE_STEP_MS]
+    loud = env > env.max() - 30.0
+    rises: list[int] = []
+    for first, _ in _runs((step >= NOTE_STEP_DB) & loud):
+        if not rises or first - rises[-1] >= 100:
+            rises.append(first)
+    events = [(first, "attack") for first in rises]
+    for first, end in _runs((step <= -NOTE_STEP_DB) & loud):
+        before, after = env[max(first - NOTE_STEP_MS - 80, 0):first - NOTE_STEP_MS], env[end:end + 80]
+        if (before.size == after.size == 80 and np.ptp(before) <= 1.5 and np.ptp(after) <= 1.5
+                and not any(end <= r < end + NOTE_HEAD_MS for r in rises)):
+            events.append((end, "drop"))
+    pitches = lowend.track_bass(low, fs)
+    mono, lfs = lowend._low_mono(low, fs)
+    heads = []
+    hit = -1000
+    for first, kind in sorted(events):
+        if first < 100 or first + NOTE_HEAD_MS + 150 > env.size or first - hit < 250:
+            continue
+        pitch = next((p for p in pitches if p.start_s - 0.1 <= first * frame_s < p.end_s), None)
+        head = env[first:first + NOTE_HEAD_MS]
+        peak = first + int(np.argmax(head))
+        counted = (pitch is not None
+                   and lowend.periodicity(mono, lfs, (first + 20) * frame_s, 0.08, pitch.f0_hz) >= 0.9)
+        if kind == "attack":
+            before = env[first - 100:first - NOTE_STEP_MS]
+            slope, start = np.polyfit(np.arange(before.size), before, 1)
+            decay = start + min(slope, 0.0) * (peak + 150 - (first - 100))  # the decay before, carried on
+            counted = (counted and head.max() - before.max() >= 1.0 and env[peak] - env[peak + 100] <= 4.5
+                       and env[peak + 150] - decay >= 1.5)
+        if counted:
+            heads.append(float(head.max()))
+        elif kind == "attack":
+            hit = first
+    return np.array(heads)
 
 
 def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
@@ -387,15 +447,19 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
     del low, high
 
     # glue: slow, light bus compression with a release on the felt beat; the threshold sits 4 dB
-    # under the loud passages and only the ratio follows the intensity (1.5 dB of reduction at 100 %)
+    # under the loud passages (P90) and only the ratio follows the intensity (1.5 dB of reduction
+    # at that level at 100 %). The level is read as the compressor's detector reads it (5 ms
+    # smoothing): raw 1 ms frames ripple within each cycle and would set the threshold elsewhere
     quarter = felt_quarter(tempo_bpm) if tempo_bpm else 0.5
-    level, _ = dsp.band_levels_db(y, fs)
+    power, _ = dsp.detector_power(y, fs)
+    level = 10 * np.log10(np.maximum(power, 1e-20))
     loud = level[level > -80.0]
     if loud.size:
         ratio = 1 + 0.6 * k
         t = Treatment("compressor", f"Compression de bus {ratio:.2f}:1",
-                      f"Cohésion : environ {4 * (1 - 1 / ratio):.1f} dB sur les passages forts, relâchement sur "
-                      f"le temps ({quarter * 1000:.0f} ms)",
+                      f"Cohésion : seuil 4 dB sous les passages forts, soit {4 * (1 - 1 / ratio):.1f} dB de "
+                      "réduction à leur niveau (courbe du compresseur) ; relâchement sur le temps "
+                      f"({quarter * 1000:.0f} ms)",
                       {"threshold_db": float(np.percentile(loud, 90)) - 4.0, "ratio": ratio,
                        "attack_ms": 30.0, "release_ms": quarter * 1000, "max_reduction_db": 3.0})
         y = apply(y, fs, [t])

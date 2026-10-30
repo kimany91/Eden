@@ -145,31 +145,65 @@ def track_bass(x: np.ndarray, fs: float, fmin: float = 25.0, fmax: float = 150.0
     return notes
 
 
+def periodicity(mono: np.ndarray, lfs: float, start_s: float, length_s: float, f0: float) -> float:
+    """How exactly ``mono`` (``_low_mono``'s output) repeats at the period of ``f0``, within a
+    quarter tone, from ``start_s`` for ``length_s``: the normalised square difference function
+    at that lag, as in ``track_bass`` (1: a steady note; a kick, whose pitch falls, repeats far
+    less). −1 when the stretch is shorter than two periods."""
+    seg = mono[max(int(start_s * lfs), 0):int((start_s + length_s) * lfs)]
+    lag = lfs / f0
+    best = -1.0
+    for tau in range(int(lag * 2 ** (-1 / 24)), int(math.ceil(lag * 2 ** (1 / 24))) + 1):
+        if 0 < tau <= seg.size // 2:
+            head, tail = seg[:-tau], seg[tau:]
+            energy = float(np.sum(head * head + tail * tail))
+            if energy > 0:
+                best = max(best, 2 * float(np.sum(head * tail)) / energy)
+    return best
+
+
+def _low_power(x: np.ndarray, fs: float, cutoff: float) -> np.ndarray:
+    """Power of the band below ``cutoff`` (zero-phase filter) per 1 ms frame."""
+    low = sosfiltfilt(butter(4, cutoff, fs=fs, output="sos"), x, axis=0)
+    return dsp._frames(low, fs)[0]
+
+
+def _centred_db(ms: np.ndarray) -> np.ndarray:
+    """Power per 1 ms frame averaged over the 20 ms around each frame (one sub-bass cycle), in dB."""
+    return 10 * np.log10(np.maximum(np.convolve(ms, np.ones(20) / 20, mode="same"), 1e-20))
+
+
 def _low_envelope_db(x: np.ndarray, fs: float, cutoff: float) -> np.ndarray:
     """Level of the band below ``cutoff`` per 1 ms frame, averaged over 20 ms (one sub-bass cycle)."""
-    low = sosfiltfilt(butter(4, cutoff, fs=fs, output="sos"), x, axis=0)
-    ms, _ = dsp._frames(low, fs)
-    if ms.size < 20:
-        return np.zeros(0)
-    smooth = np.convolve(ms, np.ones(20) / 20, mode="same")
-    return 10 * np.log10(np.maximum(smooth, 1e-20))
+    ms = _low_power(x, fs, cutoff)
+    return _centred_db(ms) if ms.size >= 20 else np.zeros(0)
 
 
 def _onsets(x: np.ndarray, fs: float, low_hz: float = 150.0) -> np.ndarray:
-    """Kick hits: frames where the drums' low band rises by 4 dB within 20 ms up to within
-    12 dB of its loudest hits (ghost kicks, and kicks landing on the previous kick's tail),
-    at least 60 ms apart (double kicks too)."""
-    level = _low_envelope_db(x, fs, low_hz)
-    if level.size < 30:
+    """Kick hits: where the drums' low band rises by 4 dB within 20 ms up to within 12 dB of
+    its loudest hits (ghost kicks, and kicks landing on the previous kick's tail), at least
+    60 ms apart (double kicks too).
+
+    The rise is read on the centred 20 ms average, which already climbs up to 10 ms before
+    the kick: each hit is then set on the kick's onset, the first 1 ms frame from 10 ms
+    before to 10 ms after that stands 4 dB above the 20 ms before it and within 10 dB of
+    the hit's level (the filter's faint ringing before the attack does not count)."""
+    ms = _low_power(x, fs, low_hz)
+    if ms.size < 30:
         return np.zeros(0, dtype=int)
+    level = _centred_db(ms)
     loud = float(np.percentile(level, 99)) - 12.0
     rise = level[20:] - level[:-20]
+    before = np.convolve(ms, np.ones(20) / 20)[:ms.size]  # mean of each frame and the 19 before it
     hits = []
     last = -1000
     for i in np.flatnonzero((rise > 4.0) & (level[20:] > loud)):
         if i + 20 - last >= 60:
-            hits.append(i + 20)
             last = i + 20
+            span = np.arange(max(last - 10, 1), min(last + 11, ms.size))
+            hit = ms[last - 10:last + 30].mean()
+            onset = span[(ms[span] > 10 ** 0.4 * before[span - 1]) & (ms[span] > 0.1 * hit)]
+            hits.append(int(onset[0]) if onset.size else last)
     return np.array(hits, dtype=int)
 
 
