@@ -5,7 +5,8 @@ Pipeline (each step reports real progress through ``on_step``):
     2. parse the event stream
     3. locate referenced audio files and read their headers
     4. follow the mixer routing of each source and list existing effects
-    5. guess the role of each source
+    5. guess the role of each source: listen to its file (a voice or an instrument, whatever its name),
+       read its names, and place the voices whose names say nothing on the song's timeline
     6. verify the project file was not modified meanwhile
 """
 
@@ -22,6 +23,7 @@ from eden import __version__
 from eden.flp.events import FlpFormatError
 from eden.flp.parser import parse_bytes
 from eden.project.classify import RoleGuess, guess_role
+from eden.project.listen import Heard, listen
 from eden.project.model import MASTER_INSERT, FlpProject, to_jsonable
 from eden.project.plugins import categorize
 from eden.project.sources import FileIndex, SearchRoots, SourceFile, resolve_source
@@ -48,6 +50,8 @@ SPACE_INSERT_NAME = re.compile(r"verb|delay|[eé]cho|space", re.IGNORECASE)
 
 
 COMPLETE_BEAT_SHARE = 0.8  # of the song's length
+LAYER_SHARE = 0.5  # of a voice's time in the song under other voices: it is laid over them
+SPARSE_SHARE = 0.35  # of its file sounding: a voice laid over others that speaks this little is ad-libs
 
 
 def _complete_beat(sources: list[SourceAnalysis], project_end: float | None) -> None:
@@ -74,6 +78,47 @@ def _complete_beat(sources: list[SourceAnalysis], project_end: float | None) -> 
     if beat.role.role not in ("beat", "unknown"):
         reason += f" (son nom faisait penser à « {beat.role.label} »)"
     beat.role = RoleGuess("beat", "haute", [*beat.role.reasons, reason], beat.role.scores)
+
+
+def _intervals(clips: list) -> list[tuple[float, float]]:
+    """Where a channel plays in the song (seconds), its clips' overlaps merged."""
+    spans = sorted((c.start_seconds, c.start_seconds + c.length_seconds) for c in clips
+                   if c.start_seconds is not None and c.length_seconds)
+    merged: list[tuple[float, float]] = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _shared(a: list[tuple[float, float]], b: list[tuple[float, float]]) -> float:
+    return sum(max(0.0, min(e1, e2) - max(s1, s2)) for s1, e1 in a for s2, e2 in b)
+
+
+def _voice_roles(sources: list[SourceAnalysis], clips_by_channel: dict[int, list]) -> None:
+    """The role of the voices whose names say nothing of it (heard as voices, or named only "voix"), from
+    where they sit in the song. A take no other voice plays under is the lead: a song's lead takes follow
+    one another. One laid over other voices is ad-libs when it speaks little, backs when it is full,
+    unless it speaks more than each of them: then it is the lead, laid under the others."""
+    voices = [s for s in sources if s.role.is_vocal]
+    spans = {s.channel: _intervals(clips_by_channel.get(s.channel, [])) for s in voices}
+    for s in voices:
+        length = sum(e - b for b, e in spans[s.channel])
+        if s.role.role != "vocal" or s.heard is None or not length:
+            continue
+        under = [o for o in voices if o is not s and _shared(spans[s.channel], spans[o.channel]) > 0]
+        share = max((_shared(spans[s.channel], spans[o.channel]) for o in under), default=0.0) / length
+        if share < LAYER_SHARE:
+            role, why = "lead_vocal", "Aucune autre voix sous elle dans le morceau : la voix principale"
+        elif all(s.heard.active_seconds >= (o.heard.active_seconds if o.heard else 0.0) for o in under):
+            role, why = "lead_vocal", "Celle qui chante le plus parmi les voix posées au même endroit : la principale"
+        elif s.heard.active_share < SPARSE_SHARE:
+            role, why = "adlib", "Posée sur une autre voix, et parle peu : des ad-libs"
+        else:
+            role, why = "back_vocal", "Posée sur une autre voix, et pleine : des backs"
+        s.role = RoleGuess(role, "moyenne", [*s.role.reasons, why], s.role.scores)
 
 
 class InspectionError(RuntimeError):
@@ -115,6 +160,7 @@ class SourceAnalysis:
     last_seconds: float | None
     sample: SourceFile | None = None
     plugin: str | None = None
+    heard: Heard | None = None  # what its file sounds like
 
     @property
     def space_effects(self) -> list[ExistingEffect]:
@@ -323,12 +369,14 @@ def inspect_project(
             names.append(("Piste de playlist", tname))
         if sample is not None:
             names.append(("Fichier", Path(sample.stored_path.replace("\\", "/")).stem))
+        heard = listen(sample.resolved_path) if sample and sample.resolved_path else None
         role = guess_role(
             names,
             sample_path=ch.sample_path,
             channels=sample.audio.channels if sample and sample.audio else None,
             duration_s=sample.audio.duration_s if sample and sample.audio else None,
             project_duration_s=project_end,
+            heard=heard,
         )
         if ch.kind == "instrument" and role.role == "unknown":
             role.role = "music"
@@ -350,8 +398,10 @@ def inspect_project(
             ),
             sample=sample,
             plugin=ch.plugin.label if ch.plugin else None,
+            heard=heard,
         ))
     _complete_beat(sources, project_end)
+    _voice_roles(sources, clips_by_channel)
     master_effects = _effects_on(project, [MASTER_INSERT])
 
     for ins in project.inserts:  # categorize remaining slots for the report
@@ -359,10 +409,8 @@ def inspect_project(
             slot.plugin.category = categorize(slot.plugin)
 
     if not any(s.role.is_vocal for s in sources):
-        warnings.append(
-            "Aucune piste n'a été reconnue comme voix : renomme tes pistes de voix dans FL Studio "
-            "(« Lead », « Double », « Backs », « Ad-lib »…) puis relance l'analyse."
-        )
+        warnings.append("Aucune voix trouvée : aucun fichier audio du projet ne sonne comme une voix "
+                        "enregistrée, et aucun nom de piste n'en indique une")
     missing = [s for s in sources if s.sample and s.sample.status == "missing" and not s.sample.is_factory]
     for s in missing:
         warnings.append(f"Fichier audio introuvable pour « {s.label} » : {s.sample.stored_path}")

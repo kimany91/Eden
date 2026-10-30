@@ -4,7 +4,7 @@ Assistant de mixage automatique de voix rap pour projets **FL Studio**.
 Objectif : sélectionner un projet `.flp`, laisser Eden analyser et mixer, écouter,
 ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 
-## État actuel (v1.2.6)
+## État actuel (v1.2.7)
 
 | Phase | État |
 |---|---|

@@ -175,8 +175,8 @@ def test_no_voice_recognised_tells_the_real_way_out(tmp_path):
                               [Insert(routes=()), Insert(name="Insert 1")], [Clip(1, 0, 96, channel=0)]))
     report = inspect_project(flp, roots=SearchRoots())
     assert not report.vocal_sources
-    assert ("Aucune piste n'a été reconnue comme voix : renomme tes pistes de voix dans FL Studio "
-            "(« Lead », « Double », « Backs », « Ad-lib »…) puis relance l'analyse.") in report.warnings
+    assert ("Aucune voix trouvée : aucun fichier audio du projet ne sonne comme une voix enregistrée, et aucun "
+            "nom de piste n'en indique une") in report.warnings
     assert not any("manuellement" in w for w in report.warnings)
     analysis_page = (SRC / "gui" / "qml" / "AnalysisPage.qml").read_text(encoding="utf-8")
     assert "Aucune voix reconnue" not in analysis_page  # the warning above is the only message

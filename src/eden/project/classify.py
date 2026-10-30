@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from eden.project.listen import Heard
+
 ROLE_LABELS_FR = {
     "lead_vocal": "Voix principale",
     "double": "Doublage",
@@ -80,8 +82,11 @@ def guess_role(
     channels: int | None = None,
     duration_s: float | None = None,
     project_duration_s: float | None = None,
+    heard: Heard | None = None,
 ) -> RoleGuess:
-    """``names`` is a list of (origin, text), e.g. ("Insert", "Voix lead")."""
+    """``names`` is a list of (origin, text), e.g. ("Insert", "Voix lead"). What the file sounds like
+    (``heard``), when it is clear, says whether it is a voice, whatever its names: they then only say
+    which voice or which instrument."""
     scores: dict[str, int] = {}
     reasons: list[str] = []
     recorded = False
@@ -113,6 +118,8 @@ def guess_role(
         scores["vocal"] += 1
         reasons.append("Fichier mono (typique d'une prise de voix)")
 
+    if heard is not None and heard.kind != "unsure":
+        return _as_heard(heard, scores, reasons, channels, duration_s, project_duration_s)
     if not scores:
         return RoleGuess(reasons=["Aucun indice exploitable dans les noms ou le fichier"])
 
@@ -137,3 +144,24 @@ def guess_role(
     else:
         confidence = "faible"
     return RoleGuess(role=role, confidence=confidence, reasons=reasons, scores=scores)
+
+
+def _as_heard(heard: Heard, scores: dict[str, int], reasons: list[str], channels: int | None,
+              duration_s: float | None, project_duration_s: float | None) -> RoleGuess:
+    """The family the file sounds like (voice or instrument), the role within it its names give."""
+    voice = heard.kind == "voice"
+    family = {r: s for r, s in scores.items() if (r in VOCAL_ROLES) == voice}
+    if voice:
+        specific = {r: s for r, s in family.items() if r != "vocal"}
+        role = max(specific, key=specific.get) if specific else "vocal"
+    elif family:
+        role = max(family, key=family.get)
+    elif channels == 2 and duration_s and project_duration_s and duration_s >= 0.8 * project_duration_s:
+        role = "beat"
+    else:
+        role = "bass" if heard.sub_share >= 0.4 else "music"
+    reasons = [*reasons, heard.reason]
+    if any((r in VOCAL_ROLES) != voice for r in scores):
+        reasons.append("le son l'emporte sur le nom")
+    return RoleGuess(role, "haute" if family else "moyenne", reasons, scores)
+

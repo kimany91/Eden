@@ -21,15 +21,27 @@ from test_render import BAR, make_session, sim_renderer
 SONG_S = 40.0  # bars of 2 s at 120 BPM
 
 
+def _sound(rng, seconds, stereo, kind):
+    """A take of a voice (mono, or bounced in stereo, both sides the same; pauses between its phrases), a beat
+    (stereo, low end, never stops) or an 808 (low end only)."""
+    t = np.arange(int(seconds * 22050)) / 22050
+    if kind == "voice":
+        mono = 0.2 * rng.standard_normal(t.size) * np.clip(np.sin(2 * np.pi * 3 * t), 0, None)
+        return np.stack([mono, 0.9 * mono], axis=1) if stereo else mono
+    low = 0.3 * np.sin(2 * np.pi * 50 * t)
+    if kind == "808":
+        return np.stack([low, low], axis=1) if stereo else low
+    sides = [low + 0.1 * rng.standard_normal(t.size) for _ in range(2 if stereo else 1)]
+    return np.stack(sides, axis=1) if stereo else sides[0]
+
+
 def _project(folder, sources):
-    """A project of (channel name, seconds, stereo) audio files, each played from the start."""
+    """A project of (channel name, seconds, stereo, sound) audio files, each played from the start."""
     folder.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(3)
     channels, clips = [], []
-    for i, (name, seconds, stereo) in enumerate(sources):
-        t = np.arange(int(seconds * 22050)) / 22050
-        mono = 0.2 * rng.standard_normal(t.size) * np.clip(np.sin(2 * np.pi * 3 * t), 0, None)
-        sf.write(folder / f"{name}.wav", np.stack([mono, 0.9 * mono], axis=1) if stereo else mono, 22050)
+    for i, (name, seconds, stereo, kind) in enumerate(sources):
+        sf.write(folder / f"{name}.wav", _sound(rng, seconds, stereo, kind), 22050)
         channels.append(Chan(name, insert=0, sample_path=str(folder / f"{name}.wav")))
         clips.append(Clip(i + 1, 0, BAR * max(1, int(seconds / 2)), channel=i))
     flp = folder / "Mon son.flp"
@@ -37,26 +49,27 @@ def _project(folder, sources):
     return {s.label: s.role for s in inspect_project(flp, roots=SearchRoots(), archive_report=False).sources}
 
 
-VOICES = [("Lead", SONG_S, False), ("Adlib", SONG_S / 2, False)]
+VOICES = [("Lead", SONG_S, False, "voice"), ("Adlib", SONG_S / 2, False, "voice")]
 
 
 @pytest.mark.parametrize("name", ["UK Drill - Hats & Percs", "Dark 808 Melody", "Kick Back", "y2mate.com - LEGEND",
                                   "Freeze Corleone Type Beat - HATS (Prod. Kosei)"])
 def test_a_beat_downloaded_whole_is_the_complete_beat_whatever_its_name(tmp_path, name):
-    roles = _project(tmp_path, [*VOICES, (name, SONG_S, True)])
+    roles = _project(tmp_path, [*VOICES, (name, SONG_S, True, "beat")])
     assert roles[name].role == "beat" and roles[name].confidence == "haute", roles[name].reasons
     assert roles["Lead"].is_vocal and roles["Adlib"].is_vocal
 
 
 def test_stems_keep_what_their_names_say(tmp_path):
     # one file per instrument, each as long as the song: the names tell them apart
-    roles = _project(tmp_path, [*VOICES, ("Hats", SONG_S, True), ("808", SONG_S, True)])
+    roles = _project(tmp_path, [*VOICES, ("Hats", SONG_S, True, "beat"), ("808", SONG_S, True, "808")])
     assert roles["Hats"].role == "drums" and roles["808"].role == "bass"
 
 
 def test_a_long_stereo_voice_stays_a_voice_beside_a_beat_of_its_own(tmp_path):
     # the voice bounced in stereo over the whole song, and the beat made of samples: the voice stays one
-    roles = _project(tmp_path, [("Lead", SONG_S, True), ("Kick", 1.0, False), ("Snare", 1.0, False)])
+    roles = _project(tmp_path, [("Lead", SONG_S, True, "voice"), ("Kick", 1.0, False, "beat"),
+                                ("Snare", 1.0, False, "beat")])
     assert roles["Lead"].role == "lead_vocal" and roles["Kick"].role == "drums"
 
 

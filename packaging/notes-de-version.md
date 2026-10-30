@@ -1,12 +1,24 @@
-Eden 1.2.6 : tes prises de voix reconnues, et un export WAV en 16 bits ne bloque plus la vérification.
+Eden 1.2.7 : Eden écoute tes pistes pour savoir lesquelles sont des voix, quel que soit leur nom.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.6.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.2.7.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Nouveau dans 1.2.7
+
+- **Les noms de tes pistes ne comptent plus pour savoir si c'est une voix** : chacun nomme ses
+  pistes à sa façon. Eden écoute chaque fichier : une voix enregistrée au micro est mono (ou ses
+  deux côtés sont pareils), n'a presque rien sous 90 Hz (ni kick ni 808) et s'arrête entre ses
+  phrases ; un instrument a des basses, ou est stéréo et ne s'arrête jamais. Le nom ne sert plus
+  qu'à dire quelle voix (lead, ad-lib…) ou quel instrument, quand il le dit.
+- **Le rôle des voix aux noms quelconques** vient de leur place dans le morceau : une prise
+  qu'aucune autre voix ne recouvre est la voix principale (les prises du lead se suivent) ; une
+  prise posée sur une autre voix est des ad-libs si elle parle peu, des backs si elle est pleine.
+- Plus de message te demandant de renommer tes pistes.
 
 ## Corrigé dans 1.2.6
 
@@ -98,4 +110,4 @@ Eden 1.2.6 : tes prises de voix reconnues, et un export WAV en 16 bits ne bloque
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.6/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.7/docs/mixage.md).

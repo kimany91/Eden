@@ -222,8 +222,9 @@ Règles :
 Eden/
 ├── src/eden/
 │   ├── flp/            lecteur du format .flp (événements, identifiants, parseur)
-│   ├── project/        modèle, sources audio, catégories de plugins, rôles, inspection,
-│   │                   projets du dossier choisi (accueil)
+│   ├── project/        modèle, sources audio, catégories de plugins, rôles (écoute des
+│   │                   fichiers : voix ou instrument), inspection, projets du dossier
+│   │                   choisi (accueil)
 │   ├── gui/            interface PySide6
 │   ├── safety.py       protection du projet original, espace de travail
 │   ├── report.py       rapport lisible en français
@@ -289,7 +290,7 @@ essentia (AGPL-3), Rubber Band (GPL ou licence commerciale payante).
 | Rendu automatique par ligne de commande non disponible / incomplet | rendu manuel nécessaire | mode d'export guidé + vérification automatique des fichiers |
 | Stems qui ne se resomment pas exactement (bus, sidechain, effets aléatoires, envois parallèles) | son différent de l'original | null test obligatoire, analyse du graphe de routage, rapport clair |
 | Effets temporels coupés en fin de clip (reverb/delay) | queues tronquées | rendu FL avec queues (option « leave remainder »), vérification de la fin |
-| Mauvaise identification des voix | mauvais traitement | rôles avec raisons et confiance ; pas encore de correction manuelle : renommer la piste dans FL Studio puis relancer l'analyse |
+| Mauvaise identification des voix | mauvais traitement | voix ou instrument décidé à l'écoute du fichier (mono, rien sous 90 Hz, des pauses : une voix), le nom ne disant que laquelle ; rôle des voix aux noms quelconques d'après leur place dans le morceau (prise que rien ne recouvre : la principale) ; raisons et confiance affichées |
 | Qualité du DSP « maison » | son moins bon qu'avec des plugins pros | métriques + écoutes comparatives, bascule vers un module C++ si nécessaire |
 | Performances Python sur des titres longs | lenteur | numpy vectorisé, numba, C++ ciblé |
 | Mises à jour depuis un dépôt privé | l'application ne peut pas télécharger les versions | dépôt public de releases ou jeton (voir `mises-a-jour.md`) |
