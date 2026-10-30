@@ -93,14 +93,15 @@ bus). Deux modes :
   ferme sans fichier). La copie est effacée dès que FL l'a rendue, et une copie identique à
   une autre réutilise son rendu au lieu de relancer FL.
 - Il lance FL Studio en ligne de commande (`FL64.exe /R ...`, syntaxe rapportée par des
-  utilisateurs) et récupère les WAV produits. **Une seule ouverture de FL pour toutes les
-  copies** : elles sont posées dans un dossier que FL rend d'un coup (`/F<dossier>`, rendu
-  d'un dossier décrit dans le manuel d'Image-Line) ; deux FL côte à côte seulement sur un PC
-  qui a la place (8 cœurs logiques et 4 Go libres), toujours en priorité basse pour que le
-  PC ne rame pas. Chaque WAV est reconnu au nom de sa copie et pris dès que FL passe à la
-  suivante ; une copie restée sans WAV (FL refuse un deuxième FL, le rendu de dossier ne
-  marche pas sur ce PC, un message l'a arrêté) est rendue seule. Ce qui marche sur le PC
-  est retenu dans les réglages.
+  utilisateurs) et récupère les WAV produits. **Plusieurs FL en même temps**, chacun sur
+  une copie : un FL pour 2 cœurs logiques et pour 1,5 Go de mémoire libre une fois 2 Go
+  laissés au reste, 8 au plus, toujours en priorité basse pour que le PC ne rame pas (choix
+  d'Eden). Chaque WAV est pris dès que son FL a fini ; un FL qui reste ouvert une fois son
+  fichier écrit (en-tête complet, taille inchangée pendant 20 s) est fermé par Eden. Une
+  copie restée sans WAV (FL refuse un deuxième FL, un message l'a arrêté) est rendue seule ;
+  si FL refuse de tourner à plusieurs sur ce PC, c'est retenu dans les réglages. (La 1.2.4
+  faisait rendre toutes les copies par un seul FL, rendu d'un dossier `/F` : sur FL 2026 ça
+  prenait des heures, ce mode a été retiré.)
 - Les fichiers d'une même piste du Mixer avec le même rôle (les couplets du lead, les
   ad-libs…) sont une seule voix, rendue en une fois : ils passent ensemble dans les effets
   de la piste, comme dans le morceau. Ils ne sont pas redécoupés fichier par fichier : la

@@ -18,9 +18,8 @@ class Settings:
     render_timeout_s: float = 900.0
     null_test_threshold_db: float = -60.0
     projects_folder: str | None = None  # where the user saves FL projects; FL's own folder when empty
-    # how FL Studio renders several copies on this PC, learned from the renders (None until tried)
-    render_side_by_side: bool | None = None  # several FL Studios at once
-    render_folders: bool | None = None  # one FL Studio rendering a whole folder of copies in one launch
+    # whether several FL Studios render at once on this PC, learned from the renders (None until tried)
+    render_side_by_side: bool | None = None
 
 
 def settings_path() -> Path:

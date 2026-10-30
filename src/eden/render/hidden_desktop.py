@@ -5,6 +5,7 @@ program a desktop of its own: its windows exist and work, they are just never on
 there. What it cannot do there is ask the user something: a message (a plugin missing, a file to
 find...) would wait unseen until the timeout. So the hidden desktop is watched: a message window that
 stays while no render file grows is read (title and text), FL is closed, and Eden says what FL asked.
+FL is closed too once the caller says its work is done (its WAV written, FL still open).
 """
 
 from __future__ import annotations
@@ -36,9 +37,10 @@ class Unavailable(OSError):
 
 @dataclass
 class HiddenRun:
-    returncode: int | None  # None when FL was closed (timeout, or a message waiting for an answer)
+    returncode: int | None  # None when FL was closed (timeout, a message waiting for an answer, work done)
     timed_out: bool
     dialog: str | None  # what FL was asking when it was closed
+    done: bool = False  # closed because its work was done
 
 
 def available() -> bool:
@@ -112,9 +114,11 @@ def _dialog(api: SimpleNamespace, desktop) -> str | None:
     return " — ".join(t for t in found if t) or ("(sans texte)" if found else None)
 
 
-def run_hidden(args: list[str], cwd: Path, timeout_s: float, progress: Callable[[], object]) -> HiddenRun:
-    """Run ``args`` on a desktop never shown, until it ends, ``timeout_s`` passes, or a message stays
-    ``DIALOG_PATIENCE_S`` while ``progress()`` (what the run has produced so far) does not change."""
+def run_hidden(args: list[str], cwd: Path, timeout_s: float, progress: Callable[[], object],
+               done: Callable[[], bool] = lambda: False) -> HiddenRun:
+    """Run ``args`` on a desktop never shown, until it ends, ``timeout_s`` passes, ``done()`` says its work is
+    done, or a message stays ``DIALOG_PATIENCE_S`` while ``progress()`` (what the run has produced so far)
+    does not change."""
     api = _api()
     name = f"Eden-{os.getpid()}-{next(_desktop_numbers)}"
     desktop = api.user32.CreateDesktopW(name, None, None, 0, GENERIC_ALL, None)
@@ -131,18 +135,21 @@ def run_hidden(args: list[str], cwd: Path, timeout_s: float, progress: Callable[
             raise OSError(ctypes.get_last_error(), "CreateProcessW")
         api.kernel32.CloseHandle(proc.hThread)
         try:
-            return _watch(api, desktop, proc.hProcess, timeout_s, progress)
+            return _watch(api, desktop, proc.hProcess, timeout_s, progress, done)
         finally:
             api.kernel32.CloseHandle(proc.hProcess)
     finally:
         api.user32.CloseDesktop(desktop)
 
 
-def _watch(api: SimpleNamespace, desktop, process, timeout_s: float, progress: Callable[[], object]) -> HiddenRun:
+def _watch(api: SimpleNamespace, desktop, process, timeout_s: float, progress: Callable[[], object],
+           done: Callable[[], bool]) -> HiddenRun:
     deadline = time.monotonic() + timeout_s
     asking_since, produced = None, None
     while api.kernel32.WaitForSingleObject(process, int(POLL_S * 1000)) != WAIT_OBJECT_0:
         now = time.monotonic()
+        if done():
+            return _close(api, process, HiddenRun(None, False, None, done=True))
         if now >= deadline:
             return _close(api, process, HiddenRun(None, True, None))
         asking = _dialog(api, desktop)

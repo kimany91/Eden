@@ -8,8 +8,10 @@ a file). Kinds of jobs:
 * ``original``  – the project as it is (what the user hears in FL Studio);
 * ``premaster`` – same, Master effects bypassed: reference of the null test;
 * ``stem``      – one top-level group (an insert routed straight to the
-  Master with everything feeding it, or a channel playing directly into the
-  Master): every other channel is muted, and the sends of the group's
+  Master with everything feeding it, a channel playing directly into the
+  Master, or all the voices doing so, together: they may share effects Eden
+  cannot see in the project, which hear them together, so rendered apart
+  they would not sum back to the song): every other channel is muted, and the sends of the group's
   inserts that bypass it are cut, so their sum equals ``premaster``: each
   source is counted once, bus processing is kept, Master effects are left to
   Eden's finishing;
@@ -25,7 +27,11 @@ a file). Kinds of jobs:
   can be removed; otherwise a note says why. Auto-Tune and every other
   effect stay. ``vocal`` minus ``vocal_dry`` is what those effects add, so
   Eden can process the dry voice like a mix engineer does and put the
-  user's effects back untouched.
+  user's effects back untouched;
+* ``rest``      – the channels the playlist reads as playing nowhere, alone: they
+  are muted in every other copy, so should one play after all, the sum still
+  holds it. A check only: it is no part of the mix (what it holds stays in
+  what Eden leaves untouched).
 """
 
 from __future__ import annotations
@@ -192,10 +198,10 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
 
     source_channels = sorted(s.channel for s in sources)
     voices = _voices(project, [s for s in sources if s.role.is_vocal])
-    # played straight into the Master: each source a stem of its own, a voice of several files one stem
+    # played straight into the Master: each source a stem of its own, the voices all in one
+    direct_voices = [s for s in sources if s.insert in (None, MASTER_INSERT) and s.role.is_vocal]
     direct = sorted([[s] for s in sources if s.insert in (None, MASTER_INSERT) and not s.role.is_vocal]
-                    + [members for members, _ in voices if members[0].insert in (None, MASTER_INSERT)],
-                    key=lambda members: members[0].channel)
+                    + ([direct_voices] if direct_voices else []), key=lambda members: members[0].channel)
     # every channel that can sound: a part is played alone by muting all the others (read as playing nowhere
     # included: if one plays after all, it stays out of the parts and is heard in the rest of the mix)
     sounding = sorted({s.channel for s in report.sources} | set(report.idle_channels))
@@ -252,11 +258,12 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
         ))
 
     for members in direct:
-        title = voice_title(project, members)
+        alone = len(members) == 1
         jobs.append(RenderJob(
-            name=f"stem-{_voice_name(members)}",
+            name=f"stem-{_voice_name(members)}" if alone else "stem-master-voix",
             kind="stem",
-            description=f"{title} (joué{'s' if len(members) > 1 else ''} directement dans le Master)",
+            description=(f"{members[0].label} (joué directement dans le Master)" if alone else
+                         f"Voix jouées directement dans le Master, ensemble ({len(members)} fichiers)"),
             mute_channels=all_but({s.channel for s in members}),
             channels=[s.channel for s in members],
             **no_master,
@@ -301,6 +308,18 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
                 bypass_master_switch=no_master["bypass_master_switch"],
                 channels=channels,
             ))
+
+    if report.idle_channels:
+        jobs.append(RenderJob(
+            name="reste",
+            kind="rest",
+            description=f"Contrôle : les {len(report.idle_channels)} canaux que la playlist ne fait pas jouer"
+                        if len(report.idle_channels) > 1 else
+                        "Contrôle : le canal que la playlist ne fait pas jouer",
+            mute_channels=all_but(set(report.idle_channels)),
+            channels=sorted(report.idle_channels),
+            **no_master,
+        ))
 
     overlap = {}
     for job in jobs:

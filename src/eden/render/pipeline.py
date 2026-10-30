@@ -6,8 +6,8 @@
 FL Studio does all the sound: Eden only mutes parts of the project in a
 temporary copy so that FL renders each part separately, with every effect
 the user set (delays, Auto-Tune, echoes...). The copies go to FL together
-(``Renderer.render_many``: one launch of FL for all of them), and any it
-left without audio is rendered alone. The copies are deleted once FL has
+(``Renderer.render_many``: several FL Studios at once where the PC has room),
+and any left without audio is rendered alone. The copies are deleted once FL has
 rendered them; only the audio stays, in Eden's workspace. The original
 project and its folder are never modified. A manifest (with the hash of each
 copy) is updated after every render so an interrupted run resumes where it
@@ -114,6 +114,28 @@ def _previous(manifest: Path) -> dict[str, dict]:
     return {j["job"]["name"]: j for j in data.get("jobs", []) if j.get("status") in ("done", "resumed")}
 
 
+def _clock(seconds: float) -> str:
+    return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
+
+
+def _why(result: RenderResult, summed: list[JobResult]) -> str:
+    """What the difference of a failed null test is like: said to the user, and to whoever helps them."""
+    test, hints = result.null_test, []
+    reference = next((j.check for j in result.jobs if j.job.name == "premaster" and j.check), None)
+    if reference and reference.clipped_samples and "FLOAT" not in reference.subtype.upper():
+        hints.append(f"le morceau rendu sans les effets du Master sature (export WAV de FL Studio en "
+                     f"{reference.subtype}) : exporte une fois ton projet en WAV 32 bits flottant dans FL "
+                     "Studio, qui garde ce réglage, puis relance")
+    if test.resembles is not None:
+        part = next(j.job.description for j in summed if j.wav_path == test.resembles)
+        hints.append(f"l'écart ressemble à « {part} »")
+    elif test.resembles_mix:
+        hints.append("l'écart ressemble au morceau entier (un volume qui change d'un rendu à l'autre)")
+    if test.loudest:
+        hints.append(f"il est surtout entre {_clock(test.loudest[0])} et {_clock(test.loudest[1])}")
+    return "".join(f" ; {hint}" for hint in hints)
+
+
 def render_project(
     path: str | Path,
     renderer: Renderer,
@@ -173,7 +195,7 @@ def render_project(
                 continue
             jr.wav_path, jr.check = audio[copy_sha], check
             jr.status = "done" if owner.get(copy_sha) is jr else "resumed"
-            if jr.status == "done" and check.silent and jr.job.kind != "original":
+            if jr.status == "done" and check.silent and jr.job.kind not in ("original", "rest"):
                 result.warnings.append(f"Rendu silencieux : {jr.job.description}")
             if on_step:
                 on_step(i, total, f"{'Rendu par FL Studio' if jr.status == 'done' else 'Déjà rendu'} : "
@@ -200,8 +222,10 @@ def render_project(
     for copy_sha in list(audio):  # kept from a previous run
         settle(copy_sha)
     if on_step and copies:
-        on_step(-1, total, f"Rendu FL Studio : {len(copies)} rendu{'s' if len(copies) > 1 else ''} "
-                           f"pour {len(plan.jobs)} parties")
+        at_once = renderer.at_once(len(copies))
+        on_step(-1, total, f"Rendu FL Studio : {len(copies)} rendu{'s' if len(copies) > 1 else ''} pour "
+                           f"{len(plan.jobs)} parties, " + (f"{at_once} FL Studio en même temps" if at_once > 1
+                                                          else "un à la fois"))
     try:
         if len(copies) > 1:  # FL renders them together, then each one it left is rendered alone
             renderer.render_many(list(copies), timeout_s, rendered)
@@ -220,9 +244,11 @@ def render_project(
     if on_step:
         on_step(len(plan.jobs), total, "Vérification : la somme des pistes reproduit-elle le mix ?")
     premaster = result.wav("premaster")
-    stems = [Path(j.wav_path) for j in result.jobs if j.job.kind == "stem" and j.wav_path]
-    if premaster and stems:
-        result.null_test = null_test(premaster, stems, threshold_db)
+    summed = [j for j in result.jobs if j.job.kind in ("stem", "rest") and j.wav_path]
+    if premaster and summed:
+        result.null_test = null_test(premaster, [Path(j.wav_path) for j in summed], threshold_db)
+        if not result.null_test.passed:
+            result.null_test.message += _why(result, summed)
 
     checks = [j.check for j in result.jobs if j.check]
     if len({(c.sample_rate, c.channels) for c in checks}) > 1:

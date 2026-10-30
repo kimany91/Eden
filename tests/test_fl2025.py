@@ -92,5 +92,25 @@ def test_each_part_rendered_alone_mutes_the_channels_read_as_idle(tmp_path):
     for job in plan_renders(report).jobs:
         if job.kind in ("original", "premaster"):
             assert not job.mute_channels  # the song as it is
+        elif job.kind == "rest":  # the check: those alone, so that should one play after all the sum still holds it
+            assert job.channels == sorted(report.idle_channels)
+            assert not set(report.idle_channels) & set(job.mute_channels)
         else:  # if one plays after all, it stays in the rest of the mix, out of the parts
             assert set(report.idle_channels) <= set(job.mute_channels), job.name
+
+
+def test_channels_read_as_idle_that_play_after_all_stay_in_the_sum(tmp_path):
+    # the simulator plays every channel of the Channel Rack, a tone for those whose file is gone: the parts alone
+    # would miss them; the control render of those channels keeps the sum whole, and they are no part of the mix
+    from eden.mix.parts import split
+    from eden.render.pipeline import render_project
+    from test_render import sim_renderer
+
+    report = _song(tmp_path)
+    result = render_project(report.file.path, sim_renderer(), timeout_s=120, report=report)
+    assert result.ok, result.null_test.message
+    rest = next(j for j in result.jobs if j.job.kind == "rest")
+    assert rest.job.channels == sorted(report.idle_channels) and not rest.check.silent
+    parts = split(report, result)
+    assert "reste" not in {g.key for g in parts.groups}
+    assert np.max(np.abs(parts.residual.audio)) > 0.01  # the template's tones, left as they are

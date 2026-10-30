@@ -132,7 +132,8 @@ EdenPage {
                             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
                             text: modelData.kind === "stem" ? "Groupe" : modelData.kind === "vocal" ? "Voix"
                                 : modelData.kind === "vocal_dry" ? "Voix sèche"
-                                : modelData.kind === "check" ? "Vérification" : "Référence"
+                                : modelData.kind === "check" ? "Vérification" : modelData.kind === "rest" ? "Contrôle"
+                                : "Référence"
                         }
                     }
                 }

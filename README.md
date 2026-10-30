@@ -4,7 +4,7 @@ Assistant de mixage automatique de voix rap pour projets **FL Studio**.
 Objectif : sélectionner un projet `.flp`, laisser Eden analyser et mixer, écouter,
 ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 
-## État actuel (v1.2.4)
+## État actuel (v1.2.5)
 
 | Phase | État |
 |---|---|
@@ -31,8 +31,8 @@ réglés au millimètre, échos, automations — et Eden récupère ce son exact
 aucun effet. Pour que FL joue une partie seule, Eden lui donne une copie temporaire du
 projet où les autres pistes sont coupées ; cette copie est effacée dès que FL a fini.
 Les fichiers d'une même piste du Mixer (même rôle : lead, ad-libs…) sont rendus ensemble,
-en une fois, et **FL Studio n'est ouvert qu'une fois pour toutes les copies** (deux FL côte à
-côte seulement sur un PC qui a la place), en priorité basse : le PC ne rame pas.
+en une fois, et **plusieurs FL Studio rendent en même temps**, autant que ton PC en a la
+place (cœurs et mémoire libre), en priorité basse : le PC ne rame pas.
 Eden vérifie ensuite que la somme des parties redonne exactement le mix d'origine, et que
 les fins d'écho ou de reverb ne sont pas coupées. Chaque voix qui porte une reverb ou un
 delay FL est aussi rendue **sans** eux : Eden travaille la voix sèche comme un ingénieur

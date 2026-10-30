@@ -18,7 +18,7 @@ from eden.render.fl_studio import FLStudioRenderer, RenderError
 from eden.render.pipeline import render_project
 from eden.render.plan import plan_renders
 from eden.render.probe import probe_fl_studio
-from eden.render.verify import null_test
+from eden.render.verify import check_audio, null_test
 from eden.settings import load_settings
 from flp_builder import Chan, Clip, Insert, Slot, build_flp
 
@@ -40,6 +40,9 @@ class CapturingRenderer:
         self.copies[copy.stem] = copy.read_bytes()
         return self.inner.render(copy, timeout_s)
 
+    def at_once(self, copies):
+        return self.inner.at_once(copies)
+
     def render_many(self, copies, timeout_s, on_rendered):
         self.copies.update((copy.stem, copy.read_bytes()) for copy in copies)
         self.inner.render_many(copies, timeout_s, on_rendered)
@@ -54,6 +57,9 @@ class CountingRenderer:
     def render(self, copy, timeout_s):
         self.calls += 1
         return self.inner.render(copy, timeout_s)
+
+    def at_once(self, copies):
+        return self.inner.at_once(copies)
 
     def render_many(self, copies, timeout_s, on_rendered):
         def counted(copy, wav):
@@ -306,6 +312,32 @@ def test_wrong_stem_split_is_caught(session, monkeypatch):
     monkeypatch.setattr(pipeline_mod, "plan_renders", plan_missing_a_stem)
     result = render_project(session, sim_renderer(), timeout_s=120)
     assert not result.null_test.passed and not result.ok
+    assert "il est surtout entre 0:" in result.null_test.message  # where the missing 808 is, to find it
+
+
+def _wav(path, data, sr=1000):
+    sf.write(path, data, sr, subtype="FLOAT")
+    return path
+
+
+def test_a_failed_null_test_says_what_the_gap_is_like(tmp_path):
+    sr = 1000
+    t = np.arange(5 * sr) / sr
+    a = np.stack([0.3 * np.sin(2 * np.pi * 50 * t)] * 2, axis=1)
+    b = np.zeros_like(a)
+    b[2 * sr:3 * sr] = 0.3 * np.sin(2 * np.pi * 130 * t[2 * sr:3 * sr])[:, None]
+    song = _wav(tmp_path / "song.wav", a + b)
+    half = _wav(tmp_path / "b-half.wav", b / 2)
+    gap = null_test(song, [_wav(tmp_path / "a.wav", a), half])
+    assert not gap.passed and gap.resembles == str(half) and not gap.resembles_mix and gap.loudest == (2.0, 3.0)
+    quieter = null_test(song, [_wav(tmp_path / "a-half.wav", a / 2), half])
+    assert quieter.resembles_mix  # every part at half its level
+
+
+def test_a_16_bit_render_at_full_scale_is_clipped(tmp_path):
+    path = tmp_path / "16.wav"
+    sf.write(path, np.full((100, 2), 1.5), 44100, subtype="PCM_16")  # +32767 at most
+    assert check_audio(path).clipped_samples == 200
 
 
 def test_moved_samples_are_repaired_in_copies(session, tmp_path):

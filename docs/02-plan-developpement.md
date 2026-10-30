@@ -44,11 +44,16 @@ Fait :
   pré-Master, un rendu par groupe qui sort au Master (envois parasites coupés pour ne
   rien compter deux fois), un rendu par voix avec toute sa chaîne d'effets (une voix : les
   fichiers d'une piste du Mixer avec le même rôle, rendus ensemble) ;
-- lancement de FL Studio en ligne de commande, une seule fois pour toutes les copies (rendu
-  d'un dossier), deux FL côte à côte seulement sur un PC qui a la place, en priorité basse ;
-  délai maximum, détection des fichiers produits (une copie restée sans WAV est rendue
-  seule), vérifications (format, crête, silence, écrêtage, fin d'écho ou de reverb coupée) ;
-- **test de reconstruction** : somme des groupes = rendu pré-Master (seuil −60 dB) ;
+- lancement de FL Studio en ligne de commande, plusieurs FL en même temps selon les cœurs et
+  la mémoire libre du PC, en priorité basse ; FL fermé par Eden s'il reste ouvert une fois son
+  fichier écrit ; délai maximum, détection des fichiers produits (une copie restée sans WAV
+  est rendue seule), vérifications (format, crête, silence, écrêtage, fin d'écho ou de
+  reverb coupée) ;
+- **test de reconstruction** : somme des groupes = rendu pré-Master (seuil −60 dB) ; les voix
+  jouées directement dans le Master forment un seul groupe (elles peuvent partager des
+  effets qu'Eden ne voit pas), et les canaux que la playlist ne fait pas jouer ont un rendu
+  de contrôle. En cas d'échec, Eden dit à quoi ressemble l'écart (une partie, le morceau
+  entier), où il est le plus fort, et si le rendu sature en 16 bits ;
 - reprise après interruption (manifeste, rendus déjà faits réutilisés) ;
 - `eden fl-probe` : sur ton PC, essaie les syntaxes connues de FL Studio et enregistre la
   première qui produit un WAV (un seul rendu). Ce qu'Eden change dans ses copies (canaux

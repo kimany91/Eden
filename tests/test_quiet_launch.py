@@ -45,7 +45,7 @@ def test_fl_studio_started_the_usual_way_stays_out_of_the_way(tmp_path, monkeypa
     monkeypatch.setattr(fl_studio.subprocess, "Popen", lambda args, **kw: seen.append(kw) or _Done())
     (tmp_path / "copie.flp").write_bytes(b"FLhd")
     renderer = FLStudioRenderer(["FL64.exe"], ["/R", "/Ewav", "{project}"])
-    renderer._run_shown(renderer.build_args(tmp_path / "copie.flp"), tmp_path, timeout_s=5)
+    renderer._run_shown(renderer.build_args(tmp_path / "copie.flp"), tmp_path, tmp_path / "copie.wav", timeout_s=5)
     assert len(seen) == 1
     if os.name == "nt":
         assert seen[0]["creationflags"] & subprocess.CREATE_NO_WINDOW

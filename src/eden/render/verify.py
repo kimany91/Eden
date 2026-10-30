@@ -16,6 +16,9 @@ import soundfile as sf
 SILENCE_DB = -90.0
 TAIL_DB = -60.0  # level above which the very end of a render is considered still sounding
 TAIL_S = 0.05
+FULL_SCALE = 32767 / 32768  # the loudest a 16-bit sample goes: an integer render clips there
+RESEMBLES = 0.5  # correlation from which a failed null test's residual is said to sound like a part
+LOUD_BLOCK_S = 1.0  # a failed null test says when its residual is loud, in blocks this long
 
 
 def _db(x: float) -> float:
@@ -53,7 +56,7 @@ def check_audio(path: Path) -> AudioCheck:
         path=str(path), sample_rate=sr, channels=data.shape[1], frames=data.shape[0],
         duration_s=data.shape[0] / sr if sr else 0.0, subtype=str(info.subtype),
         peak_db=_db(peak), rms_db=_db(rms), silent=_db(peak) < SILENCE_DB,
-        clipped_samples=int(np.count_nonzero(np.abs(data) >= 0.99999)),
+        clipped_samples=int(np.count_nonzero(np.abs(data) >= FULL_SCALE)),
         ends_with_sound=_db(end_peak) > TAIL_DB,
     )
 
@@ -66,14 +69,39 @@ class NullTest:
     threshold_db: float
     length_difference_s: float
     message: str
+    # when it fails: the part the residual sounds like (None: none of them), whether it sounds like the whole
+    # mix (a level that differs), and from when to when it is loudest (seconds)
+    resembles: str | None = None
+    resembles_mix: bool = False
+    loudest: tuple[float, float] | None = None
+
+
+def _correlation(a: np.ndarray, b: np.ndarray) -> float:
+    n = min(a.shape[0], b.shape[0])
+    a, b = a[:n].ravel(), b[:n].ravel()
+    denom = float(np.sqrt(np.dot(a, a) * np.dot(b, b)))
+    return abs(float(np.dot(a, b))) / denom if denom > 0 else 0.0
+
+
+def _loudest(residual: np.ndarray, sr: int) -> tuple[float, float] | None:
+    """From when to when the residual is within 6 dB of its loudest second."""
+    size = max(1, int(LOUD_BLOCK_S * sr))
+    blocks = residual.shape[0] // size
+    if blocks == 0:
+        return None
+    rms = np.sqrt(np.mean(residual[:blocks * size].reshape(blocks, size, -1) ** 2, axis=(1, 2)))
+    loud = np.flatnonzero(rms >= rms.max() / 2)
+    return float(loud[0] * size / sr), float((loud[-1] + 1) * size / sr)
 
 
 def null_test(reference: Path, stems: list[Path], threshold_db: float = -60.0) -> NullTest:
     ref, sr = load(reference)
     total = np.zeros_like(ref)
     longest = ref.shape[0]
+    parts: list[tuple[Path, np.ndarray]] = []
     for stem in stems:
         data, s_sr = load(stem)
+        parts.append((stem, data))
         if s_sr != sr:
             return NullTest(False, float("inf"), float("inf"), threshold_db, 0.0,
                             f"{stem.name} : {s_sr} Hz au lieu de {sr} Hz")
@@ -102,4 +130,11 @@ def null_test(reference: Path, stems: list[Path], threshold_db: float = -60.0) -
     msg = (f"Somme des pistes = mix d'origine (écart {rel:.1f} dB)" if passed else
            f"La somme des pistes diffère du mix d'origine (écart {rel:.1f} dB, seuil "
            f"{threshold_db:.0f} dB)")
-    return NullTest(passed, rel, rel_peak, threshold_db, diff_s, msg)
+    test = NullTest(passed, rel, rel_peak, threshold_db, diff_s, msg)
+    if not passed:
+        like = max(((path, _correlation(residual, data)) for path, data in parts), key=lambda c: c[1],
+                   default=(None, 0.0))
+        test.resembles = str(like[0]) if like[1] >= RESEMBLES else None
+        test.resembles_mix = _correlation(residual, ref_padded) >= RESEMBLES
+        test.loudest = _loudest(residual, sr)
+    return test

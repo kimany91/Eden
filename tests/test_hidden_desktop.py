@@ -26,7 +26,7 @@ def launch(tmp_path, monkeypatch):
     calls = {"hidden": 0, "shown": 0}
     behaviour = {"hidden": "render", "shown": "render"}
 
-    def hidden_run(args, cwd, timeout_s, progress):
+    def hidden_run(args, cwd, timeout_s, progress, done):
         calls["hidden"] += 1
         what = behaviour["hidden"]
         if what == "refused":
@@ -36,7 +36,7 @@ def launch(tmp_path, monkeypatch):
         return hidden_desktop.HiddenRun(None if what == "ask" else 0, False,
                                         "FL Studio — Plugin introuvable : Serum" if what == "ask" else None)
 
-    def shown_run(self, args, folder, timeout_s):
+    def shown_run(self, args, folder, wav, timeout_s):
         calls["shown"] += 1
         outputs = []
         if behaviour["shown"] == "render":
@@ -92,9 +92,9 @@ def test_what_fl_studio_asks_is_said_instead_of_waited_for(launch):
     assert calls["shown"] == 0
 
 
-def test_copies_rendered_together_never_show_fl_studio(launch, tmp_path, monkeypatch):
-    # nothing rendered on its own desktop: the copies are left to ``render`` (alone, shown if need be), and the
-    # folder render is not judged while FL has never rendered there
+def test_fl_studios_side_by_side_are_never_shown(launch, tmp_path, monkeypatch):
+    # nothing rendered on their own desktops: the copies are left to ``render`` (alone, shown if need be), and
+    # whether FL Studios render side by side is not judged on that
     renderer, _, calls, behaviour = launch
     monkeypatch.setattr(fl_studio.os, "cpu_count", lambda: 4)
     behaviour["hidden"] = "nothing"
@@ -105,11 +105,7 @@ def test_copies_rendered_together_never_show_fl_studio(launch, tmp_path, monkeyp
         copies[-1].write_bytes(b"FLhd")
     told = []
     renderer.render_many(copies, 60, lambda copy, wav: told.append(copy))
-    assert told == [] and calls == {"hidden": 1, "shown": 0}
-    assert renderer.folders is None and all(c.read_bytes() == b"FLhd" for c in copies)
-    monkeypatch.setattr(fl_studio, "_hidden_renders", True)  # FL renders there: now the same says it
-    renderer.render_many(copies, 60, lambda copy, wav: told.append(copy))
-    assert told == [] and calls["shown"] == 0 and renderer.folders is False
+    assert told == [] and calls == {"hidden": 2, "shown": 0} and renderer.side_by_side is None
 
 
 # -- the real desktop (Windows) -----------------------------------------------------------------------
@@ -186,6 +182,15 @@ def test_a_message_waiting_for_an_answer_is_read_and_the_program_closed(tmp_path
     run = hidden_desktop.run_hidden([sys.executable, str(script)], tmp_path, 60, lambda: 0)
     assert run.dialog is not None and "FL Studio" in run.dialog and "Plugin introuvable : Serum" in run.dialog
     assert not run.timed_out and time.monotonic() - start < 30
+
+
+@windows
+def test_a_program_whose_work_is_done_is_closed(tmp_path):
+    script = _script(tmp_path, "reste-ouvert.py", "import time\ntime.sleep(120)\n")
+    start = time.monotonic()
+    run = hidden_desktop.run_hidden([sys.executable, str(script)], tmp_path, 60, lambda: 0,
+                                    lambda: time.monotonic() - start > 1.0)
+    assert run.done and not run.timed_out and run.returncode is None and time.monotonic() - start < 20
 
 
 @windows

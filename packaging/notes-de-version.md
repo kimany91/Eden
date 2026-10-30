@@ -1,12 +1,26 @@
-Eden 1.2.4 : la récupération du son depuis FL Studio va bien plus vite, sans faire ramer le PC.
+Eden 1.2.5 : plusieurs FL Studio en même temps selon ton PC, et le son de tes voix vérifié correctement.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.4.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.2.5.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Corrigé dans 1.2.5
+
+- **Ça prenait des heures** : en 1.2.4, un seul FL Studio rendait toutes les copies d'un coup ;
+  avec FL Studio 2026, Eden finissait par attendre son délai de sécurité. Maintenant, **autant
+  de FL Studio en même temps que ton PC en a la place** (un pour 2 cœurs logiques et pour 1,5 Go
+  de mémoire libre, en laissant 2 Go au reste, 8 au plus), chacun sur une copie, toujours en
+  priorité basse. Un FL qui reste ouvert une fois son fichier écrit est fermé par Eden.
+- **« La somme des pistes diffère du mix d'origine »** : les voix jouées directement dans le
+  Master sont maintenant vérifiées ensemble (si elles passent dans les mêmes effets, un
+  Auto-Tune ou un compresseur, rendues une par une elles ne redonnaient pas le morceau), et
+  les canaux que la playlist ne fait pas jouer ont un rendu de contrôle. Si la vérification
+  échoue encore, Eden dit à quoi ressemble l'écart, où il est le plus fort, et si ton export
+  WAV en 16 bits sature.
 
 ## Nouveau dans 1.2.4
 
@@ -15,14 +29,10 @@ Eden 1.2.4 : la récupération du son depuis FL Studio va bien plus vite, sans f
   fichier. Ils passent dans les effets de la piste comme dans le morceau, et Eden les mixe
   comme une piste. Des fichiers de rôles différents sur une même piste (lead et ad-libs) sont
   rendus à part, parce qu'Eden ne les traite pas pareil.
-- **FL Studio ne s'ouvre qu'une fois** pour tous les rendus : il rend toutes les copies d'un
-  coup au lieu de redémarrer (lui et tous ses plugins) pour chacune. Sur un PC costaud
-  (8 cœurs logiques et 4 Go de mémoire libre), deux FL travaillent côte à côte, jamais plus.
+- FL Studio ne s'ouvrait qu'une fois pour tous les rendus (retiré en 1.2.5).
 - **Le PC ne rame pas** : FL Studio tourne en priorité basse, ce que tu fais sur le PC passe
   avant.
-- Chaque rendu terminé apparaît tout de suite dans la liste. Si une copie n'a pas été rendue
-  (FL refuse un deuxième FL, ou le rendu groupé ne marche pas avec ta version), Eden la rend
-  seule et retient ce qui marche sur ton PC pour la fois suivante.
+- Chaque rendu terminé apparaît tout de suite dans la liste.
 
 ## Corrigé dans 1.2.3
 
@@ -77,4 +87,4 @@ Eden 1.2.4 : la récupération du son depuis FL Studio va bien plus vite, sans f
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.4/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.5/docs/mixage.md).
