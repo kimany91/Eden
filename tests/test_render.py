@@ -480,3 +480,30 @@ def test_identical_copies_cost_one_render(tmp_path, monkeypatch):
     assert sorted(rendered) == ["original", "stem-ch000-lead", "stem-ch001-instru"]
     assert {j.job.name: j.status for j in result.jobs if j.status == "resumed"} == {
         "premaster": "resumed", "vocal-ch000-lead": "resumed"}
+
+
+def test_a_mix_before_the_master_that_clips_in_16_bits_is_rebuilt_from_its_parts(tmp_path, monkeypatch):
+    # FL's export set to 16 bits: the song without the Master's limiter goes over full scale and is cut there,
+    # its parts are not; they sum to it everywhere else, so Eden mixes against their sum
+    from eden.mix.parts import split
+
+    monkeypatch.setenv("EDEN_SIM_PCM16", "1")
+    d = tmp_path / "Fort"
+    d.mkdir()
+    t = np.arange(int(2.0 * 22050)) / 22050
+    sf.write(d / "Lead.wav", 0.9 * np.sin(2 * np.pi * 220 * t), 22050)
+    sf.write(d / "Beat.wav", np.stack([0.9 * np.sin(2 * np.pi * 55 * t)] * 2, axis=1), 22050)
+    flp = d / "Fort.flp"
+    flp.write_bytes(build_flp([Chan("Lead", insert=0, sample_path=str(d / "Lead.wav")),
+                               Chan("Instru", insert=0, sample_path=str(d / "Beat.wav"))],
+                              [Insert(routes=(), slots={0: Slot("Fruity Limiter")})],
+                              [Clip(1, 0, BAR, channel=0), Clip(2, 0, BAR, channel=1)], tempo=120))
+    report = _report(flp)
+    result = render_project(flp, sim_renderer(), timeout_s=120, report=report)
+    assert result.wav("premaster") and check_audio(result.wav("premaster")).clipped_samples > 0
+    assert result.ok and result.null_test.passed and "là où il ne sature pas" in result.null_test.message
+    assert result.premaster() == Path(result.premaster_sum) and sf.info(result.premaster_sum).subtype == "FLOAT"
+    assert np.max(np.abs(sf.read(result.premaster_sum)[0])) > 1.0  # over full scale, not cut
+    assert not any("format entier" in w for w in result.warnings)
+    parts = split(report, result)
+    assert np.max(np.abs(parts.premaster)) > 1.0

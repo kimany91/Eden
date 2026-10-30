@@ -23,12 +23,15 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import NoReturn
 
+import numpy as np
+import soundfile as sf
+
 from eden.flp.edit import FlpEditor
 from eden.project.inspector import InspectionReport, inspect_project
 from eden.project.model import MASTER_INSERT
 from eden.render.fl_studio import RenderError, Renderer
 from eden.render.plan import RenderJob, RenderPlan, plan_renders
-from eden.render.verify import AudioCheck, NullTest, check_audio, null_test
+from eden.render.verify import AudioCheck, NullTest, check_audio, load, null_test
 from eden.safety import Workspace, read_project_bytes, verify_unchanged
 
 # (the part whose audio is there, in any order, -1 when FL Studio starts and the part count for the final
@@ -56,6 +59,9 @@ class RenderResult:
     null_test: NullTest | None
     repairs: list[str]
     warnings: list[str] = field(default_factory=list)
+    # the mix before the Master rebuilt from its parts, when FL's render of it clipped (an integer WAV) while
+    # the parts sum to it everywhere else
+    premaster_sum: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -65,6 +71,10 @@ class RenderResult:
     def wav(self, name: str) -> Path | None:
         j = next((j for j in self.jobs if j.job.name == name), None)
         return Path(j.wav_path) if j and j.wav_path else None
+
+    def premaster(self) -> Path | None:
+        """The mix before the Master that Eden mixes against."""
+        return Path(self.premaster_sum) if self.premaster_sum else self.wav("premaster")
 
 
 def sample_repairs(report: InspectionReport, allow_missing: bool = False) -> dict[int, str]:
@@ -112,6 +122,21 @@ def _previous(manifest: Path) -> dict[str, dict]:
     except (OSError, ValueError):
         return {}
     return {j["job"]["name"]: j for j in data.get("jobs", []) if j.get("status") in ("done", "resumed")}
+
+
+def _sum(path: Path, parts: list[Path]) -> Path:
+    """The parts added up, in 32-bit float (over full scale where they go over)."""
+    total: np.ndarray | None = None
+    for part in parts:
+        data, sr = load(part)
+        if total is None:
+            total = data
+            continue
+        if data.shape[0] > total.shape[0]:
+            total = np.pad(total, ((0, data.shape[0] - total.shape[0]), (0, 0)))
+        total[:data.shape[0]] += data
+    sf.write(path, total, sr, subtype="FLOAT")
+    return path
 
 
 def _clock(seconds: float) -> str:
@@ -247,8 +272,15 @@ def render_project(
     summed = [j for j in result.jobs if j.job.kind in ("stem", "rest") and j.wav_path]
     if premaster and summed:
         result.null_test = null_test(premaster, [Path(j.wav_path) for j in summed], threshold_db)
-        if not result.null_test.passed:
-            result.null_test.message += _why(result, summed)
+        test = result.null_test
+        if not test.passed and test.unclipped_db is not None and test.unclipped_db <= threshold_db:
+            result.premaster_sum = str(_sum(folder / "premaster-somme.wav", [Path(j.wav_path) for j in summed]))
+            test.passed = True
+            test.message = (f"Somme des pistes = mix d'origine là où il ne sature pas (écart "
+                            f"{test.unclipped_db:.1f} dB) ; rendu en WAV entier, le morceau sans les effets du "
+                            "Master sature : Eden prend la somme des pistes, qui ne sature pas")
+        elif not test.passed:
+            test.message += _why(result, summed)
 
     checks = [j.check for j in result.jobs if j.check]
     if len({(c.sample_rate, c.channels) for c in checks}) > 1:
@@ -260,7 +292,8 @@ def render_project(
             "une fin d'écho, de delay ou de reverb est peut-être coupée. Dans la fenêtre d'export "
             "de FL Studio, choisis de laisser la fin des effets (« Leave remainder »), puis "
             "relance la récupération du son.")
-    if any(c.clipped_samples for c in checks if "FLOAT" not in c.subtype.upper()):
+    if any(j.check.clipped_samples for j in result.jobs if j.check and "FLOAT" not in j.check.subtype.upper()
+           and not (j.job.name == "premaster" and result.premaster_sum)):  # rebuilt from its parts: no harm
         result.warnings.append(
             "Certains rendus atteignent 0 dBFS en format entier (écrêtage possible) : "
             "règle l'export WAV de FL Studio en 32 bits flottant")

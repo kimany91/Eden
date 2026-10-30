@@ -22,6 +22,8 @@ Environment switches used by tests:
                            effect still plays)
   EDEN_SIM_WET_REVERB=1    reverb slots give their tail only (100 % wet, as set on an
                            effect return)
+  EDEN_SIM_PCM16=1         write 16-bit WAV files, which stop at full scale (FL's export set
+                           to 16 bits), instead of 32-bit float
   EDEN_SIM_TRACE=<file>    each launch adds a line to <file>: when it started and ended
                            (JSON), and the projects it rendered
   EDEN_SIM_ALONE=<file>    behave like an FL Studio that will not start beside another one:
@@ -141,7 +143,8 @@ def main(argv: list[str]) -> int:
     start = time.time()
     try:
         for proj in projects:
-            sf.write(proj.with_suffix(".wav"), render(proj), SR, subtype="FLOAT")
+            sf.write(proj.with_suffix(".wav"), render(proj), SR,
+                     subtype="PCM_16" if os.environ.get("EDEN_SIM_PCM16") == "1" else "FLOAT")
         if alone:
             time.sleep(1.0)  # long enough for a launch beside this one to find it rendering
     finally:

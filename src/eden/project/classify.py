@@ -45,6 +45,9 @@ _NAME_RULES: list[tuple[str, int, str]] = [
 
 _RECORDED_DIR = re.compile(r"[\\/](recorded|recordings|enregistrements?)[\\/]", re.I)
 _RECORDED_FILE = re.compile(r"^(rec|recording|take|prise)\b", re.I)
+# A take recorded in the DAW: "<project>_<date> <time>_<input>" ("lucki type beat - 'casino'_2026-10-25
+# 15-45-47_VOICE"). Its start is the project's name (often the beat's), not what the take is.
+_RECORDED_NAME = re.compile(r"^.*?[\s_\-]*\d{4}-\d{2}-\d{2}[\s_]\d{2}[-.:h]\d{2}(?:[-.:m]\d{2})?[\s_\-]*(.*)$")
 
 
 @dataclass
@@ -81,9 +84,17 @@ def guess_role(
     """``names`` is a list of (origin, text), e.g. ("Insert", "Voix lead")."""
     scores: dict[str, int] = {}
     reasons: list[str] = []
+    recorded = False
     for origin, text in names:
+        take = _RECORDED_NAME.match(text or "")
+        if take:
+            recorded = True
+            text = take.group(1)
         if text:
             _score_name(text, origin, scores, reasons)
+    if recorded:
+        scores["vocal"] = scores.get("vocal", 0) + 2
+        reasons.append("Prise enregistrée (date et heure dans son nom ; le début du nom est celui du projet)")
 
     if sample_path:
         if _RECORDED_DIR.search(sample_path):

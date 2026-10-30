@@ -52,8 +52,10 @@ Fait :
 - **test de reconstruction** : somme des groupes = rendu pré-Master (seuil −60 dB) ; les voix
   jouées directement dans le Master forment un seul groupe (elles peuvent partager des
   effets qu'Eden ne voit pas), et les canaux que la playlist ne fait pas jouer ont un rendu
-  de contrôle. En cas d'échec, Eden dit à quoi ressemble l'écart (une partie, le morceau
-  entier), où il est le plus fort, et si le rendu sature en 16 bits ;
+  de contrôle. Rendu en WAV entier (16 bits), le morceau sans les effets du Master peut
+  dépasser le maximum et être coupé là, pas ses pistes : si la somme des pistes le redonne
+  partout ailleurs, Eden mixe contre cette somme. En cas d'échec, Eden dit à quoi ressemble
+  l'écart (une partie, le morceau entier) et où il est le plus fort ;
 - reprise après interruption (manifeste, rendus déjà faits réutilisés) ;
 - `eden fl-probe` : sur ton PC, essaie les syntaxes connues de FL Studio et enregistre la
   première qui produit un WAV (un seul rendu). Ce qu'Eden change dans ses copies (canaux

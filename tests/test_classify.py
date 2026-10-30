@@ -16,6 +16,10 @@ from eden.project.plugins import categorize
     ([("Canal", "Voix")], "vocal"),
     ([("Canal", "Instru")], "beat"),
     ([("Fichier", "type beat 140bpm")], "beat"),
+    # a take recorded in FL, named after the project (here the beat's name), the date and the input
+    ([("Canal", "lucki type beat - 'casino'_2026-10-25 15-45-47_VOICE")], "vocal"),
+    ([("Fichier", "Vertige_2026-10-25 15-46-34_Insert 3")], "vocal"),
+    ([("Canal", "lucki type beat - 'casino' [D# min, 149 BPM] [FFP]")], "beat"),
     ([("Canal", "808")], "bass"),
     ([("Canal", "Kick")], "drums"),
     ([("Canal", "Instrument track")], "unknown"),

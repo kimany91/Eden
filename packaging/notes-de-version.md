@@ -1,12 +1,23 @@
-Eden 1.2.5 : plusieurs FL Studio en même temps selon ton PC, et le son de tes voix vérifié correctement.
+Eden 1.2.6 : tes prises de voix reconnues, et un export WAV en 16 bits ne bloque plus la vérification.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.5.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.2.6.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Corrigé dans 1.2.6
+
+- **Tes prises de voix étaient prises pour des instrus** : FL nomme une prise d'après le projet,
+  la date et l'entrée (« lucki type beat - 'casino'_2026-10-25 15-45-47_VOICE ») ; le « beat »
+  du nom du projet l'emportait. Le début du nom (le projet) ne compte plus, la fin (« VOICE »)
+  oui, et une prise enregistrée compte comme une voix.
+- **« La somme des pistes diffère du mix d'origine » avec un export WAV en 16 bits** : sans le
+  limiteur du Master, ton morceau dépasse le maximum et FL le coupe là, pas ses pistes. Quand
+  les pistes redonnent le morceau partout ailleurs, Eden prend leur somme (qui ne sature pas)
+  et continue. Sinon, le message dit toujours à quoi ressemble l'écart et où il est.
 
 ## Corrigé dans 1.2.5
 
@@ -87,4 +98,4 @@ Eden 1.2.5 : plusieurs FL Studio en même temps selon ton PC, et le son de tes v
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.5/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.6/docs/mixage.md).

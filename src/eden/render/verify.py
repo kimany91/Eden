@@ -74,6 +74,9 @@ class NullTest:
     resembles: str | None = None
     resembles_mix: bool = False
     loudest: tuple[float, float] | None = None
+    # the same, leaving out the samples where the reference clips (an integer WAV stops at full scale, its
+    # parts do not): None when it does not clip
+    unclipped_db: float | None = None
 
 
 def _correlation(a: np.ndarray, b: np.ndarray) -> float:
@@ -131,6 +134,10 @@ def null_test(reference: Path, stems: list[Path], threshold_db: float = -60.0) -
            f"La somme des pistes diffère du mix d'origine (écart {rel:.1f} dB, seuil "
            f"{threshold_db:.0f} dB)")
     test = NullTest(passed, rel, rel_peak, threshold_db, diff_s, msg)
+    clean = np.all(np.abs(ref_padded) < FULL_SCALE, axis=1)
+    if not passed and not clean.all() and clean.any():
+        kept_rms = float(np.sqrt(np.mean(residual[clean] ** 2)))
+        test.unclipped_db = _db(kept_rms) - _db(ref_rms) if kept_rms > 0 else float("-inf")
     if not passed:
         like = max(((path, _correlation(residual, data)) for path, data in parts), key=lambda c: c[1],
                    default=(None, 0.0))
