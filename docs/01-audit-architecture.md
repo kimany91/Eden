@@ -250,6 +250,11 @@ décisions — phase 4), `src/eden/session/` (historique, versions, reprise), `f
 | _Option_ : certificat de signature de code | éviter l'alerte SmartScreen | — | ~100–400 €/an |
 | _Option_ : moteur de correction de hauteur | voir §7 | variable | variable |
 
+PySide6 6.12.0 libère une référence de trop à `True` à chaque signal émis : avant Python 3.12
+(où `True` peut être libéré), Eden s'arrête après quelques milliers de signaux (« bool_dealloc »).
+Sous Python 3.11, cette version est donc exclue (`pyproject.toml`) ; dès Python 3.12, `True` est
+immortel et l'erreur sans effet : l'installateur, construit avec Python 3.12, n'est pas concerné.
+
 Évités pour l'instant à cause de leur licence : PyFLP (GPL-3), pedalboard (GPL-3),
 essentia (AGPL-3), Rubber Band (GPL ou licence commerciale payante).
 
