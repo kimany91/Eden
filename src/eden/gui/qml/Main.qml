@@ -72,6 +72,26 @@ ApplicationWindow {
                         primary: true
                         text: "Indiquer où est FL Studio"
                         onClicked: flDialog.open()
+                    },
+                    // the FL Studio set-up test's report: on the FL Studio page, or to paste in a message
+                    EdenButton {
+                        visible: controller.errorStep === "Configuration de FL Studio" && controller.probeLog.length > 0
+                        compact: true
+                        text: "Voir le compte rendu"
+                        onClicked: win.page = "render"
+                    },
+                    EdenButton {
+                        id: copyReport
+                        property bool copied: false
+                        visible: controller.errorStep === "Configuration de FL Studio" && controller.probeLog.length > 0
+                        compact: true
+                        text: copied ? "Copié ✓" : "Copier le compte rendu"
+                        onClicked: {
+                            controller.copyProbeLog()
+                            copied = true
+                            copiedTimer.restart()
+                        }
+                        Timer { id: copiedTimer; interval: 2500; onTriggered: copyReport.copied = false }
                     }
                 ]
             }

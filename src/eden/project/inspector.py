@@ -140,7 +140,7 @@ class InspectionReport:
     limitations: list[str]
     warnings: list[str] = field(default_factory=list)
     report_path: str | None = None
-    idle_channels: list[str] = field(default_factory=list)  # in the Channel Rack, played nowhere in the song
+    idle_channels: list[int] = field(default_factory=list)  # Channel Rack channels played nowhere in the song
 
     def to_json(self) -> str:
         return json.dumps(to_jsonable(self), ensure_ascii=False, indent=2)
@@ -293,14 +293,14 @@ def inspect_project(
     # playlist is read, the others (a template's drums, a sample tried then left) are not part of the song: their
     # files, found or not, change nothing. An unread playlist tells nothing: every channel counts then
     playlist_read = any(a.clips for a in project.arrangements)
-    idle: list[str] = []
+    idle: list[int] = []
     for ch in project.channels:
         if ch.kind not in ("sampler", "instrument"):
             continue
         if ch.plugin is not None and ch.plugin.internal_name in NON_AUDIO_GENERATORS:
             continue
         if playlist_read and ch.index not in clips_by_channel:
-            idle.append(ch.label)
+            idle.append(ch.index)
             continue
         if ch.kind == "sampler" and not ch.sample_path and ch.index not in clips_by_channel:
             continue  # empty sampler channel: nothing to mix

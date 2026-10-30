@@ -597,6 +597,15 @@ class EdenController(QObject):
         self._set("errorMessage", "")
 
     @Slot()
+    def copyProbeLog(self) -> None:
+        """The FL Studio set-up test's report in the clipboard, with what it was run on, to paste in a message."""
+        from PySide6.QtGui import QGuiApplication
+
+        fl = self._report.get("flVersion", "?")
+        head = f"Eden {__version__} · FL Studio {fl} · projet « {self._projectName} »"
+        QGuiApplication.clipboard().setText("\n".join([head, *self._probeLog]))
+
+    @Slot()
     def openRenderFolder(self) -> None:
         folder = self._renderSummary.get("folder")
         if folder:

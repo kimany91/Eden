@@ -73,7 +73,7 @@ def report_view(r: InspectionReport) -> dict:
                            "category": CATEGORY_LABELS_FR.get(fx.category, fx.category),
                            "active": fx.active} for fx in r.master_effects],
         "insertCount": len(r.used_inserts),
-        "idleChannels": r.idle_channels,
+        "idleChannels": [ch.label for i in r.idle_channels if (ch := p.channel(i)) is not None],
         "warnings": r.warnings,
         "limitations": r.limitations,
     }

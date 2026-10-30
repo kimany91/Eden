@@ -158,6 +158,9 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
     source_channels = sorted(s.channel for s in sources)
     direct = [s for s in sources if s.insert in (None, MASTER_INSERT)]
     direct_channels = [s.channel for s in direct]
+    # channels read as playing nowhere are muted too in every part rendered alone: if one plays after all, it
+    # stays out of the parts and is heard in the rest of the mix
+    idle = list(report.idle_channels)
     all_inserts = [i.index for i in project.inserts if i.index != MASTER_INSERT]
 
     jobs = [
@@ -193,7 +196,7 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
             description=f"Groupe {ins.label if ins else idx} : "
                         + ", ".join(s.label for s in top_level[idx]),
             mute_inserts=[i for i in all_inserts if i not in keep],
-            mute_channels=direct_channels,
+            mute_channels=direct_channels + idle,
             cut_routes=cut,
             bypass_master_effects=True,
             channels=members,
@@ -205,7 +208,7 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
             kind="stem",
             description=f"{s.label} (joué directement dans le Master)",
             mute_inserts=all_inserts,
-            mute_channels=[c for c in direct_channels if c != s.channel],
+            mute_channels=[c for c in direct_channels if c != s.channel] + idle,
             bypass_master_effects=True,
             channels=[s.channel],
         ))
@@ -217,7 +220,7 @@ def plan_renders(report: InspectionReport) -> RenderPlan:
         vocals = vocals[:MAX_VOCAL_JOBS]
     guessed: set[tuple[int, int]] = set()  # (insert, slot) of unidentified plugins taken for space effects
     for s in vocals:
-        others = [c for c in source_channels if c != s.channel]
+        others = [c for c in source_channels if c != s.channel] + idle
         jobs.append(RenderJob(
             name=f"vocal-ch{s.channel:03d}-{_slug(s.label)}",
             kind="vocal",

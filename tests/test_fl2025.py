@@ -67,7 +67,8 @@ def _song(tmp_path, template_clip: bool = False):
 def test_channels_that_play_nowhere_do_not_stop_eden(tmp_path):
     report = _song(tmp_path)
     assert report.project_end_seconds == pytest.approx(40.0)
-    assert sorted(report.idle_channels) == ["808 Clap", "808 Kick", "FLEX Bass"]
+    assert sorted(report.project.channel(i).label for i in report.idle_channels) == ["808 Clap", "808 Kick",
+                                                                                  "FLEX Bass"]
     assert [s.label for s in report.sources] == ["lucki type beat - 'casino' [D# min, 149 BPM]",
                                                  "Vertige_take_01", "Vertige_take_02"]
     sample_repairs(report)  # the template's missing samples change nothing: no error
@@ -79,6 +80,17 @@ def test_channels_that_play_nowhere_do_not_stop_eden(tmp_path):
 
 def test_a_missing_file_that_plays_still_stops_eden(tmp_path):
     report = _song(tmp_path, template_clip=True)  # "808 Kick" plays once in the playlist
-    assert "808 Kick" not in report.idle_channels
+    assert 0 not in report.idle_channels  # "808 Kick"
     with pytest.raises(RenderError, match="808 Kick"):
         sample_repairs(report)
+
+
+def test_each_part_rendered_alone_mutes_the_channels_read_as_idle(tmp_path):
+    from eden.render.plan import plan_renders
+
+    report = _song(tmp_path)
+    for job in plan_renders(report).jobs:
+        if job.kind in ("original", "premaster"):
+            assert not job.mute_channels  # the song as it is
+        else:  # if one plays after all, it stays in the rest of the mix, out of the parts
+            assert set(report.idle_channels) <= set(job.mute_channels), job.name

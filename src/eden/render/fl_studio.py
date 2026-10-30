@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from eden.render import hidden_desktop
+
 # Syntaxes reported by FL Studio users; none is assumed to work until probed.
 CANDIDATE_ARGS: list[tuple[str, list[str]]] = [
     ("rendu d'un projet en WAV", ["/R", "/Ewav", "{project}"]),
@@ -94,6 +96,24 @@ def _wav_snapshot(folder: Path) -> dict[Path, float]:
     return {p: p.stat().st_mtime for p in folder.rglob("*.wav")}
 
 
+def _wav_sizes(folder: Path) -> dict[Path, int]:
+    """What a render has written so far (the files grow while FL renders)."""
+    sizes = {}
+    for p in folder.rglob("*.wav"):
+        try:
+            sizes[p] = p.stat().st_size
+        except OSError:
+            continue
+    return sizes
+
+
+def _new_outputs(folder: Path, before: dict[Path, float]) -> list[Path]:
+    """WAV files a render wrote, the largest first."""
+    after = _wav_snapshot(folder)
+    return sorted((p for p, m in after.items() if p not in before or before[p] != m),
+                  key=lambda p: p.stat().st_size, reverse=True)
+
+
 @dataclass
 class RunOutcome:
     returncode: int | None
@@ -101,6 +121,11 @@ class RunOutcome:
     seconds: float
     outputs: list[Path]
     stderr: str
+    dialog: str | None = None  # what FL Studio was asking (title and text of its message) when it was closed
+
+
+# whether FL Studio renders on a desktop of its own on this PC: unknown until a render says
+_hidden_renders: bool | None = None
 
 
 class FLStudioRenderer:
@@ -120,6 +145,41 @@ class FLStudioRenderer:
         return [*self.command, *(a.format(**values) for a in self.args_template)]
 
     def run(self, project_copy: Path, timeout_s: float) -> RunOutcome:
+        """FL Studio on a desktop of its own that is never shown (Windows, ``hidden_desktop``), so
+        nothing of it comes over Eden; started the usual way where that desktop is refused, or when
+        FL renders nothing there and never has."""
+        global _hidden_renders
+        if hidden_desktop.available() and _hidden_renders is not False:
+            try:
+                outcome = self._run_hidden(project_copy, timeout_s)
+            except hidden_desktop.Unavailable:
+                _hidden_renders = False
+            else:
+                if outcome.outputs:
+                    _hidden_renders = True
+                if outcome.outputs or outcome.timed_out or outcome.dialog or _hidden_renders:
+                    return outcome
+                shown = self._run_shown(project_copy, timeout_s)  # nothing at all: tried once shown
+                if shown.outputs:  # FL renders when shown, not on a desktop of its own: shown from now on
+                    _hidden_renders = False
+                return shown
+        return self._run_shown(project_copy, timeout_s)
+
+    def _run_hidden(self, project_copy: Path, timeout_s: float) -> RunOutcome:
+        folder = project_copy.parent
+        before = _wav_snapshot(folder)
+        start = time.monotonic()
+        try:
+            run = hidden_desktop.run_hidden(self.build_args(project_copy), folder, timeout_s,
+                                            lambda: _wav_sizes(folder))
+        except hidden_desktop.Unavailable:
+            raise
+        except OSError as exc:
+            raise RenderError(f"Impossible de lancer FL Studio ({exc})") from exc
+        return RunOutcome(run.returncode, run.timed_out, time.monotonic() - start, _new_outputs(folder, before),
+                          "", run.dialog)
+
+    def _run_shown(self, project_copy: Path, timeout_s: float) -> RunOutcome:
         folder = project_copy.parent
         before = _wav_snapshot(folder)
         start = time.monotonic()
@@ -136,16 +196,14 @@ class FLStudioRenderer:
             timed_out = True
             proc.kill()
             _, err = proc.communicate()
-        after = _wav_snapshot(folder)
-        outputs = sorted(
-            (p for p, m in after.items() if p not in before or before[p] != m),
-            key=lambda p: p.stat().st_size, reverse=True,
-        )
-        return RunOutcome(proc.returncode, timed_out, time.monotonic() - start, outputs,
+        return RunOutcome(proc.returncode, timed_out, time.monotonic() - start, _new_outputs(folder, before),
                           (err or b"").decode("utf-8", errors="replace")[-2000:])
 
     def render(self, project_copy: Path, timeout_s: float) -> Path:
         outcome = self.run(project_copy, timeout_s)
+        if outcome.dialog:
+            raise RenderError(f"FL Studio attend une réponse : « {outcome.dialog} ». Ouvre le projet dans "
+                              "FL Studio pour voir ce qu'il demande, règle-le, puis relance")
         if outcome.timed_out and not outcome.outputs:
             raise RenderError(
                 f"FL Studio n'a pas terminé en {timeout_s:.0f} s (une fenêtre de dialogue "

@@ -1,12 +1,22 @@
-Eden 1.2.1 : les projets de FL Studio 2024 et 2025 lus en entier.
+Eden 1.2.2 : FL Studio travaille en arrière-plan, pour de bon.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.1.exe` ci-dessous et double-clique dessus (pas besoin de droits
-   administrateur ni de Python). Si Eden 1.0, 1.1 ou 1.2 est installé, la mise à jour se fait aussi
+1. Télécharge `Eden-Setup-1.2.2.exe` ci-dessous et double-clique dessus (pas besoin de droits
+   administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Corrigé dans 1.2.2
+
+- **FL Studio ne passe plus devant Eden** : il travaille sur un bureau Windows à part, jamais
+  affiché ; ni son logo ni sa fenêtre n'apparaissent. S'il pose une question (un plugin
+  introuvable…), Eden lit son message, ferme FL et te le montre au lieu d'attendre. Si ton PC
+  refuse ce bureau à part, ou si FL n'y rend rien, il est lancé comme avant.
+- **Test de FL Studio** : les canaux qui ne jouent nulle part sont aussi coupés pendant le test
+  d'isolation et les rendus séparés. Si le test échoue, « Voir le compte rendu » et « Copier le
+  compte rendu » apparaissent dans le message d'erreur.
 
 ## Corrigé dans 1.2.1
 
@@ -39,4 +49,4 @@ Eden 1.2.1 : les projets de FL Studio 2024 et 2025 lus en entier.
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.1/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.2/docs/mixage.md).

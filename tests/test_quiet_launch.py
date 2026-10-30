@@ -1,5 +1,5 @@
-"""Nothing comes over Eden: the programs it starts open no console window, and FL Studio starts
-minimized without taking the focus (render/fl_studio.py)."""
+"""Nothing comes over Eden: the programs it starts open no console window, and FL Studio, where it
+cannot have a desktop of its own, starts minimized without taking the focus (render/fl_studio.py)."""
 
 import os
 import subprocess
@@ -37,11 +37,12 @@ class _Done:
         return b"", b""
 
 
-def test_each_render_starts_fl_studio_out_of_the_way(tmp_path, monkeypatch):
+def test_fl_studio_started_the_usual_way_stays_out_of_the_way(tmp_path, monkeypatch):
+    # where it cannot have a desktop of its own (render/hidden_desktop.py)
     seen = []
     monkeypatch.setattr(fl_studio.subprocess, "Popen", lambda args, **kw: seen.append(kw) or _Done())
     (tmp_path / "copie.flp").write_bytes(b"FLhd")
-    FLStudioRenderer(["FL64.exe"], ["/R", "/Ewav", "{project}"]).run(tmp_path / "copie.flp", timeout_s=5)
+    FLStudioRenderer(["FL64.exe"], ["/R", "/Ewav", "{project}"])._run_shown(tmp_path / "copie.flp", timeout_s=5)
     assert len(seen) == 1
     if os.name == "nt":
         assert seen[0]["creationflags"] & subprocess.CREATE_NO_WINDOW

@@ -151,6 +151,8 @@ def probe_fl_studio(
             copy = copy_with(lambda ed: None, f"essai-{i}")
             say(f"Essai {i} ({label}) : {' '.join(renderer.build_args(copy))}")
             outcome = renderer.run(copy, timeout_s)
+            if outcome.dialog:
+                say(f"  → FL Studio attendait une réponse : « {outcome.dialog} » (fermé par Eden)")
             if outcome.timed_out:
                 say(f"  → pas terminé après {timeout_s:.0f} s (fenêtre bloquante ?)")
             if not outcome.outputs:
@@ -180,11 +182,17 @@ def probe_fl_studio(
 
         sources = [s for s in report.sources if s.reaches_master]
 
+        def mute_idle(ed: FlpEditor) -> None:  # as in every part rendered alone (render/plan.py)
+            for ch in report.idle_channels:
+                ed.set_channel_enabled(ch, False)
+
         def mute_channels(ed: FlpEditor) -> None:
+            mute_idle(ed)
             for s in sources:
                 ed.set_channel_enabled(s.channel, False)
 
         def mute_inserts(ed: FlpEditor) -> None:
+            mute_idle(ed)
             for ins in report.project.inserts:
                 if ins.index != MASTER_INSERT:
                     ed.set_insert_enabled(ins.index, False)
@@ -193,6 +201,7 @@ def probe_fl_studio(
                     ed.set_channel_enabled(s.channel, False)
 
         def cut_routes_to_master(ed: FlpEditor) -> None:
+            mute_idle(ed)
             for ins in report.project.inserts:
                 if any(r.target == MASTER_INSERT for r in ins.routes):
                     ed.set_route(ins.index, MASTER_INSERT, False)
@@ -226,6 +235,7 @@ def probe_fl_studio(
 
         def alone(s: SourceAnalysis, bypassed: ExistingEffect | None = None) -> Callable[[FlpEditor], None]:
             def edits(ed: FlpEditor) -> None:
+                mute_idle(ed)
                 for other in sources:
                     if other.channel != s.channel:
                         ed.set_channel_enabled(other.channel, False)

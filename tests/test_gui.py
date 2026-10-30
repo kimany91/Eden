@@ -185,6 +185,25 @@ def test_a_click_on_a_project_of_the_folder_opens_it(ui, tmp_path):
     assert engine.load_warnings == []
 
 
+def test_the_fl_studio_set_up_report_can_be_seen_and_copied(ui):
+    from PySide6.QtCore import QObject
+
+    c, engine = ui()
+    c._set("projectName", "Vertige")
+    c._set("report", {"flVersion": "25.1.6.4997"})
+    c._set("probeLog", ["FL Studio : C:/FL64.exe", "Test d'isolation (canaux coupés) : le son reste présent ✘"])
+    c._set("errorStep", "Configuration de FL Studio")
+    c._set("errorMessage", "Rendu possible, mais l'isolation des pistes n'est pas fiable")
+    pump(300)
+    root = engine.rootObjects()[0]
+    shown = {o.property("text") for o in root.findChildren(QObject) if o.property("visible") is True}
+    assert {"Voir le compte rendu", "Copier le compte rendu"} <= shown
+    c.copyProbeLog()
+    assert QtGui.QGuiApplication.clipboard().text() == (
+        "Eden " + c.version + " · FL Studio 25.1.6.4997 · projet « Vertige »\n"
+        "FL Studio : C:/FL64.exe\nTest d'isolation (canaux coupés) : le son reste présent ✘")
+
+
 def test_missing_fl_studio_asks_for_its_location(ui, tmp_path, monkeypatch):
     monkeypatch.delenv("EDEN_FL_PATH", raising=False)
     c, _ = ui()  # real settings: nothing configured, no FL Studio on this machine
