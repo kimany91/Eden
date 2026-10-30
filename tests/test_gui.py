@@ -147,6 +147,20 @@ def test_errors_name_the_step(ui, tmp_path):
     assert c.errorMessage == ""
 
 
+def test_the_garden_closes_cleanly_however_fast_an_error_comes(ui, tmp_path):
+    # opened and closed at once, again and again: its journal must not be touched once it is closing
+    # (a scroll scheduled for later did, and crashed Eden in one try out of a few)
+    bad = tmp_path / "abime.flp"
+    bad.write_bytes(b"pas un projet")
+    c, engine = ui()
+    for _ in range(60):
+        c.openProject(str(bad))
+        wait_idle(c)
+        assert not c.journeyActive
+        pump(20)
+    assert engine.load_warnings == []
+
+
 def test_missing_fl_studio_asks_for_its_location(ui, tmp_path, monkeypatch):
     monkeypatch.delenv("EDEN_FL_PATH", raising=False)
     c, _ = ui()  # real settings: nothing configured, no FL Studio on this machine

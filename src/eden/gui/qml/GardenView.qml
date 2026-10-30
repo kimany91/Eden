@@ -278,48 +278,49 @@ Item {
         font.family: Theme.fontFamily; font.pixelSize: 12
     }
 
-    // the journal: every step, in French, as it happens
-    Rectangle {
+    // the journal: every step, in French, as it happens, written on the garden itself (outlined to read
+    // on the sky as on the grass)
+    Item {
         id: journal
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 18 }
-        height: Math.max(80, Math.min(130, parent.height * 0.14))  // the last few lines: what is happening now
-        radius: Theme.radius
-        color: Qt.rgba(0.02, 0.025, 0.035, 0.82)
-        border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.07)
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 28 }
+        height: Math.max(52, Math.min(100, parent.height * 0.11))  // the last few lines: what is happening now
         opacity: 1 - garden.toApple * 0.65
 
+        // newest line first, laid out from the bottom: the latest is always on the bottom edge with
+        // nothing to scroll (a scroll asked for later could reach a journal already closing and crash it)
         ListModel { id: lines }
         Connections {
             target: controller
-            function onLogAdded(line) { lines.append(line) }
+            function onLogAdded(line) { lines.insert(0, line) }
             function onLogCleared() { lines.clear() }
         }
         Component.onCompleted: {
             const known = controller.journeyLines()
             for (let i = 0; i < known.length; i++)
-                lines.append(known[i])
+                lines.insert(0, known[i])
         }
 
         ListView {
             id: logView
             objectName: "journal"
-            anchors { fill: parent; margins: 14 }
+            anchors.fill: parent
             clip: true
             model: lines
             spacing: 3
             boundsBehavior: Flickable.StopAtBounds
-            onCountChanged: Qt.callLater(positionViewAtEnd)
+            verticalLayoutDirection: ListView.BottomToTop
             delegate: Row {
                 required property string time
                 required property string text
                 required property string kind
                 width: logView.width
                 spacing: 12
+                opacity: Math.max(0, Math.min(1, (y - logView.contentY) / 28))  // older lines fade out at the top
                 Text {
                     text: parent.time
-                    color: Theme.textDim
+                    color: Theme.textMuted
                     font.family: Theme.monoFamily; font.pixelSize: 12
+                    style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.8)
                 }
                 Text {
                     width: parent.width - 60
@@ -331,6 +332,7 @@ Item {
                          : parent.kind === "detail" ? Theme.textMuted : Theme.text
                     font.family: Theme.monoFamily; font.pixelSize: 12
                     font.weight: parent.kind === "stage" ? Font.DemiBold : Font.Normal
+                    style: Text.Outline; styleColor: Qt.rgba(0, 0, 0, 0.8)
                 }
             }
         }
