@@ -11,7 +11,11 @@ Item {
     signal finished()
 
     readonly property real target: controller.growth
-    property real shown: controller.growth  // the growth drawn: it catches up with the work, never jumps
+    // the growth drawn, and the percentage shown with it: it grows towards the work done, easing in and
+    // out of each step (a new journey winds it back as smoothly), never jumping
+    property real shown: controller.growth
+    property real growing: 0  // how fast it grows, per second
+    readonly property real growSeconds: 2.2  // about how long the tree takes to reach a new step
     property real time: 0
     readonly property var heights: GardenInfo.heights  // read once: nothing calls Python per frame
     readonly property bool threeD: GraphicsInfo.api !== GraphicsInfo.Software && GraphicsInfo.api !== GraphicsInfo.Unknown
@@ -47,10 +51,34 @@ Item {
         return i + 1 < heights.length ? heights[i] + (heights[i + 1] - heights[i]) * (x - i) : heights[i]
     }
     function mix(a, b, t) { return a + (b - a) * t }
+    // one frame of growth: a spring without bounce (critically damped, solved exactly for the frame) towards
+    // the work done, so each step of the work is seen growing, easing in and out; a new journey's lower
+    // target winds it back the same way. Growing, it never goes past the work done.
+    function growTowardsWork(dt) {
+        const k = 2 / (garden.growSeconds * garden.pace)
+        const y = garden.shown - garden.target
+        const c = garden.growing + k * y
+        const e = Math.exp(-k * dt)
+        garden.shown = garden.target + (y + c * dt) * e
+        garden.growing = (garden.growing - k * c * dt) * e
+        if ((y < 0 && garden.shown > garden.target)
+                || (Math.abs(garden.shown - garden.target) < 0.0005 && Math.abs(garden.growing) < 0.001)) {
+            garden.shown = garden.target
+            garden.growing = 0
+        }
+    }
     function shortestYaw(from, to) { return from + ((((to - from) % 360) + 540) % 360 - 180) }
 
     readonly property real treeHeight: heightAt(shown)
     readonly property real frameYaw: autoYaw + userYaw
+    // the camera's framing of the tree, eased: it follows the tree as it grows, glides, never jumps
+    readonly property real frameDistance: (1.0 + treeHeight * 2.1) * zoom
+    readonly property real frameHeight: 0.05 + treeHeight * 0.5
+    readonly property real framePitch: -18 + 10 * Math.min(treeHeight / 4.9, 1)
+    property real camDistance: frameDistance
+    property real camHeight: frameHeight
+    property real camPitch: framePitch
+    readonly property real cameraSeconds: 1.2  // about how long the camera takes to reframe the tree
     property real focusYaw: frameYaw  // set when the end starts: the shortest turn to the apple's side
 
     Rectangle {  // a blue sky, paler down to the horizon, where the scene's fog fades the lawn into it
@@ -71,11 +99,11 @@ Item {
             growth: garden.shown
             time: garden.time
             yaw: garden.mix(garden.frameYaw, garden.focusYaw, garden.toApple)
-            pitch: garden.mix(-18 + 10 * Math.min(garden.treeHeight / 4.9, 1) + garden.userPitch,
+            pitch: garden.mix(garden.camPitch + garden.userPitch,
                               -5 - 13 * Math.min(1, garden.appleDrop / Math.max(0.1, garden.fallHeight)), garden.toApple)
-            distance: garden.mix((1.0 + garden.treeHeight * 2.1) * garden.zoom, 2.8, garden.toApple)
+            distance: garden.mix(garden.camDistance, 2.8, garden.toApple)
             target: Qt.vector3d(garden.mix(0, garden.applePosition.x, garden.toApple),
-                                garden.mix(0.05 + garden.treeHeight * 0.5, garden.applePosition.y, garden.toApple),
+                                garden.mix(garden.camHeight, garden.applePosition.y, garden.toApple),
                                 garden.mix(0, garden.applePosition.z, garden.toApple))
             appleScale: garden.appleScale
             applePosition: garden.applePosition
@@ -103,11 +131,11 @@ Item {
             const dt = Math.min(frameTime, 0.1)
             garden.time += dt
             garden.idle += dt
-            const gap = garden.target - garden.shown
-            if (gap < 0)
-                garden.shown = garden.target  // a new journey
-            else if (gap > 0)
-                garden.shown += Math.min(gap, Math.min(0.06 / garden.pace, Math.max(0.004, gap * 1.5)) * dt)
+            garden.growTowardsWork(dt)
+            const reframe = 1 - Math.exp(-dt / garden.cameraSeconds)
+            garden.camDistance += (garden.frameDistance - garden.camDistance) * reframe
+            garden.camHeight += (garden.frameHeight - garden.camHeight) * reframe
+            garden.camPitch += (garden.framePitch - garden.camPitch) * reframe
             if (garden.idle > 3 && garden.toApple === 0)
                 garden.autoYaw += 6 * dt * Math.min(1, (garden.idle - 3) / 2)
         }

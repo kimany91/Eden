@@ -1,12 +1,24 @@
-Eden 1.2.8 : tes vraies prises reconnues comme des voix, et tu n'es plus bloqué si la vérification échoue.
+Eden 1.2.9 : l'arbre pousse de tous les côtés, en vrai, et la caméra le suit sans à-coup.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.8.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.2.9.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Nouveau dans 1.2.9
+
+- **L'arbre pousse de tous les côtés** : les branches partent du tronc par trois, tout autour, et
+  s'allongent lentement ensemble ; la couronne s'étend partout à la fois, plus une branche seule
+  d'un côté.
+- **Tu le vois grandir** : à chaque avancée du travail, l'arbre grandit en douceur jusqu'au
+  nouveau pourcentage (il démarre, accélère, ralentit), au lieu de sauter à l'étape suivante. Le
+  pourcentage affiché suit exactement l'arbre. Pendant que FL Studio rend tes pistes (il ne dit
+  rien tant qu'une piste n'est pas finie), l'arbre continue de pousser doucement.
+- **La caméra glisse** : quand l'arbre grandit, elle recule et remonte en douceur pour le cadrer,
+  sans saut d'image ; le zoom à la molette est doux aussi.
 
 ## Corrigé dans 1.2.8
 
@@ -127,4 +139,4 @@ Eden 1.2.8 : tes vraies prises reconnues comme des voix, et tu n'es plus bloqué
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.8/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.9/docs/mixage.md).

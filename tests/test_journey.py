@@ -112,3 +112,25 @@ def test_the_tree_never_shrinks_during_a_journey():
     c._enter("mix")
     assert [s["status"] for s in c.journeyStages] == ["done", "done", "running", "pending", "pending"]
     assert c.journeyLines()[-1] == {"time": "00:00", "text": "Mixage Eden", "kind": "stage"}
+
+
+def test_the_tree_goes_on_growing_while_fl_studio_renders():
+    # FL Studio says nothing until a part is rendered: meanwhile the tree grows slowly, never to the stage's end
+    pytest.importorskip("PySide6.QtCore")
+    from eden.gui.controller import RENDER_CREEP_CAP, SPANS, EdenController
+
+    c = EdenController(check_updates=False)
+    c._enter("render")
+    c._set("stage", "rendering")
+    c._set("busy", True)
+    start, end = SPANS["render"]
+    before = c.growth
+    for _ in range(600):  # five minutes of ticks
+        c._creep_render()
+    assert before < c.growth < start + (end - start) * RENDER_CREEP_CAP
+    assert c.growth > start + (end - start) * RENDER_CREEP_CAP * 0.9
+    c._grow("render", 0.95)  # a part rendered moves it on for real
+    assert c.growth == pytest.approx(start + (end - start) * 0.95)
+    c._set("busy", False)
+    c._creep_render()
+    assert not c._render_creep.isActive()

@@ -3,6 +3,7 @@
 import os
 import sys
 
+import numpy as np
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -147,6 +148,31 @@ def test_errors_name_the_step(ui, tmp_path):
     assert c.journeyLines()[-1]["kind"] == "error"
     c.clearError()
     assert c.errorMessage == ""
+
+
+def test_the_tree_grows_and_the_camera_follows_without_a_jump(ui):
+    # each step of the work is seen growing (eased, never past the work done, the percentage with it), and the
+    # camera reframes the taller tree gliding over many frames
+    from PySide6.QtCore import QObject
+
+    c, engine = ui()
+    c._begin_journey("analysis", fresh=True)
+    pump(400)
+    root = engine.rootObjects()[0]  # held: a found child dies with a temporary root's wrapper
+    view = root.findChild(QObject, "garden")
+    start = view.property("camDistance")
+    c._set("growth", 0.6)
+    shown, cams = [], []
+    for _ in range(80):
+        pump(40)
+        shown.append(view.property("shown"))
+        cams.append(view.property("camDistance"))
+    assert shown == sorted(shown) and max(shown) <= 0.6 + 1e-9 and shown[-1] == pytest.approx(0.6, abs=1e-3)
+    moves = np.diff([start, *cams])
+    assert cams[-1] - start > 3 and np.all(moves >= -1e-9) and moves.max() < 0.35 * (cams[-1] - start)
+    c._set("growth", 0.1)  # a new journey: wound back as smoothly
+    pump(40)
+    assert view.property("shown") > 0.1
 
 
 def test_the_garden_closes_cleanly_however_fast_an_error_comes(ui, tmp_path):

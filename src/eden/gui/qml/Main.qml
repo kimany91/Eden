@@ -129,6 +129,7 @@ ApplicationWindow {
         opacity: status === Loader.Ready ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
         sourceComponent: GardenView {
+            objectName: "garden"
             onFinished: controller.endJourney()
         }
     }

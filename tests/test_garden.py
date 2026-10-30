@@ -154,3 +154,23 @@ def test_the_qt_types_hand_the_gpu_the_whole_tree(app):
     info = GardenInfo()
     assert len(info.heights) == 101 and info.heightAt(1.0) == pytest.approx(TREE.heights[-1])
     assert math.isclose(info.appleCenter.y(), TREE.apple_center[1], rel_tol=1e-6)
+
+
+def test_the_crown_grows_on_every_side_at_once():
+    # the branches leave the trunk by threes, all round it: no side of the tree grows alone
+    trunk_points = TREE.seg_start[:9]
+    whorls: dict[float, list[float]] = {}
+    for i in range(9, len(TREE.seg_start)):
+        if np.min(np.linalg.norm(trunk_points - TREE.seg_start[i], axis=1)) < 1e-9:
+            direction = TREE.seg_axis[i][:, 1]
+            whorls.setdefault(round(float(TREE.seg_t[i, 0]), 6), []).append(
+                math.degrees(math.atan2(direction[2], direction[0])) % 360)
+    assert len(whorls) >= 5
+    for azimuths in whorls.values():
+        assert len(azimuths) == garden.WHORL
+        ring = sorted(azimuths)
+        assert np.max(np.diff([*ring, ring[0] + 360])) < 180  # they surround the trunk
+    # halfway through the mix, leaves are out all round the trunk already
+    real = TREE.leaf_pos[REAL_LEAVES & (TREE.leaf_t[:, 1] <= 0.6)]
+    angles = np.degrees(np.arctan2(real[:, 2], real[:, 0])) % 360
+    assert all(np.sum((angles >= q) & (angles < q + 90)) > 30 for q in (0, 90, 180, 270))

@@ -17,7 +17,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import Property, QThread, QUrl, Signal, Slot, QObject
+from PySide6.QtCore import Property, QThread, QTimer, QUrl, Signal, Slot, QObject
 from PySide6.QtGui import QDesktopServices
 
 from eden import __version__
@@ -39,6 +39,10 @@ SPANS = {key: (start, end) for key, _, start, end in JOURNEY}
 # the mix session's steps, as stages of the journey
 MIX_STAGES = ("mix", "mix", "master", "checks")
 LOG_LIMIT = 2000  # lines kept for a view opened late (the garden is shown during the whole journey)
+# FL Studio says nothing while it renders: the tree goes on growing meanwhile, towards this share of the
+# stage's span, a third of the way left every RENDER_PACE_S (each part rendered moves it on for real)
+RENDER_CREEP_CAP = 0.9
+RENDER_PACE_S = 30.0
 
 
 def default_renderer():
@@ -170,6 +174,9 @@ class EdenController(QObject):
         self.update_worker: _Worker | None = None
         self._player = player or ABPlayer()
         self._unchecked = False  # the user chose to mix renders that did not pass their check
+        self._render_creep = QTimer(self)
+        self._render_creep.setInterval(500)
+        self._render_creep.timeout.connect(self._creep_render)
         self.refreshProjects()
         if check_updates:
             self._start_update_check()
@@ -439,7 +446,20 @@ class EdenController(QObject):
             except RenderError as exc:
                 raise _StepError("Rendu FL Studio", str(exc)) from exc
 
+        self._render_creep.start()
         self._start(job, self._on_rendered, self._on_render_progress)
+
+    def _creep_render(self) -> None:
+        """While FL Studio renders (it tells nothing until a part is done), the tree keeps growing
+        slowly, never past RENDER_CREEP_CAP of the stage: the next rendered part moves it on for real."""
+        if self._stage != "rendering" or not self._busy:
+            self._render_creep.stop()
+            return
+        start, end = SPANS["render"]
+        cap = start + (end - start) * RENDER_CREEP_CAP
+        if self._growth < cap:  # a third of the way left every RENDER_PACE_S
+            share = 1 - (2 / 3) ** (self._render_creep.interval() / 1000 / RENDER_PACE_S)
+            self._set("growth", self._growth + (cap - self._growth) * share)
 
     def _on_render_progress(self, index: int, total: int, label: str) -> None:
         self._step(label)

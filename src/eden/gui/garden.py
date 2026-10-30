@@ -10,8 +10,11 @@ and every part is drawn with one instanced mesh: a few draw calls for the whole 
 The stages of the tree are set on the stages of Eden's work (``controller.py``):
 
     t 0    → 0.08   analysis: the seed sprouts, its first two leaves come out of the soil;
-    t 0.08 → 0.40   FL Studio renders the parts: the stem grows, the first branch, its leaves;
+    t 0.08 → 0.40   FL Studio renders the parts: the stem grows, the first branches all round it, their leaves;
     t 0.40 → 0.82   the mix: the tree grows, its branches multiply, the crown fills;
+
+The branches leave the trunk by threes all round it and lengthen slowly, many at once: the crown
+spreads on every side together, never one branch alone.
     t 0.82 → 1      the master and its checks: the last branches and leaves, the trunk thickens.
 
 Pure numpy here; ``garden_qml.py`` hands these arrays to Qt Quick 3D.
@@ -33,7 +36,8 @@ TRUNK_HEIGHT = 3.9  # metres
 # trunk height reached at moments of the growth: (t, height)
 TRUNK_SCHEDULE = ((0.0, 0.0), (0.025, 0.0), (0.08, 0.32), (0.22, 1.35), (0.40, 2.05), (0.82, 3.55),
                   (0.90, TRUNK_HEIGHT))
-BRANCH_SPEED = 15.0  # metres of branch per unit of t
+BRANCH_SPEED = 8.0  # metres of branch per unit of t: the branches lengthen slowly, many at once
+WHORL = 3  # branches leaving the trunk together at each height, all round it: the crown grows on every side
 GROWN = 0.97  # everything has grown by then (the master's end); the rest is the checks
 LEAF_OPENING = 0.035  # t a leaf takes to open
 COTYLEDON = (0.05, 0.085, 0.30, 0.38)  # the sprout's two first leaves: open, then wither once real leaves are out
@@ -155,14 +159,14 @@ def grow_tree(seed: int = SEED) -> Tree:
 
     golden = math.radians(137.5)
     azimuth = rng.uniform(0, 2 * math.pi)
-    for k, h in enumerate(trunk_heights[3:9]):
+    for h in trunk_heights[3:9]:
         j = trunk_heights.index(h)
-        azimuth += golden + rng.normal(0, 0.15)
-        elevation = -0.55 + 1.25 * (h - 1.3) / (3.6 - 1.3) + rng.normal(0, 0.05)
-        branch(trunk[j], dome(azimuth, elevation) * 0.86, radius(h) * 0.62, trunk_moment(h) + 0.004, 1, 3)
-        if k in (1, 3):  # a second branch on the other side at some heights: a fuller crown
-            other = azimuth + math.pi + rng.normal(0, 0.3)
-            branch(trunk[j], dome(other, elevation + 0.15) * 0.8, radius(h) * 0.5, trunk_moment(h) + 0.02, 1, 3)
+        azimuth += golden + rng.normal(0, 0.15)  # each whorl turned from the one below: no branch above another
+        elevation = -0.55 + 1.25 * (h - 1.3) / (3.6 - 1.3)
+        for w in range(WHORL):
+            around = azimuth + 2 * math.pi * w / WHORL + rng.normal(0, 0.2)
+            branch(trunk[j], dome(around, elevation + rng.normal(0, 0.06)) * rng.uniform(0.78, 0.88),
+                   radius(h) * 0.5, trunk_moment(h) + 0.004, 1, 3)
 
     # -- leaves: clusters at the twigs' ends, a few along them --------------------------------
     _, crown_colors = palette()
@@ -186,7 +190,7 @@ def grow_tree(seed: int = SEED) -> Tree:
     for pos, t, depth, direction, terminal in nodes:
         if depth < 2:
             continue
-        count = int(rng.integers(20, 27)) if terminal else int(rng.integers(6, 10))
+        count = int(rng.integers(13, 18)) if terminal else int(rng.integers(5, 8))
         spread = 0.34 if terminal else 0.2
         for _ in range(count):
             offset = rng.normal(0, spread / 1.8, 3)
