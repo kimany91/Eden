@@ -191,9 +191,10 @@ def test_each_defect_gets_its_treatment(kwargs, kind, check):
 def test_chain_follows_the_engineers_order():
     kinds = _kinds(plan_voice(measure_vocal(voice(sibilance=1.2, rumble=0.08, phrase_spread_db=12, seed=8), FS),
                               "lead_vocal", 1.0, False))
-    # clean-up, light de-essing before the compressors pump on the s, compression, colour,
-    # the main de-esser on what the colour brightened, then the level the chain took is given back
-    assert kinds == ["highpass", "deesser", "compressor", "compressor", "parallel", "saturation",
+    # breaths before anything raises them, clean-up, light de-essing before the compressors pump on
+    # the s, compression, colour, the main de-esser on what the colour brightened, then the level the
+    # chain took is given back
+    assert kinds == ["breath", "highpass", "deesser", "compressor", "compressor", "parallel", "saturation",
                      "deesser", "makeup"]
 
 

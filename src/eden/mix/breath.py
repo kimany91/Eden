@@ -44,6 +44,8 @@ class BreathResult:
 def sung_activity(x: np.ndarray, fs: float) -> tuple[np.ndarray, np.ndarray, int]:
     """(1 ms frames that sing, voiced-band level of every frame, frame size): activity is read on the
     voiced band only, so breaths, headphone bleed and effect tails do not pass for phrases."""
+    if x.shape[0] < int(0.2 * fs):  # shorter than any phrase: nothing sings (and too short to filter)
+        return np.zeros(0, dtype=bool), np.zeros(0), max(1, int(round(dsp.FRAME_S * fs)))
     voiced, _ = dsp.split_band(x, fs, VOICED_BAND_HZ[0], VOICED_BAND_HZ[1])
     level, size = dsp.band_levels_db(voiced, fs)
     if level.size == 0:

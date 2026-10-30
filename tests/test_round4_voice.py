@@ -70,7 +70,7 @@ def test_a_voice_whose_compressor_stays_idle_shows_no_make_up():
     dry = np.tanh(6.0 * dry / np.max(np.abs(dry))) * 0.2
     x = dry + _echo(dry, 60 / 140, -6.0)
     planned = plan_voice(measure_vocal(x, FS), "lead_vocal", 1.0, True)
-    assert [t.kind for t in planned] == ["compressor", "saturation", "makeup"]
+    assert [t.kind for t in planned] == ["breath", "compressor", "saturation", "makeup"]
     _, _, _, result = _chain(Part("ch1", "Lead", "lead_vocal", x), FS, 1.0, "untracked", 140.0)
     assert [t.kind for t in result.treatments] == ["saturation"]
 
