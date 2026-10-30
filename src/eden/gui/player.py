@@ -212,13 +212,16 @@ class _QtOutput:
     """The PC's default audio output."""
 
     def __init__(self) -> None:
-        from PySide6.QtMultimedia import QMediaDevices
-
+        try:
+            from PySide6.QtMultimedia import QMediaDevices
+        except ImportError:  # Qt Multimedia cannot load (a system audio library is missing): no listening
+            self.device = None
+            return
         self.device = QMediaDevices.defaultAudioOutput()
 
     @property
     def available(self) -> bool:
-        return not self.device.isNull()
+        return self.device is not None and not self.device.isNull()
 
     def format(self, fs: int):
         """(QAudioFormat, bytes per frame): float stereo at ``fs``, else what the output prefers."""

@@ -199,6 +199,16 @@ def test_the_player_loads_a_version_and_the_output_pulls_it(app, tmp_path):
     assert not p.ready and sink.state == "stopped"
 
 
+def test_without_qt_multimedia_eden_still_runs_without_listening(app, monkeypatch):
+    import sys
+
+    from eden.gui.player import ABPlayer
+
+    monkeypatch.setitem(sys.modules, "PySide6.QtMultimedia", None)  # as when a system library is missing
+    p = ABPlayer()
+    assert not p.available and "Aucune sortie audio" in p.message
+
+
 def test_without_a_sound_card_the_player_says_so(app):
     from eden.gui.player import ABPlayer
 
