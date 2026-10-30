@@ -136,20 +136,31 @@ d'1/6 d'octave d'une note tenue ou de son octave.
 
 - **Voix principale** : volume K-pondéré de la voix moins celui de l'instru, **pendant
   qu'elle chante** ; cible **+1 dB**, fenêtre −1 à +4 dB (**choix d'Eden**), changement
-  statique 4 dB max. Repères : les experts placent la voix principale à peu près au volume
-  de tout le reste réuni (≈ 0 dB, Pestana & Reiss 2014, sourcé) ; les autres voix étant
-  réglées ensuite vers −6 dB sous elle, +1 dB contre l'instru seule retombe près de 0 dB
-  contre tout le reste. La mesure BS.1770 lit une voix environ 2 LU plus bas qu'on ne
+  statique 10 dB max (**choix d'Eden** : une voix brute posée sur une instru déjà masterisée
+  peut se trouver 10 dB en dessous). Repères : les experts placent la voix principale à peu près
+  au volume de tout le reste réuni (≈ 0 dB, Pestana & Reiss 2014, sourcé) ; les autres voix
+  étant réglées ensuite vers −6 dB sous elle, +1 dB contre l'instru seule retombe près de
+  0 dB contre tout le reste. La mesure BS.1770 lit une voix environ 2 LU plus bas qu'on ne
   l'entend (Pestana & Reiss 2013, non vérifié en texte intégral). Le classement du rap
   parmi les genres « voix devant » (Gerdes & Siedenburg 2023) et la préférence des auditeurs
   pour une voix 3 à 6 dB plus forte (Knoll & Siedenburg 2022) n'ont pas pu être ouverts.
+- **Voix restée hors de sa fenêtre** : l'intensité règle la part du changement qu'Eden fait
+  (à 50 %, la moitié). Si, ce changement fait, la voix reste hors de sa fenêtre (un gain
+  statique déplace l'équilibre d'autant de dB), Eden le signale dans les avertissements avec
+  l'écart qui reste, par exemple « « Lead » reste à -6.2 dB de l'instru pendant qu'elle
+  chante, niveau d'Eden compris (visé +1 dB, accepté de -1 à +4 dB) : monte la voix ou
+  baisse l'instru dans FL Studio », précédé de « À cette intensité, » sous 100 %. Le suivi
+  phrase par phrase ne corrige pas cet écart : il garde l'équilibre médian de la voix.
 - **Voix principales qui chantent ensemble** (prises empilées d'un refrain, piste dupliquée) :
   deux voix chantent ensemble quand celle qui chante le moins partage au moins la moitié de
   ses blocs chantés avec l'autre (choix d'Eden), de proche en proche. Leur somme est réglée
-  contre l'instru comme une seule voix, avec la même cible, et elles reçoivent le même gain
-  statique : ce réglage ne change pas leur équilibre entre elles (le suivi phrase par phrase,
-  ensuite, se fait voix par voix). Seule exception : une voix principale qui copie une autre
-  (corrélation > 0,8 à ±40 ms) n'est jamais montée.
+  contre l'instru comme une seule voix, avec la même cible et le même maximum de 10 dB, et
+  elles reçoivent le même gain statique : ce réglage ne change pas leur équilibre entre elles
+  (le suivi phrase par phrase, ensuite, se fait voix par voix). Seule exception : une voix
+  principale qui copie une autre (corrélation > 0,8 à ±40 ms) n'est jamais montée. Quand deux
+  voix se copient l'une l'autre (piste dupliquée), la première dans l'ordre du projet compte
+  comme l'originale et reçoit le gain ; seule l'autre est gardée à son niveau, et la somme
+  est alors mesurée à nouveau pour l'avertissement.
 - **Suivi phrase par phrase** (« vocal riding », pratique d'expert sourcée : Pestana & Reiss
   2014) : phrases = plages de chant d'au moins 0,3 s séparées d'au moins une croche du tempo
   ressenti ; l'instru est mesurée **au-dessus de 200 Hz**, la bande qui couvre les paroles (le
@@ -163,9 +174,11 @@ d'1/6 d'octave d'une note tenue ou de son octave.
   pendant le silence et change dans les 120 ms qui précèdent la phrase suivante (les silences
   du rap durent le plus souvent une double croche, ~180 ms : MCFlow, non vérifié).
 - **Doublages / ad-libs / chœurs** par rapport à la voix principale : −6 (−10 à −3), −6
-  (−9 à −3), −7 (−10 à −4) dB (moyennes de blogs, **non vérifié**). Un doublage **copie** de
+  (−9 à −3), −7 (−10 à −4) dB (moyennes de blogs, **non vérifié**), changement statique
+  4 dB max ; hors de leur fenêtre une fois ce changement fait, Eden le signale aussi
+  (« monte cette voix » ou « baisse cette voix dans FL Studio »). Un doublage **copie** de
   la voix principale (corrélation > 0,8 à ±40 ms, choix d'Eden) n'est jamais remonté
-  (filtrage en peigne).
+  (filtrage en peigne), et rien n'est signalé : c'est voulu.
 
 ## 4. Espace
 
@@ -218,16 +231,32 @@ synthèse de la recherche ; niveaux : choix d'Eden) :
 
 ## 6. Place pour les paroles et basses
 
-- **Démasquage** : bandes de tiers d'octave (250 Hz – 8 kHz) où l'instru couvre le plus la
-  voix pendant le chant, pondérées par leur importance pour l'intelligibilité (ANSI S3.5,
-  1–4 kHz ≈ 72 % du poids, sourcé) : les 3 premières baissent de 1 à 3 dB dans l'instru,
-  seulement quand la voix chante (méthode de Hafezi & Reiss 2015, sourcé). L'instru est
-  creusée là où elle a été mesurée : dans les groupes et dans le reste du mix (une instru
-  qui passe par un bus partagé avec les voix s'y retrouve). Le creux est affiché sur les
-  groupes, et sur une ligne « Reste du mix », quand ils portent au moins 25 % de ce qu'il
-  retire (choix d'Eden). Fait **avant** l'équilibre, pour que la voix soit réglée sur
-  l'instru telle qu'on l'entendra. Doublages, chœurs et ad-libs baissent de 2 dB entre 1 et
-  4 kHz aux mêmes moments (choix d'Eden) : un doublage chante sous la voix principale.
+- **Démasquage** : dans chaque bande de tiers d'octave centrée de 250 Hz à 8 kHz, Eden
+  mesure l'instru moins la voix pendant le chant. Une bande où l'instru est 3 dB ou plus
+  sous la voix n'a pas besoin de creux ; les autres baisseraient, à 100 %, de 1 dB (instru
+  3 dB sous la voix) à 3 dB (instru 3 dB au-dessus ou plus). Sont écartées celles que
+  l'instru couvre de plus de 12 dB (un creux de 3 dB n'y découvre rien) et celles où la
+  voix est à plus de 20 dB sous sa bande la plus forte (elle n'y a presque rien) : 12 et
+  20 dB, choix d'Eden. Au plus 3 bandes sont gardées : celles où le creux rend le plus de
+  paroles audibles, soit l'importance de la bande pour l'intelligibilité (ANSI S3.5,
+  1–4 kHz ≈ 72 % du poids, sourcé ; chaque tiers reçoit le tiers du poids de son octave)
+  × l'audibilité gagnée, l'audibilité d'une bande valant 0 quand la voix est 15 dB sous
+  l'instru, 1 à partir de 15 dB au-dessus, et montant en ligne droite entre les deux
+  (ANSI S3.5, non vérifié sur le texte de la norme). Dans les bandes retenues (instru de
+  3 dB sous la voix à 12 dB au-dessus), l'audibilité n'atteint jamais 0 ni 1 : l'audibilité
+  gagnée vaut la profondeur du creux divisée par 30, et le classement revient à importance
+  × profondeur. Le creux ne joue que quand la voix chante (méthode de Hafezi & Reiss 2015,
+  sourcé). L'instru est creusée là où elle a été mesurée : dans les groupes et dans le
+  reste du mix (une instru qui passe par un bus partagé avec les voix s'y retrouve). Quand
+  des voix sont restées dans le reste du mix (au-delà des 16 voix qu'Eden fait rendre une
+  par une), seuls les groupes sont mesurés et creusés : creuser le reste baisserait aussi
+  ces voix ; le motif du creux le dit. Le creux est affiché sur les groupes, et sur une
+  ligne « Reste du mix », quand ils portent au moins 25 % de ce qu'il retire (choix
+  d'Eden). Fait **avant** l'équilibre, pour que la voix soit réglée sur l'instru telle
+  qu'on l'entendra. Doublages, chœurs et ad-libs baissent de 2 dB entre 1 et 4 kHz aux
+  mêmes moments (choix d'Eden) : un doublage chante sous la voix principale. Seule la voix
+  baisse : ses reverbs et delays FL rendus à part restent tels quels (sur une voix
+  « prudente », ils sont dans la voix et baissent avec elle).
 - **Kick / 808** : si plus d'un kick sur deux (lus sur tous les groupes batterie réunis)
   tombe sur une note de 808 qui ne baisse pas déjà (< 2 dB), chaque groupe basse / 808 est
   baissé de 3 dB sous 100 Hz à chacun de ces kicks : descente en 5 ms

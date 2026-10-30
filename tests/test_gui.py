@@ -168,8 +168,9 @@ def test_mix_page_flow(ui, tmp_path):
     assert [s["status"] for s in c.mixSteps] == ["done"] * 4
     first = c.mixResult["id"]
     assert c.mixResult["intensity"] == 60
-    # voices, then the groups, then the rest of the mix (the 808's send to the vocal bus), carved too
-    assert [p["roleKey"] for p in c.mixResult["parts"][2:]] == ["bass", "beat", "residual"]
+    # voices, then the groups; the toy beat's tones cover the voices by more than 12 dB, where a dip uncovers
+    # nothing: nothing is carved, so the rest of the mix has no line
+    assert [p["roleKey"] for p in c.mixResult["parts"][2:]] == ["bass", "beat"]
     assert len(c.mixVersions) == 1
 
     c.intensity = 0.0

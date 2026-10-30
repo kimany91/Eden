@@ -7,7 +7,10 @@
     groups    each top-level mixer group that carries no voice (808, drums,
               beat...), as FL rendered it
     residual  everything else: buses shared with voices (what they add on top
-              of the voices), and any source FL rendered with a voice
+              of the voices), and any source FL rendered with a voice; a voice
+              with no render of its own (beyond the render plan's limit of
+              vocal renders, or whose render failed) is left there too, and
+              ``voices_in_residual`` says so
 
 By construction ``sum(voices) + sum(groups) + residual`` equals the
 pre-master render exactly, so Eden at intensity 0 gives back the song.
@@ -65,6 +68,7 @@ class Parts:
     sample_rate: int
     premaster: np.ndarray = field(repr=False)
     warnings: list[str] = field(default_factory=list)
+    voices_in_residual: bool = False  # a vocal source that reaches the Master has no voice part
 
     def all(self) -> list[Part]:
         return [*self.voices, *self.groups, self.residual]
@@ -197,5 +201,7 @@ def split(report: InspectionReport, renders: RenderResult) -> Parts:
     residual = premaster.copy()
     for part in voices + groups:
         residual -= part.audio  # float32 parts promoted to float64: the sum stays exact
+    rendered = {c for v in voices for c in v.channels}
+    left = any(s.reaches_master and s.role.is_vocal and s.channel not in rendered for s in report.sources)
     return Parts(voices, groups, Part("residual", "Reste du mix (bus partagés, autres sources)",
-                                      "residual", residual), fs, premaster, warnings)
+                                      "residual", residual), fs, premaster, warnings, left)

@@ -11,7 +11,7 @@ from scipy.signal import sosfreqz
 
 from eden.mix import dsp, stereo
 from eden.mix.analysis import measure_vocal
-from eden.mix.engine import LEAD_BALANCE, _level_change, mix
+from eden.mix.engine import LEAD_BALANCE, MAX_LEAD_CHANGE_DB, _level_change, mix
 from eden.mix.export import ExportError, export_wav
 from eden.mix.loudness import integrated_loudness, k_weighting, loudness_range, true_peak_db
 from eden.mix.master import CEILING_DBTP, DENSE_CEILING_DBTP, TARGET_LUFS, master
@@ -241,9 +241,10 @@ def _parts(lead_level=0.25, adlib_level=0.6, with_dry=False):
 
 def test_lead_balance_window():
     target, low, high = LEAD_BALANCE
-    assert low <= 0.0 <= high and _level_change(0.0, LEAD_BALANCE, 1.0) == 0.0  # experts' usual balance
-    assert _level_change(low - 1.0, LEAD_BALANCE, 1.0) == pytest.approx(target - low + 1.0)
-    assert _level_change(12.0, LEAD_BALANCE, 1.0) == -4.0  # never more than 4 dB at once
+    cap = MAX_LEAD_CHANGE_DB
+    assert low <= 0.0 <= high and _level_change(0.0, LEAD_BALANCE, 1.0, cap) == 0.0  # experts' usual balance
+    assert _level_change(low - 1.0, LEAD_BALANCE, 1.0, cap) == pytest.approx(target - low + 1.0)
+    assert _level_change(14.0, LEAD_BALANCE, 1.0, cap) == -10.0  # a lead: never more than 10 dB at once
 
 
 def test_mix_at_zero_is_exactly_the_original():

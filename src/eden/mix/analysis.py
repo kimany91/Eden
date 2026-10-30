@@ -579,6 +579,7 @@ class BandMasking:
     high_hz: float
     masking_db: float  # other minus voice in this band while the voice sings
     weight: float  # importance of the band for the words (SII)
+    voice_db: float  # the voice in this band relative to its strongest band
 
 
 MASKING_FFT, MASKING_HOP = 4096, 1024
@@ -618,19 +619,20 @@ def _band_power(x: np.ndarray, fs: float, mask: np.ndarray, edges: list[tuple[fl
 
 def band_masking(vocal: np.ndarray, other: np.ndarray, fs: float, mask: np.ndarray
                  ) -> list[BandMasking]:
-    """How much ``other`` covers the voice in each 1/3-octave band while the voice sings,
-    weighted by the band's importance for intelligibility (SII)."""
+    """How much ``other`` covers the voice in each 1/3-octave band centred from 250 Hz to 8 kHz
+    while the voice sings, with the band's importance for intelligibility (SII: a third of its
+    octave's weight) and the voice's level there."""
     bands = []
-    for centre, weight in SII_OCTAVE_WEIGHTS.items():
-        for third in (-1, 0, 1):
-            fc = centre * 2 ** (third / 3)
-            lo, hi = fc / 2 ** (1 / 6), fc * 2 ** (1 / 6)
-            if hi < fs / 2:
-                bands.append((lo, hi, weight / 3))
+    for i in range(16):  # centres 250 · 2^(i/3) Hz: 250 Hz … 8 kHz
+        fc = 250 * 2 ** (i / 3)
+        lo, hi = fc / 2 ** (1 / 6), fc * 2 ** (1 / 6)
+        if hi < fs / 2:
+            bands.append((lo, hi, SII_OCTAVE_WEIGHTS[250 * 2 ** round(i / 3)] / 3))
     edges = [(lo, hi) for lo, hi, _ in bands]
     pv, po = _band_power(vocal, fs, mask, edges), _band_power(other, fs, mask, edges)
+    strongest = max((v for v in pv if v > 0), default=0.0)
     out = []
     for (lo, hi, weight), v, o in zip(bands, pv, po, strict=True):
         if v > 0 and o > 0:
-            out.append(BandMasking(lo, hi, 10 * math.log10(o / v), weight))
+            out.append(BandMasking(lo, hi, 10 * math.log10(o / v), weight, 10 * math.log10(v / strongest)))
     return out
