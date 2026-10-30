@@ -1,8 +1,10 @@
 """Measurements Eden bases its mix decisions on.
 
-All values are measured on FL Studio's renders (the voice *with* its FL
-effects), so Eden reacts to what the voice really sounds like after the
-user's own chain, and does not correct what is already right.
+All values are measured on FL Studio's renders: the voice with its whole FL
+chain or, when FL also rendered it without its reverbs and delays, that dry
+render (the FL effects are put back untouched afterwards). Eden reacts to
+what the voice really sounds like after the user's own chain, and does not
+correct what is already right.
 
 Levels and spectra are taken channel by channel and their powers averaged,
 like the loudness meter does: a voice widened in FL (one side delayed,
@@ -64,10 +66,8 @@ def level_of(x: np.ndarray, fs: float) -> Level:
 @dataclass
 class VocalMeasure:
     loudness_lufs: float
-    active_share: float  # fraction of the song where the voice sounds
     mud_db: float  # 200–500 Hz relative to 1–4 kHz
     resonances: list[Resonance] = field(default_factory=list)
-    vowel_level_db: float = -math.inf  # typical level of the voiced parts (1 ms frames)
     sibilant_excess_db: float = -math.inf  # loud 's' in the de-esser's band relative to the vowels
     sibilant_share: float = 0.0  # share of sung time where 's' sounds dominate
     dynamic_spread_db: float = 0.0  # P90 − P10 of the 400 ms loudness inside phrases (rests excluded)
@@ -581,7 +581,7 @@ def _inside_phrases(active: np.ndarray, size: int, fs: float, count: int) -> np.
 def measure_vocal(x: np.ndarray, fs: float) -> VocalMeasure:
     level, active, size = active_frames(x, fs)
     if not active.any():
-        return VocalMeasure(-math.inf, 0.0, 0.0)
+        return VocalMeasure(-math.inf, 0.0)
     sung = sung_samples(x, active, size)
     freqs, psd = _psd_db(sung, fs)
     blocks = block_loudness(x, fs)
@@ -611,10 +611,8 @@ def measure_vocal(x: np.ndarray, fs: float) -> VocalMeasure:
     peak_db = 20 * math.log10(max(float(np.max(np.abs(x))), 1e-12))
     return VocalMeasure(
         loudness_lufs=lufs,
-        active_share=float(active.mean()),
         mud_db=_band_db(freqs, psd, 200, 500) - _band_db(freqs, psd, 1000, 4000),
         resonances=resonances,
-        vowel_level_db=vowel,
         sibilant_excess_db=sibilant_excess(x, fs, s_frames, vowel, deess_band_low_hz(peak)),
         sibilant_share=float(s_frames.sum() / active[: s_frames.size].sum()),
         dynamic_spread_db=float(np.percentile(sung_blocks, 90) - np.percentile(sung_blocks, 10))

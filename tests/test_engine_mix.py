@@ -253,7 +253,7 @@ def test_only_the_voice_is_placed_the_fl_reverb_keeps_its_width():
     lead = voice(12.0, seed=11)
     parts = _parts([("ch0", "Lead", "lead_vocal", lead, None), ("ch1", "Adlib", "adlib", dry + wet, dry)],
                    [("g1", "Instru", "beat", beat(12.0))])
-    assert not stereo.is_mono(dry + wet, FS)
+    assert not stereo.is_mono(dry + wet)
     out = mix(parts, 1.0, 95.0, {"ch0": "none", "ch1": "tracked"})
     adlib = next(p for p in out.parts if p.key == "ch1")
     assert "change de côté (50 % à gauche ou à droite)" in adlib.placement

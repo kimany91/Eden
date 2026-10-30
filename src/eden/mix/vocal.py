@@ -4,8 +4,9 @@ Order of the chain (the one documented hip-hop sessions share, see
 docs/mixage.md): pitch correction is already printed by FL Studio, then
 high-pass → fixed resonances → low-mid build-up → light de-esser →
 leveling compressor → peak compressor → parallel compression → saturation
-→ presence / air → main de-esser. Each step has a measured trigger and a
-cap; a step whose trigger is not met is simply not added.
+→ air / push-back of secondary voices → main de-esser → make-up. Each step
+has a measured trigger and a cap; a step whose trigger is not met is simply
+not added.
 
 When the voice is processed from FL's dry render, the user's reverbs and
 delays are added back afterwards, untouched. When no dry render exists but
@@ -144,7 +145,7 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
              if m.sibilant_peak_hz else " ; pic des « s » non mesuré, bande dès 4,5 kHz")
     if m.sibilant_excess_db > -1.0:
         out.append(Treatment(
-            "deesser", f"De-esser léger (max {profile.deess_first_db * k:.0f} dB)",
+            "deesser", f"De-esser léger (max {profile.deess_first_db * k:.1f} dB)",
             f"Dans la bande du de-esser, les « s » les plus forts montent à {m.sibilant_excess_db:+.1f} dB "
             f"par rapport aux voyelles{where}",
             {"below_vowels_db": 2.0, "max_reduction_db": profile.deess_first_db * k, "low_hz": deess_low}))
@@ -209,11 +210,12 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
             f"voyelles ({m.sibilant_share * 100:.1f} % du chant){where}",
             {"below_vowels_db": 6.0, "max_reduction_db": depth * k, "low_hz": deess_low}))
 
-    # 11. make-up: the compressors and de-essers took level; it is given back, so the balance of the
-    #     voice in the mix is decided on a measurement, in one place, and explained there
+    # 11. make-up: once a compressor or a de-esser has acted (``apply`` checks it), the level the chain
+    #     took is given back, so the balance of the voice in the mix is decided on a measurement, in one
+    #     place, and explained there
     if any(t.kind in ("compressor", "deesser") for t in out):
         out.append(Treatment(
             "makeup", "Gain de compensation",
-            "Rend à la voix le volume que la compression lui a pris ; son niveau dans le mix est réglé "
-            "ensuite, sur une mesure"))
+            "Un compresseur ou un de-esser a agi : rend à la voix le volume que sa chaîne lui a pris (volume "
+            "BS.1770 avant / après) ; son niveau dans le mix est réglé ensuite, sur une mesure"))
     return out

@@ -126,8 +126,9 @@ F240, F245, F247, F250 = [240, 270, 300, 320, 360], [245, 275, 310, 330, 367], [
 @pytest.mark.parametrize("notes,seed,shelf_db,muddy", [
     (F240, 11, 1.4, True), (F245, 11, 1.4, True), (F245, 11, 2.0, True), (F245, 11, 3.0, True),
     (F247, 11, 1.4, True), (F247, 11, 2.0, True), (F247, 11, 3.0, True), (F250, 11, 3.0, True),
-    (F247, 2, 1.4, True), (F240, 2, 1.4, True), (F250, 2, 3.0, True), ([220, 247, 262, 294, 330], 2, 0.0, True),
-    ([233, 262, 294, 330, 349, 392], 2, 0.0, False),
+    (F247, 2, 1.4, True), (F247, 2, 3.0, True), (F240, 2, 1.4, True), (F250, 2, 3.0, True),
+    ([220, 247, 262, 294, 330], 2, 0.0, True), ([233, 262, 294, 330, 349, 392], 2, 0.0, False),
+    ([233, 262, 294, 330, 349, 392], 2, 3.0, True),
 ])
 def test_a_clean_voice_whose_lowest_notes_are_220_to_250_hz_gets_no_low_mid_cut(notes, seed, shelf_db, muddy):
     m = measure_vocal(_warm(notes, seed, shelf_db), FS)
@@ -168,11 +169,14 @@ def _bump_gain_db(freq, q, at_hz):
     return 20 * math.log10(abs(h[0]))
 
 
-# +6 dB bumps: on each, the seed of 1–8 where it reads lowest, and seed 11
-@pytest.mark.parametrize("freq,q,seed", [(300, 2.0, 5), (300, 4.0, 7), (200, 2.0, 1), (400, 2.0, 4),
-                                         (300, 2.0, 11), (300, 4.0, 11), (200, 2.0, 11), (400, 2.0, 11)])
-def test_the_acceptance_bumps_are_still_cut_where_they_are(freq, q, seed):
+# +6 dB bumps: on each, the seed of 1–8 where it reads lowest, and seed 11; ``measured``: its reading (dB)
+@pytest.mark.parametrize("freq,q,seed,measured", [
+    (300, 2.0, 5, 2.97), (300, 4.0, 7, 3.00), (200, 2.0, 1, 4.15), (400, 2.0, 4, 3.16),
+    (300, 2.0, 11, 3.11), (300, 4.0, 11, 3.10), (200, 2.0, 11, 4.24), (400, 2.0, 11, 3.54),
+])
+def test_the_acceptance_bumps_are_still_cut_where_they_are(freq, q, seed, measured):
     m = measure_vocal(_bump(freq, q, seed), FS)
+    assert m.low_mid_excess_db == pytest.approx(measured, abs=0.01)
     assert m.low_mid_excess_db >= LOW_MID_MIN_DB + 0.4 and m.low_mid_notes >= 2
     cut = _low_mid_cut(m)
     assert cut

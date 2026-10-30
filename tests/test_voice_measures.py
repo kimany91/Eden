@@ -13,7 +13,7 @@ from eden.mix import dsp
 from eden.mix.analysis import (FREQUENT_NOTE_SHARE, RESONANCE_MIN_DB, SILENCE_DB, HarmonicProfile, Resonance,
                                VocalMeasure, _band_power, _inside_phrases, active_frames, deess_band_low_hz,
                                find_resonances, frequent_pitches, level_of, low_mid_buildup, measure_vocal,
-                               near_sung_notes, sibilant_frames, sibilant_peak)
+                               near_sung_notes, sibilant_frames, sibilant_peak, vowel_level)
 from eden.mix.dsp import apply_sos, peaking_sos, shelf_sos
 from eden.mix.loudness import block_loudness, gated_loudness
 from eden.mix.treatments import apply
@@ -118,7 +118,7 @@ def test_no_low_mid_bump_is_placed_where_no_harmonic_was_measured(seed):
 
 
 def _measure(**kw):
-    base = dict(loudness_lufs=-20.0, active_share=0.8, mud_db=8.0, low_mid_hz=310.0, low_mid_excess_db=3.0)
+    base = dict(loudness_lufs=-20.0, mud_db=8.0, low_mid_hz=310.0, low_mid_excess_db=3.0)
     return VocalMeasure(**{**base, **kw})
 
 
@@ -193,7 +193,8 @@ def test_sibilant_excess_is_read_in_the_deessers_band():
     s_frames, _ = sibilant_frames(x, FS, level, active)
     low = deess_band_low_hz(sibilant_peak(x, FS, s_frames, size))
     band, _ = dsp.band_levels_db(dsp.split_band(x, FS, low, None)[0], FS)
-    assert m.sibilant_excess_db == pytest.approx(np.percentile(band[s_frames], 90) - m.vowel_level_db)
+    assert m.sibilant_excess_db == pytest.approx(np.percentile(band[s_frames], 90)
+                                                 - vowel_level(x, FS, level, active))
     deessers = [t for t in _plan(m) if t.kind == "deesser"]
     assert len(deessers) == 2 and all(t.params["low_hz"] == low for t in deessers)
     assert deess_band_low_hz(None) == 4500.0 and deess_band_low_hz(20000.0) == 8000.0
@@ -245,7 +246,8 @@ def test_the_same_voice_rendered_quieter_gets_the_same_plan():
     for peak_db in (-1.0, -30.0, -40.0):
         x = base * 10 ** (peak_db / 20)
         m = measure_vocal(x, FS)
-        plans.append((round(m.active_share, 3), round(m.dynamic_spread_db, 2), [t.label for t in _plan(m, "adlib")]))
+        sung = active_frames(x, FS)[1].mean()
+        plans.append((round(sung, 3), round(m.dynamic_spread_db, 2), [t.label for t in _plan(m, "adlib")]))
     # with a −60 dB floor the −30 dB render lost its quiet syllables and its light de-esser,
     # the −35 dB one its spread (3.7 → 1.2 dB)
     assert plans[0] == plans[1] == plans[2]

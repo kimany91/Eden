@@ -182,7 +182,3 @@ def bass_pitch_classes(x: np.ndarray, fs: float, tuning_cents: float = 0.0, fmin
                        fmax: float = 160.0) -> np.ndarray:
     """Share of the low-frequency energy carried by each pitch class (808 / bass notes)."""
     return chroma(x, fs, fmin, fmax, tuning_cents)
-
-
-def root_note(bass_chroma: np.ndarray) -> int | None:
-    return int(np.argmax(bass_chroma)) if bass_chroma.any() else None

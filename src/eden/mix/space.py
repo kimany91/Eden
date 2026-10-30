@@ -47,11 +47,6 @@ class ReverbDesign:
     width: float = 1.0  # 0 = mono tail, 1 = fully decorrelated left/right
 
 
-def note_seconds(tempo_bpm: float, fraction: float) -> float:
-    """Duration of a note value (1/4 = quarter note, 3/16 = dotted eighth...)."""
-    return 60.0 / tempo_bpm * 4 * fraction
-
-
 def _rt60_at(freq: float, d: ReverbDesign) -> float:
     if freq <= 125:
         return d.decay_s * d.lf_ratio

@@ -208,13 +208,6 @@ def compressor_gain_db(x: np.ndarray, fs: float, threshold_db: float, ratio: flo
     return gr, size
 
 
-def compress(x: np.ndarray, fs: float, threshold_db: float, ratio: float, **kw) -> np.ndarray:
-    if ratio <= 1:
-        return x
-    gr, size = compressor_gain_db(x, fs, threshold_db, ratio, **kw)
-    return _apply_gain(x, _to_samples(gr, size, x.shape[0]))
-
-
 def parallel_compress(x: np.ndarray, fs: float, threshold_db: float, blend: float,
                       low_hz: float = 100.0, high_hz: float = 5000.0, ratio: float = 8.0,
                       attack_ms: float = 5.0, release_ms: float = 50.0,

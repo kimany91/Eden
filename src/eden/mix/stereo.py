@@ -1,4 +1,4 @@
-"""Stereo image: mid/side, width, panning, mono low end and mono compatibility.
+"""Stereo image: mid/side, panning, mono low end and mono compatibility.
 
 Placement of the voices follows what rap mixes do: the lead stays mono in
 the centre; two doubles that sing together go wide left/right when they are
@@ -40,12 +40,6 @@ def from_mid_side(mid: np.ndarray, side: np.ndarray) -> np.ndarray:
     return np.stack([mid + side, mid - side], axis=1)
 
 
-def set_width(x: np.ndarray, width: float) -> np.ndarray:
-    """Scale the side signal (1 = unchanged, 0 = mono, >1 = wider)."""
-    mid, side = mid_side(x)
-    return from_mid_side(mid, side * width)
-
-
 def pan(x: np.ndarray, position: float) -> np.ndarray:
     """Constant-power pan of a (mono-summed) signal; position −1 (left) … +1 (right)."""
     mono = x.mean(axis=1) if x.ndim == 2 else x
@@ -82,31 +76,23 @@ def mono_below(x: np.ndarray, fs: float, freq: float) -> np.ndarray:
 
 @dataclass
 class StereoMeasure:
-    correlation: float  # +1 mono … 0 wide … −1 out of phase
     side_ratio_db: float  # side energy relative to mid energy
     mono_loss_db: float  # loudness lost when summed to mono (energy)
-    low_side_ratio_db: float  # side/mid energy below 120 Hz
 
 
 def _db(a: float, b: float) -> float:
     return 10 * math.log10(a / b) if a > 0 and b > 0 else -math.inf
 
 
-def measure(x: np.ndarray, fs: float, low_hz: float = 120.0) -> StereoMeasure:
+def measure(x: np.ndarray) -> StereoMeasure:
     x = to_stereo(x)
     left, right = x[:, 0], x[:, 1]
-    denom = math.sqrt(float(np.sum(left ** 2) * np.sum(right ** 2)))
-    corr = float(np.sum(left * right) / denom) if denom else 1.0
     mid, side = mid_side(x)
     stereo_energy = float(np.sum(left ** 2) + np.sum(right ** 2)) / 2
-    mono_energy = float(np.sum(((left + right) / 2) ** 2))
-    lp, _ = linkwitz_riley(fs, low_hz)
-    low_mid, low_side = sosfilt(lp, mid), sosfilt(lp, side)
+    mono_energy = float(np.sum(mid ** 2))  # the mono sum (left + right) / 2 is the mid
     return StereoMeasure(
-        correlation=corr,
-        side_ratio_db=_db(float(np.sum(side ** 2)), float(np.sum(mid ** 2))),
+        side_ratio_db=_db(float(np.sum(side ** 2)), mono_energy),
         mono_loss_db=_db(mono_energy, stereo_energy),
-        low_side_ratio_db=_db(float(np.sum(low_side ** 2)), float(np.sum(low_mid ** 2))),
     )
 
 
@@ -119,8 +105,8 @@ def low_band_correlation(x: np.ndarray, fs: float, cutoff: float) -> float:
     return float(np.sum(low[:, 0] * low[:, 1]) / denom) if denom > 0 else 1.0
 
 
-def is_mono(x: np.ndarray, fs: float) -> bool:
-    return measure(x, fs).side_ratio_db < MONO_SIDE_DB
+def is_mono(x: np.ndarray) -> bool:
+    return measure(x).side_ratio_db < MONO_SIDE_DB
 
 
 def copy_correlation(double: np.ndarray, lead: np.ndarray, fs: float, max_lag_ms: float = 40.0) -> float:
@@ -238,7 +224,7 @@ def plan_placement(voices: list[tuple[str, str, str, np.ndarray]], copies: dict[
     out: list[Placement] = []
     if k <= 0:
         return out
-    mono = [v for v in voices if v[2] in ("double", "back_vocal", "adlib") and is_mono(v[3], fs)]
+    mono = [v for v in voices if v[2] in ("double", "back_vocal", "adlib") and is_mono(v[3])]
     takes = []
     for key, label, role, audio in mono:
         if role != "double":

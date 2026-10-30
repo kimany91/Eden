@@ -33,7 +33,6 @@ from eden.mix.dsp import band_levels_db
 from eden.project.inspector import InspectionReport
 from eden.render.pipeline import RenderResult
 
-VOCAL_ROLES = {"lead_vocal", "vocal", "double", "back_vocal", "adlib"}
 DRY_LAG_SEARCH_S = 0.1  # how far FL's delay compensation may have moved the dry voice (choix d'Eden)
 
 
@@ -43,16 +42,12 @@ class PartsError(RuntimeError):
 
 @dataclass
 class Part:
-    key: str  # "ch<index>" for a voice, "group<insert>" / "ch<index>" for groups, "residual"
+    key: str  # "ch<index>" for a voice, the render job's name ("stem-…") for a group, "residual"
     label: str
     role: str  # a role from eden.project.classify, or "residual"
     audio: np.ndarray = field(repr=False)
     channels: list[int] = field(default_factory=list)
     dry: np.ndarray | None = field(default=None, repr=False)  # the voice without its FL reverbs/delays
-
-    @property
-    def is_voice(self) -> bool:
-        return self.role in VOCAL_ROLES
 
     @property
     def space(self) -> np.ndarray | None:
