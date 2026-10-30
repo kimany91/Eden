@@ -13,10 +13,10 @@
   differences sound bigger than they measure);
 * kick / 808 collisions: how often the 808 is still sounding when a kick
   hits (a hit is a kick only when the band below 150 Hz carries a tenth of
-  its first 30 ms: hats and snares are not kicks), and whether the 808
-  already dips after each kick (against its own decay); a duck below
-  100 Hz only, at most 3 dB, is added only when they collide and nothing
-  ducks already — engineers disagree about ducking, so Eden stays
+  its power over its first 30 ms: hats and snares are not kicks), and
+  whether the 808 already dips after each kick (against its own decay); a
+  duck below 100 Hz only, at most 3 dB, is added only when they collide and
+  nothing ducks already — engineers disagree about ducking, so Eden stays
   conservative;
 * harmonics for small speakers: when an 808 is close to a pure sine it
   vanishes on laptops and small speakers; harmonics 2–5 generated from the

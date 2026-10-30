@@ -255,6 +255,22 @@ def test_copies_among_leads_are_read_once_per_voice_and_only_between_voices_that
     assert copies["b"][1] > 0.99
 
 
+def test_leads_that_sing_together_are_added_up_and_measured_once_for_both_balances(monkeypatch):
+    instru = beat(SECONDS)
+    takes = [("ch0", "Take 1", "vocal", _against(voice(SECONDS, seed=1), instru, -6.0), None),
+             ("ch1", "Take 2", "vocal", _against(voice(SECONDS, seed=2), instru, -6.0), None)]
+    read = []
+    balance = engine.balance_against
+    monkeypatch.setattr(engine, "balance_against", lambda level, other, fs: read.append(level) or balance(level, other, fs))
+    out = mix(_parts(takes, [("g1", "Instru", "beat", instru)]), 1.0, TEMPO, {"ch0": "none", "ch1": "none"})
+    gain = next(t for t in out.parts[0].treatments if t.kind == "gain")
+    assert "« Take 1 » + « Take 2 », qui chantent ensemble" in gain.reason
+    assert out.parts[0].level_change_db == out.parts[1].level_change_db > 0
+    # planned on the beat before the carve, then set on the carved beat: the same measure of the two takes
+    [planned, final] = read
+    assert planned is final
+
+
 # -- the carve, chosen with the lead at its planned level ---------------------------------------------------
 
 def test_the_same_lead_rendered_14_db_quieter_gets_the_same_carve(monkeypatch):
@@ -291,9 +307,14 @@ def test_bands_the_beat_covers_by_more_than_12_db_are_left_out_as_a_choice():
     [(_, depth)] = engine._carve_bands([band], 1.0)
     assert depth == MAX_CARVE_DB and CARVE_MAX_MASKING_DB - depth == 9.0
     assert engine._carve_bands([engine.BandMasking(1782.0, 2245.0, CARVE_MAX_MASKING_DB + 0.01, 0.0883, 0.0)], 1.0) == []
-    # by ANSI S3.5's audibility the dip would gain there as much as in the bands kept: it is a choice
-    gained = engine._audibility(-(CARVE_MAX_MASKING_DB + 1) + MAX_CARVE_DB) - engine._audibility(-(CARVE_MAX_MASKING_DB + 1))
-    assert gained == pytest.approx(MAX_CARVE_DB / 30)
+    # by ANSI S3.5's audibility the dip would gain there as much as in a band kept up to 15 dB, and less up to
+    # 18 dB (docs/mixage.md § 6): it is a choice
+    def gained(masking_db: float) -> float:
+        return engine._audibility(-masking_db + MAX_CARVE_DB) - engine._audibility(-masking_db)
+
+    assert gained(CARVE_MAX_MASKING_DB) == pytest.approx(MAX_CARVE_DB / 30)
+    assert [gained(m) for m in (13.0, 15.0)] == pytest.approx([MAX_CARVE_DB / 30] * 2)
+    assert 0 < gained(16.0) < gained(15.0) and gained(18.0) == 0.0
 
 
 # -- the reverb ceiling when the user's FL effects alone go over it -----------------------------------------
@@ -366,7 +387,9 @@ def test_the_docs_state_the_engine_rules():
     unmask = " ".join(DOC.split("## 6. ")[1].split("## 7. ")[0].split())
     assert "n'y découvre rien" not in DOC and "(méthode de Hafezi & Reiss 2015, sourcé)" not in unmask
     assert (f"plus de {CARVE_MAX_MASKING_DB:.0f} dB (même creusée de {MAX_CARVE_DB:.0f} dB, la voix y resterait à plus "
-            f"de {CARVE_MAX_MASKING_DB - MAX_CARVE_DB:.0f} dB sous l'instru") in unmask
+            f"de {CARVE_MAX_MASKING_DB - MAX_CARVE_DB:.0f} dB sous l'instru ; selon le modèle d'audibilité ci-dessous, ce "
+            "creux y gagnerait pourtant autant que dans une bande retenue jusqu'à 15 dB, et moins jusqu'à 18 dB : c'est "
+            "un choix)") in unmask
     assert ("Le creux ne joue que quand la voix chante (comme l'« Unmask » des égaliseurs dynamiques, non vérifié ; "
             "choix d'Eden) ; baisser l'instru là où elle masque la voix est la méthode de Hafezi & Reiss 2015 "
             "(sourcé)") in unmask

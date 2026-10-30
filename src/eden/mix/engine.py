@@ -78,9 +78,9 @@ MAX_LEVEL_CHANGE_DB = 4.0  # static level change of the other voices against the
 MAX_LEAD_CHANGE_DB = 10.0
 MAX_CARVE_DB = 3.0  # dip of the beat in one band while the lead sings
 # bands left out of the carve (choix d'Eden): the beat covers the voice there by more than this, so even dipped
-# MAX_CARVE_DB the voice stays more than 9 dB under it (by ANSI S3.5's audibility the dip would still gain as much
-# as elsewhere: leaving these bands out is a choice); the voice is this far under its strongest band there, so
-# the band carries little of it
+# MAX_CARVE_DB the voice stays more than 9 dB under it (by ANSI S3.5's audibility, that dip would still gain as much
+# there as in a band kept, up to 15 dB, and less up to 18 dB: leaving these bands out is a choice); the voice is
+# this far under its strongest band there, so the band carries little of it
 CARVE_MAX_MASKING_DB = 12.0
 CARVE_VOICE_RANGE_DB = 20.0
 CARVE_SHARE = 0.25  # the dip is reported on the groups / the rest of the mix that carry this share of what it removes
@@ -408,6 +408,7 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
     say("Place pour les paroles dans l'instru")
     residual = parts.residual.audio
     clusters = _sing_together(sung, levels)
+    as_one = [heard(together) for together in clusters]  # each cluster's leads added up, for both balances
     lead_copies: dict[int, dict[str, tuple[str, float]]] = {}
 
     def copies_in(i: int) -> dict[str, tuple[str, float]]:
@@ -423,8 +424,7 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         planned: dict[str, float] = {}
         uncarved = residual + groups
         for i, together in enumerate(clusters):
-            change = _level_change(balance_against(heard(together), uncarved, fs), LEAD_BALANCE, k,
-                                   MAX_LEAD_CHANGE_DB)
+            change = _level_change(balance_against(as_one[i], uncarved, fs), LEAD_BALANCE, k, MAX_LEAD_CHANGE_DB)
             copied = copies_in(i) if change > 0 and len(together) > 1 else {}
             planned.update({v.key: 0.0 if v.key in copied else change for v in together})
         lead_mix = sum((chained[v.key][0] * 10 ** (planned[v.key] / 20) for v in sung), np.zeros(shape))
@@ -531,7 +531,7 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
                        "baisse la voix ou monte l'instru dans FL Studio"))
             continue
         # takes sung at the same moments add up: they are set as one, their balance kept
-        current = balance_against(heard(together), beat, fs)
+        current = balance_against(as_one[i], beat, fs)
         change = _level_change(current, LEAD_BALANCE, k, MAX_LEAD_CHANGE_DB)
         copied = copies_in(i) if change > 0 else {}
         kept = [f"« {v.label} »" for v in together if v.key in copied]
