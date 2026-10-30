@@ -1,21 +1,23 @@
-"""Third review round on the low end, checked by measurement: the 808's notes evened out at the
-mix on the bass groups, where the kicks FL renders apart do not get in the way, and no low-band
-compressor left at the master."""
+"""Third review round on the low end and the reverb ceiling, checked by measurement: the 808's
+notes evened out at the mix on the bass groups, where the kicks FL renders apart do not get in the
+way, no low-band compressor left at the master, and the FL effects of a voice set on one side
+taken out of the dry mix exactly as they are in it."""
 
 import re
 
 import numpy as np
 import pytest
 
-from eden.mix import dsp, lowend
+from eden.mix import dsp, engine, lowend, stereo
 from eden.mix import master as M
 from eden.mix.engine import mix
-from synth_voice import FS, beat
-from test_engine_mix import _parts
+from synth_voice import FS, beat, voice
+from test_engine_mix import _fl_reverb, _parts
 
 BEAT_S = 60 / 140  # 140 BPM
 SECONDS = 20.0
 EVENING = "Tenue des notes du 808"
+RETURNS_SCALE, PLACE = engine.returns_scale, stereo.place  # spied on, one mix at a time
 
 
 def _808(fs, every_s, tau_s=0.6, vary_db=0.0, pitches=(43.65, 51.91, 58.27, 38.89), seed=0):
@@ -260,3 +262,68 @@ def test_the_master_no_longer_evens_the_low_band():
     assert all(t.label.startswith("Compression de bus") for t in r.treatments if t.kind == "compressor")
     assert not hasattr(M, "_note_peaks_db") and not hasattr(lowend, "periodicity")
 
+
+# -- L2: the reverb ceiling's dry mix -----------------------------------------------------------------
+
+def _voices(back_level=0.08, back_wet_gain=1.0, seconds=12.0):
+    """A lead, a back vocal alone (set 40 % to the right) and an ad-lib (changing side), both with an
+    FL reverb rendered apart."""
+    back = voice(seconds, seed=12, notes=[220, 247], level=back_level)
+    adlib = voice(seconds, seed=13, notes=[196, 233], level=0.08)
+    back_wet, adlib_wet = back_wet_gain * _fl_reverb(back[:, 0], -8.0), _fl_reverb(adlib[:, 0], -8.0)
+    return _parts([("ch0", "Lead", "lead_vocal", voice(seconds, seed=11), None),
+                   ("ch1", "Chœur", "back_vocal", back + back_wet, back),
+                   ("ch2", "Adlib", "adlib", adlib + adlib_wet, adlib)],
+                  [("g1", "Instru", "beat", beat(seconds))])
+
+
+def _parts_wet(parts, key):
+    """The FL effects of the voice ``key``, as Eden reads them."""
+    return next(v.space for v in parts.voices if v.key == key).astype(np.float64)
+
+
+def _ceiling_inputs(monkeypatch, parts):
+    """(the FL effects and the dry mix the reverb ceiling measured, the FL effects each placed
+    voice was given with its placement, the result)."""
+    seen, placed = {}, []
+
+    def scale(fl_wet, returns, dry, fs, ceiling):
+        seen.update(fl_wet=fl_wet.copy(), dry=dry.copy())
+        return RETURNS_SCALE(fl_wet, returns, dry, fs, ceiling)
+
+    def place(x, fs, p, effects=None):
+        if effects is not None:
+            placed.append((p, effects.copy()))
+        return PLACE(x, fs, p, effects)
+
+    monkeypatch.setattr(engine, "returns_scale", scale)
+    monkeypatch.setattr(stereo, "place", place)
+    out = mix(parts, 1.0, 95.0, {"ch0": "none", "ch1": "tracked", "ch2": "tracked"})
+    return seen, placed, out
+
+
+def test_the_reverb_ceiling_counts_the_fl_effects_where_the_placement_put_them(monkeypatch):
+    parts = _voices(back_level=0.02)  # far under the lead: raised
+    seen, placed, out = _ceiling_inputs(monkeypatch, parts)
+    assert [(p.key, p.position, p.alternate) for p, _ in placed] == [("ch1", 0.4, False), ("ch2", 0.5, True)]
+    res = {p.key: p for p in out.parts}
+    assert res["ch1"].level_change_db > 1.0
+    back, adlib = (_parts_wet(parts, key) for key in ("ch1", "ch2"))
+    # the effects each voice was placed with are its FL effects after its level change...
+    for (_, effects), wet, key in zip(placed, (back, adlib), ("ch1", "ch2"), strict=True):
+        assert np.allclose(effects, wet * 10 ** (res[key].level_change_db / 20), atol=1e-6)
+    # ...and the ceiling takes out of the dry mix what is in it: moved to the side of the voice set
+    # on one side, left where FL put them under the ad-lib that changes side
+    expected = stereo.balance(placed[0][1], 0.4) + placed[1][1]
+    assert np.allclose(seen["fl_wet"], expected, atol=1e-9)
+
+
+def test_the_dry_mix_holds_none_of_the_fl_effects_of_a_voice_set_on_one_side(monkeypatch):
+    # the back vocal's FL reverb twice as loud: the dry mix the ceiling measures does not move
+    parts = _voices()
+    first, _, a = _ceiling_inputs(monkeypatch, parts)
+    second, _, b = _ceiling_inputs(monkeypatch, _voices(back_wet_gain=2.0))
+    assert all(p.level_change_db == 0.0 for p in [*a.parts, *b.parts])  # no level change: same chains
+    assert np.allclose(first["dry"], second["dry"], atol=1e-6)
+    wet = _parts_wet(parts, "ch1")
+    assert np.allclose(second["fl_wet"] - first["fl_wet"], stereo.balance(wet, 0.4), atol=1e-6)

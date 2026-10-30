@@ -572,6 +572,10 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
             res.placement = placement.reason
             if placement.position:
                 processed = stereo.place(processed, fs, placement, fl_wet)
+                if fl_wet is not None and not placement.alternate:
+                    # the FL effects as ``place`` put them in the voice: moved to its side, so the reverb
+                    # ceiling takes out of the dry mix exactly what is there
+                    fl_wet = stereo.balance(fl_wet, placement.position)
         add_space(v, unplaced, placement.position if placement and not placement.alternate else 0.0)
         voices_sum += processed
         if fl_wet is not None:
