@@ -135,22 +135,23 @@ def _warm(notes, seed, shelf_db):
     return apply_sos(voice(seed=seed, notes=notes), shelf_sos(FS, 300, shelf_db, high=False))
 
 
-@pytest.mark.parametrize("notes,seed,shelf_db,measured", [
-    ([247, 277, 311, 330, 370], 2, 1.4, 2.76),  # the highest clean value with mud above 6 dB
-    ([247, 277, 311, 330, 370], 2, 3.0, 2.50),  # 2.497: just under the old 2.5 dB threshold
-    ([240, 270, 300, 320, 360], 2, 1.4, 2.72),
-    ([233, 262, 294, 330, 349, 392], 2, 3.0, 2.38),
-    ([220, 247, 262, 294, 330], 2, 0.0, 2.28),
+# every note pooled they read 2.28 to 2.76 dB (the highest clean value of seeds 1–8 with mud > 6 dB); since
+# round 3 a bump must be seen on two notes (tests/test_round3_lowmid.py): none is, they read 0 dB
+@pytest.mark.parametrize("notes,seed,shelf_db", [
+    ([247, 277, 311, 330, 370], 2, 1.4),
+    ([247, 277, 311, 330, 370], 2, 3.0),
+    ([240, 270, 300, 320, 360], 2, 1.4),
+    ([233, 262, 294, 330, 349, 392], 2, 3.0),
+    ([220, 247, 262, 294, 330], 2, 0.0),
 ])
-def test_a_clean_voice_with_lowest_notes_220_to_247_hz_gets_no_low_mid_cut(notes, seed, shelf_db, measured):
+def test_a_clean_voice_with_lowest_notes_220_to_247_hz_gets_no_low_mid_cut(notes, seed, shelf_db):
     m = measure_vocal(_warm(notes, seed, shelf_db), FS)
     # their 2nd harmonics fall on the vowels' first formant, just under 500 Hz
-    assert m.low_mid_excess_db == pytest.approx(measured, abs=0.01) and m.mud_db > 6.0
-    assert m.low_mid_excess_db < LOW_MID_MIN_DB
+    assert m.low_mid_excess_db == 0.0 and m.mud_db > 6.0
     assert not [t.label for t in _plan(m) if t.label.startswith("Bas-médiums")]
 
 
-@pytest.mark.parametrize("freq,q,seed,measured", [(300, 2.0, 5, 2.97), (300, 4.0, 7, 3.00), (200, 2.0, 8, 4.61),
+@pytest.mark.parametrize("freq,q,seed,measured", [(300, 2.0, 5, 2.97), (300, 4.0, 7, 3.00), (200, 2.0, 1, 4.15),
                                                   (400, 2.0, 4, 3.16)])
 def test_the_acceptance_bumps_still_arm_the_low_mid_cut(freq, q, seed, measured):
     # +6 dB bumps; each case is the seed (of 1–8) where the bump reads lowest

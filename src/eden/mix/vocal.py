@@ -23,7 +23,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from eden.mix import dsp
-from eden.mix.analysis import VocalMeasure, deess_band_low_hz
+from eden.mix.analysis import LOW_MID_MIN_DB, LOW_MID_STEADY_SHARE, VocalMeasure, deess_band_low_hz
 from eden.mix.riding import felt_quarter, phrases_of
 from eden.mix.treatments import Treatment
 
@@ -50,10 +50,6 @@ PROFILES = {
 TAIL_SAFE_MAX_REDUCTION_DB = 3.0
 HIGHPASS_TRIGGER_DB = -32.0  # energy an octave under the planned cut, re. the whole voice (Eden's choice)
 HIGHPASS_REST_TRIGGER_DB = -40.0  # power under the planned cut in the rests, re. the sung voice (Eden's choice)
-# lift of the harmonics over 1/3 octave that makes a low-mid bump (Eden's choice): +6 dB bumps at 200–400 Hz
-# read 2.97 dB or more on the test voices (seeds 1–8); clean voices whose lowest notes are 220–250 Hz, with
-# mud over 6 dB, read 2.76 dB at most (docs/mixage.md: on another seed they can read 3.6 dB)
-LOW_MID_MIN_DB = 2.85
 
 
 def tail_hold(m: VocalMeasure, x: np.ndarray, fs: float, tempo_bpm: float | None = None) -> np.ndarray:
@@ -125,9 +121,9 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
             f"Pic étroit {r.excess_db:.1f} dB au-dessus du spectre voisin",
             {"freq_hz": r.freq_hz, "q": 6.0, "gain_db": cut * k}))
 
-    # 3. low-mid build-up (proximity effect, boxiness): only a real bump of the voice's harmonics,
-    #    not a general tilt (blind low-mid cuts are not supported by expert practice), and not where
-    #    a resonance cut already acts
+    # 3. low-mid build-up (proximity effect, boxiness): only a real bump of the voice's harmonics, seen
+    #    on two sung notes at least (see ``analysis.low_mid_buildup``), not a general tilt (blind low-mid
+    #    cuts are not supported by expert practice), and not where a resonance cut already acts
     cut_there = any(abs(math.log2(r.freq_hz / m.low_mid_hz)) <= 1 / 3 for r in m.resonances)
     if m.mud_db > 6.0 and m.low_mid_excess_db >= LOW_MID_MIN_DB and not cut_there:
         cut = -min(4.0, 1.0 + 0.75 * m.low_mid_excess_db)
@@ -135,6 +131,8 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
             "eq", f"Bas-médiums {m.low_mid_hz:.0f} Hz {cut * k:.1f} dB",
             f"Bosse de {m.low_mid_excess_db:.1f} dB à {m.low_mid_hz:.0f} Hz : sur un tiers d'octave, les "
             "harmoniques de la voix dépassent d'autant la droite de leurs voisines (±1 octave) ; "
+            f"{m.low_mid_notes} notes chantées la portent chacune (au moins {LOW_MID_MIN_DB - 1:.1f} dB, "
+            f"au-dessus de la droite dans {LOW_MID_STEADY_SHARE * 100:.0f} % des cas ou plus) ; "
             f"bas-médiums {min(m.mud_db, 30.0):.0f} dB{'+' if m.mud_db > 30 else ''} au-dessus de la présence",
             {"freq_hz": m.low_mid_hz, "q": 1.2, "gain_db": cut * k}))
 
