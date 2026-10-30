@@ -155,14 +155,6 @@ def _differences(voice_db: np.ndarray, beat_db: np.ndarray) -> np.ndarray:
     return diffs
 
 
-def phrase_differences(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None
-                       ) -> tuple[list[tuple[int, int]], np.ndarray, int]:
-    """(phrases in 1 ms frames, voice minus beat above ``MASKING_FROM_HZ`` in dB per phrase,
-    frame size in samples)."""
-    phrases, voice_db, beat_db, size = phrase_levels(voice, beat, fs, tempo_bpm)
-    return phrases, _differences(voice_db, beat_db), size
-
-
 def ride(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None, intensity: float
          ) -> RideResult:
     n = voice.shape[0]
@@ -208,10 +200,3 @@ def ride(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None
 def apply_ride(x: np.ndarray, result: RideResult) -> np.ndarray:
     gain = result.gain[: x.shape[0]]
     return x * (gain[:, None] if x.ndim == 2 else gain)
-
-
-def steadiness_db(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None = None) -> float:
-    """Spread (P90 − P10) of the phrase-by-phrase voice-minus-beat difference."""
-    _, diffs, _ = phrase_differences(voice, beat, fs, tempo_bpm)
-    d = diffs[np.isfinite(diffs)]
-    return float(np.percentile(d, 90) - np.percentile(d, 10)) if d.size >= 2 else 0.0

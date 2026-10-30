@@ -94,7 +94,7 @@ def test_band_split_is_exact():
 
 def test_processors_at_zero_change_nothing():
     x = voice(seconds=6)
-    assert dsp.compress(x, FS, -20, 1.0) is x
+    assert not dsp.compressor_gain_db(x, FS, -20, 1.0)[0].any()
     assert dsp.deess(x, FS, -30, 0.0) is x
     assert dsp.parallel_compress(x, FS, -30, 0.0) is x
     env, size = dsp.activity_envelope(x, FS, -40)
@@ -104,7 +104,8 @@ def test_processors_at_zero_change_nothing():
 def test_compressor_reduces_loud_parts_only():
     quiet, loud = sine(1000, 2, FS, 0.05), sine(1000, 2, FS, 0.5)
     x = np.concatenate([quiet, loud])
-    y = dsp.compress(x, FS, threshold_db=-20, ratio=4, knee_db=0)
+    gr, size = dsp.compressor_gain_db(x, FS, threshold_db=-20, ratio=4, knee_db=0)
+    y = dsp._apply_gain(x, dsp._to_samples(gr, size, x.shape[0]))
     q = slice(FS // 2, FS + FS // 2)
     lo = slice(2 * FS + FS // 2, 3 * FS + FS // 2)
     assert np.max(np.abs(y[q])) == pytest.approx(0.05, rel=0.01)  # under threshold: untouched

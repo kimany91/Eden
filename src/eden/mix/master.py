@@ -148,7 +148,7 @@ def checks(x: np.ndarray, fs: float) -> MasterChecks:
     st = short_term_loudness(x, fs)
     st_max = float(np.max(st[np.isfinite(st)])) if st.size and np.isfinite(st).any() else -math.inf
     tp = true_peak_db(x, fs)
-    m = stereo.measure(x, fs)
+    m = stereo.measure(x)
     platforms = []
     for name, ref in PLATFORMS.items():
         gain = min(0.0, ref - integrated) if math.isfinite(integrated) else 0.0

@@ -92,10 +92,11 @@ def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarra
     stages before), so a chain of compressors stays as planned. A dynamic
     stage whose reduction does not move by ``IDLE_DB`` (see ``_moves``) is not
     applied and is marked ``applied = False``. ``makeup`` gives back the
-    loudness the chain took (BS.1770, the voice as it came in vs. as it goes out).
+    loudness the chain took (BS.1770, the voice as it came in vs. as it goes out),
+    only when a compressor or a de-esser before it was applied.
     """
     y = x
-    for t in treatments:
+    for i, t in enumerate(treatments):
         p = t.params
         if t.kind == "highpass":
             y = dsp.apply_sos(y, dsp.highpass_sos(fs, p["freq_hz"], p.get("q", 0.7071)))
@@ -121,6 +122,9 @@ def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarra
             if t.applied:
                 y = dsp._apply_gain(y, dsp._to_samples(gr, size, y.shape[0]))
         elif t.kind == "makeup":
+            if not any(o.kind in ("compressor", "deesser") and o.applied for o in treatments[:i]):
+                t.applied = False  # no compressor or de-esser took level: there is nothing to give back
+                continue
             before, after = integrated_loudness(x, fs), integrated_loudness(y, fs)
             change = before - after if math.isfinite(before) and math.isfinite(after) else 0.0
             t.params = {"gain_db": change}

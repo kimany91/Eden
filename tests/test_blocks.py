@@ -12,9 +12,9 @@ from eden.mix.loudness import integrated_loudness, true_peak_db
 from eden.mix.oversampling import meter_peak
 from eden.mix.parts import dry_render_problem, split
 from eden.mix.saturation import saturate, soft_clip
-from eden.mix.space import (ReverbDesign, design_space, duck, impulse_response, note_seconds, render_space,
-                            reverb, tempo_delay, throw_envelope)
-from eden.mix.tonality import NOTE_NAMES, bass_pitch_classes, detect_key, root_note, tuning
+from eden.mix.space import (ReverbDesign, design_space, duck, impulse_response, render_space, reverb, tempo_delay,
+                            throw_envelope)
+from eden.mix.tonality import NOTE_NAMES, bass_pitch_classes, detect_key, tuning
 from eden.project.inspector import inspect_project
 from eden.project.sources import SearchRoots
 from eden.render.pipeline import render_project
@@ -107,7 +107,8 @@ def test_beat_tuned_to_432_hz_is_measured_and_read_on_its_own_grid():
 
 @pytest.mark.parametrize("midi", [24, 29, 31, 36, 41])
 def test_808_root_note(midi):
-    assert NOTE_NAMES[root_note(bass_pitch_classes(_tone(midi, 6, 0.5), FS))] == NOTE_NAMES[midi % 12]
+    root = int(np.argmax(bass_pitch_classes(_tone(midi, 6, 0.5), FS)))  # the strongest pitch class
+    assert NOTE_NAMES[root] == NOTE_NAMES[midi % 12]
 
 
 # -- limiter --------------------------------------------------------------------------------
@@ -158,7 +159,7 @@ def test_reverb_decay_per_band_and_predelay():
 def test_tempo_delay_lands_on_the_grid():
     click = np.zeros(FS * 3)
     click[0] = 1.0
-    echoes = tempo_delay(click, FS, note_seconds(120, 1 / 4), feedback=0.5, repeats=3, ping_pong=True)
+    echoes = tempo_delay(click, FS, 60 / 120, feedback=0.5, repeats=3, ping_pong=True)
     # a quarter note at 120 BPM = 0.5 s: first echo on the left, the next one on the right
     assert abs(np.argmax(np.abs(echoes[:, 0])) - FS // 2) < 0.002 * FS
     assert abs(np.argmax(np.abs(echoes[:, 1])) - FS) < 0.002 * FS
@@ -174,21 +175,30 @@ def test_effect_returns_duck_under_the_voice():
 
 # -- stereo ---------------------------------------------------------------------------------
 
+def _low_side_ratio_db(x):
+    """Side energy relative to mid energy below 120 Hz."""
+    lp, _ = stereo.linkwitz_riley(FS, 120.0)
+    mid, side = stereo.mid_side(x)
+    return stereo._db(float(np.sum(sosfilt(lp, side) ** 2)), float(np.sum(sosfilt(lp, mid) ** 2)))
+
+
 def test_mono_low_end_keeps_the_top_wide():
     rng = np.random.default_rng(0)
     t = np.arange(FS * 3) / FS
     x = np.stack([np.sin(2 * np.pi * 50 * t), np.sin(2 * np.pi * 50 * t + 1.2)], 1) * 0.3
     x = x + rng.normal(0, 0.05, x.shape)
-    before, after = stereo.measure(x, FS), stereo.measure(stereo.mono_below(x, FS, 120), FS)
-    assert after.low_side_ratio_db < before.low_side_ratio_db - 20
+    assert _low_side_ratio_db(stereo.mono_below(x, FS, 120)) < _low_side_ratio_db(x) - 20
 
 
-def test_pan_is_constant_power_and_width_scales_the_side():
+def test_pan_is_constant_power_and_mid_side_gives_the_signal_back():
     mono = np.ones(100)
     energies = [float(np.sum(stereo.pan(mono, p) ** 2)) for p in (-1, -0.3, 0, 0.6, 1)]
     assert max(energies) - min(energies) < 1e-9
     x = np.stack([np.ones(10), np.zeros(10)], 1)
-    assert np.allclose(stereo.set_width(x, 0.0)[:, 0], stereo.set_width(x, 0.0)[:, 1])
+    mid, side = stereo.mid_side(x)
+    assert np.array_equal(stereo.from_mid_side(mid, side), x)
+    narrowed = stereo.from_mid_side(mid, side * 0.0)  # without its side, the signal is mono
+    assert np.array_equal(narrowed[:, 0], narrowed[:, 1])
 
 
 # -- saturation -------------------------------------------------------------------------
@@ -314,13 +324,26 @@ def test_harmonics_make_a_bare_808_audible_on_small_speakers():
 
 # -- riding ---------------------------------------------------------------------------------
 
+def _differences(voice, beat):
+    """(phrases, voice minus beat above ``riding.MASKING_FROM_HZ`` in dB per phrase) at 95 BPM."""
+    phrases, voice_db, beat_db, _ = riding.phrase_levels(voice, beat, FS, 95.0)
+    return phrases, riding._differences(voice_db, beat_db)
+
+
+def _steadiness_db(voice, beat):
+    """Spread (P90 − P10) of the phrase-by-phrase voice-minus-beat difference."""
+    d = _differences(voice, beat)[1]
+    d = d[np.isfinite(d)]
+    return float(np.percentile(d, 90) - np.percentile(d, 10)) if d.size >= 2 else 0.0
+
+
 def test_riding_steadies_the_voice_above_the_beat_phrase_by_phrase():
     v, b = voice(30, seed=7, phrase_spread_db=8), beat(30)
-    before = riding.steadiness_db(v, b, FS, 95.0)
+    before = _steadiness_db(v, b)
     r = riding.ride(v, b, FS, 95.0, 1.0)
     assert len(r.phrases) == 6 and r.moved >= 1 and r.max_change_db <= riding.MAX_RIDE_DB
     assert sum(p.gain_db > 0 for p in r.phrases) and sum(p.gain_db < 0 for p in r.phrases)  # around the median
-    assert riding.steadiness_db(riding.apply_ride(v, r), b, FS, 95.0) < before - 2.0
+    assert _steadiness_db(riding.apply_ride(v, r), b) < before - 2.0
     steps = np.abs(np.diff(20 * np.log10(r.gain[:: FS // 1000])))
     assert steps.max() < 0.2  # no jump: fades only
     # through the rest after a phrase the gain stays the phrase's own (its FL echoes keep their level)
@@ -335,7 +358,7 @@ def test_riding_sees_rap_phrases_separated_by_short_rests():
     sig = np.concatenate([np.concatenate([voice(1.6, seed=s)[:, 0] * (0.5 if s % 2 else 1.0), np.zeros(int(0.35 * FS))])
                           for s in range(8)])
     v = np.stack([sig, sig], 1)
-    phrases, diffs, _ = riding.phrase_differences(v, beat(v.shape[0] / FS), FS, 95.0)
+    phrases, diffs = _differences(v, beat(v.shape[0] / FS))
     assert len(phrases) == 8 and np.ptp(diffs) > 4
 
 

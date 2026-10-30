@@ -1,5 +1,5 @@
-"""A voice's chain, round 2: a compressor that only lowers the level is not applied, the low-mid
-threshold keeps clean voices out, and the high-pass also listens to the rests between phrases."""
+"""A voice's chain, round 2: a compressor that only lowers the level is not applied, and the high-pass
+also listens to the rests between phrases."""
 
 import math
 from pathlib import Path
@@ -10,7 +10,6 @@ from scipy.signal import butter, fftconvolve, sosfilt
 
 from eden.mix import dsp
 from eden.mix.analysis import REST_WINDOW_S, _rest_low_spectrum, active_frames, measure_vocal
-from eden.mix.dsp import apply_sos, peaking_sos, shelf_sos
 from eden.mix.engine import _chain
 from eden.mix.parts import Part
 from eden.mix.treatments import IDLE_DB, STEADY_PERCENTILE, Treatment, _moves, apply
@@ -127,38 +126,6 @@ def test_a_deesser_on_a_few_piercing_s_is_applied(seed, monkeypatch):
         # about 5 % of the sung moments: a rule on the 5th..95th percentiles would have dropped it
         assert 0.03 < np.mean(sung < -0.05) < 0.08
         assert np.percentile(sung, 95) - np.percentile(sung, 5) < IDLE_DB
-
-
-# -- V2: the low-mid threshold keeps clean voices with lowest notes 220–247 Hz out ---------------------
-
-def _warm(notes, seed, shelf_db):
-    return apply_sos(voice(seed=seed, notes=notes), shelf_sos(FS, 300, shelf_db, high=False))
-
-
-# every note pooled they read 2.28 to 2.76 dB (the highest clean value of seeds 1–8 with mud > 6 dB); since
-# round 3 a bump must be seen on two notes (tests/test_round3_lowmid.py): none is, they read 0 dB
-@pytest.mark.parametrize("notes,seed,shelf_db", [
-    ([247, 277, 311, 330, 370], 2, 1.4),
-    ([247, 277, 311, 330, 370], 2, 3.0),
-    ([240, 270, 300, 320, 360], 2, 1.4),
-    ([233, 262, 294, 330, 349, 392], 2, 3.0),
-    ([220, 247, 262, 294, 330], 2, 0.0),
-])
-def test_a_clean_voice_with_lowest_notes_220_to_247_hz_gets_no_low_mid_cut(notes, seed, shelf_db):
-    m = measure_vocal(_warm(notes, seed, shelf_db), FS)
-    # their 2nd harmonics fall on the vowels' first formant, just under 500 Hz
-    assert m.low_mid_excess_db == 0.0 and m.mud_db > 6.0
-    assert not [t.label for t in _plan(m) if t.label.startswith("Bas-médiums")]
-
-
-@pytest.mark.parametrize("freq,q,seed,measured", [(300, 2.0, 5, 2.97), (300, 4.0, 7, 3.00), (200, 2.0, 1, 4.15),
-                                                  (400, 2.0, 4, 3.16)])
-def test_the_acceptance_bumps_still_arm_the_low_mid_cut(freq, q, seed, measured):
-    # +6 dB bumps; each case is the seed (of 1–8) where the bump reads lowest
-    m = measure_vocal(apply_sos(voice(seed=seed), peaking_sos(FS, freq, q, 6.0)), FS)
-    assert m.low_mid_excess_db == pytest.approx(measured, abs=0.01) and m.low_mid_excess_db >= LOW_MID_MIN_DB
-    cut = [t for t in _plan(m) if t.label.startswith("Bas-médiums")]
-    assert cut and abs(math.log2(cut[0].params["freq_hz"] / freq)) <= 1 / 6
 
 
 # -- V3: the high-pass also reads the rests between phrases --------------------------------------------
