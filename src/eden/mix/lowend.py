@@ -12,10 +12,12 @@
   loudest ones closer (hearing is far less sensitive down there, so level
   differences sound bigger than they measure);
 * kick / 808 collisions: how often the 808 is still sounding when a kick
-  hits, and whether the 808 already dips after each kick (against its own
-  decay); a duck below 100 Hz only, at most 3 dB, is added only when they
-  collide and nothing ducks already — engineers disagree about ducking, so
-  Eden stays conservative;
+  hits (a hit is a kick only when the band below 150 Hz carries a tenth of
+  its first 30 ms: hats and snares are not kicks), and whether the 808
+  already dips after each kick (against its own decay); a duck below
+  100 Hz only, at most 3 dB, is added only when they collide and nothing
+  ducks already — engineers disagree about ducking, so Eden stays
+  conservative;
 * harmonics for small speakers: when an 808 is close to a pure sine it
   vanishes on laptops and small speakers; harmonics 2–5 generated from the
   sub band only (the "missing fundamental" effect: the ear rebuilds the
@@ -38,9 +40,14 @@ from eden.mix.tonality import NOTE_NAMES
 from eden.mix.treatments import _moves
 
 CROSSOVER_HZ = 100.0
-SUB_BAND = (25.0, 80.0)
 HARMONIC_BAND = (80.0, 400.0)
 MAX_DUCK_DB = 3.0
+# a hit is a kick when the band below 150 Hz carries this share of its power over its first 30 ms
+# (choix d'Eden). Test drums: hats 0, snares with a body at 180–200 Hz 0.04 at most, kicks 0.11 (a
+# click layer 8 dB over the thump in their first 30 ms) to 0.82, 0.18 under a crash; a tom with its body
+# under 150 Hz (0.44) reads as a kick
+KICK_LOW_SHARE = 0.1
+KICK_HEAD_MS = 30
 DUCKED_DB = 2.0  # the 808 already dips this much after the kicks: FL ducks it (choix d'Eden)
 # 808 notes evened out (choix d'Eden)
 NOTE_STEP_DB = 3.0  # the same pitch played again: the low band rises this much (legato: drops)...
@@ -89,8 +96,8 @@ class LowEndReport:
     low_correlation: float = 1.0  # L/R correlation of the beat below the crossover
     kick_overlap: float = 0.0  # share of kick hits landing on a sounding 808
     existing_duck_db: float = 0.0  # how much the 808 already dips after a kick
-    harmonics_db: float = math.nan  # 80–400 Hz relative to 25–80 Hz in the bass part
-    actions: list[str] = field(default_factory=list)
+    kick_hits: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=int), repr=False)  # onsets, 1 ms frames
+    harmonics_db: float = math.nan  # harmonics 2–5 relative to the fundamental, median over the 808's notes (dB)
 
     @property
     def root_name(self) -> str | None:
@@ -353,7 +360,12 @@ def _onsets(x: np.ndarray, fs: float, low_hz: float = 150.0) -> np.ndarray:
     The rise is read on the centred 20 ms average, which already climbs up to 10 ms before
     the kick: each hit is then set on the kick's onset, the first 1 ms frame from 10 ms
     before to 10 ms after that stands 4 dB above the 20 ms before it and within 10 dB of
-    the hit's level (the filter's faint ringing before the attack does not count)."""
+    the hit's level (the filter's faint ringing before the attack does not count).
+
+    A hit is kept only when the band below ``low_hz`` carries at least ``KICK_LOW_SHARE`` of
+    its power over its first ``KICK_HEAD_MS``: the threshold above follows the drums' own low
+    band, so in drums without a kick (hats, snare, percussion) the little low end they leak
+    would read as kicks."""
     ms = _low_power(x, fs, low_hz)
     if ms.size < 30:
         return np.zeros(0, dtype=int)
@@ -370,7 +382,9 @@ def _onsets(x: np.ndarray, fs: float, low_hz: float = 150.0) -> np.ndarray:
             hit = ms[last - 10:last + 30].mean()
             onset = span[(ms[span] > 10 ** 0.4 * before[span - 1]) & (ms[span] > 0.1 * hit)]
             hits.append(int(onset[0]) if onset.size else last)
-    return np.array(hits, dtype=int)
+    full = dsp._frames(x, fs)[0]
+    head = [(ms[h:h + KICK_HEAD_MS].sum(), full[h:h + KICK_HEAD_MS].sum()) for h in hits]
+    return np.array([h for h, (low, whole) in zip(hits, head, strict=True) if low >= KICK_LOW_SHARE * whole], dtype=int)
 
 
 def kick_808_interaction(bass: np.ndarray, drums: np.ndarray, fs: float) -> tuple[float, float, np.ndarray]:
@@ -456,7 +470,8 @@ def _harmonic_shaper(u: np.ndarray) -> np.ndarray:
 
 
 def add_harmonics(bass: np.ndarray, fs: float, target_db: float = -14.0, k: float = 1.0) -> np.ndarray:
-    """Add harmonics 2–5 generated from the sub band (80–400 Hz), ``target_db`` under the sub."""
+    """Add harmonics 2–5 generated from the sub band (below 120 Hz), band-passed to
+    ``HARMONIC_BAND`` (80–400 Hz), ``target_db`` under the sub."""
     if k <= 0:
         return bass
     sub, _ = dsp.split_band(bass, fs, None, 120.0)
@@ -505,5 +520,5 @@ def analyse(bass: np.ndarray | None, drums: np.ndarray | None, beat: np.ndarray,
                            if n.pitch_class not in scale and weights[n.pitch_class] >= minimum}
                 report.out_of_scale = [NOTE_NAMES[pc] for pc in sorted(outside)]
         if drums is not None:
-            report.kick_overlap, report.existing_duck_db, _ = kick_808_interaction(bass, drums, fs)
+            report.kick_overlap, report.existing_duck_db, report.kick_hits = kick_808_interaction(bass, drums, fs)
     return report

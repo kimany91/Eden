@@ -268,7 +268,7 @@ def test_mix_balances_voices_rides_the_lead_and_makes_room():
     assert [t.kind for t in res["beat"].treatments] == ["carve"]
     assert res["ch0"].space and res["ch1"].space  # both voices got Eden's sends
     assert out.reverb_lu <= -16.0 + 0.1
-    assert out.loudness_mix == pytest.approx(out.loudness_original, abs=0.05)
+    assert integrated_loudness(out.premaster, FS) == pytest.approx(integrated_loudness(parts.premaster, FS), abs=0.05)
     assert out.song.tempo_bpm == 95.0 and out.song.key
     assert all(t.applied for p in out.parts for t in p.treatments)  # only what changed something is reported
 
@@ -297,7 +297,8 @@ def test_the_users_fl_reverb_counts_in_the_reverb_ceiling():
                   Part("residual", "Reste", "residual", np.zeros_like(instru)), FS, wet_lead + adlib + instru)
     out = mix(parts, 1.0, 95.0, {"ch0": "tracked", "ch1": "none"})
     adlib_notes = next(p for p in out.parts if p.key == "ch1").space
-    assert any("tes effets FL compris" in n for n in adlib_notes)  # Eden's own reverb made way
+    [note] = adlib_notes  # Eden's own reverb made way: its sends, out of the mix, are no longer listed
+    assert note.startswith("Effets d'Eden retirés : avec tes seuls effets FL, la reverb de tout le morceau")
     assert out.reverb_lu > -16.0 - 0.1  # the user's reverb alone is above the ceiling: kept as is
 
 

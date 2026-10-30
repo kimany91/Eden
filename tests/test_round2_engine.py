@@ -156,9 +156,9 @@ def test_the_carve_keeps_the_bands_where_a_dip_makes_the_most_words_audible():
     assert [d for _, d in half] == pytest.approx([d / 2 for _, d in chosen])
 
 
-def test_the_carve_skips_bands_a_dip_cannot_uncover_and_bands_without_voice():
+def test_the_carve_skips_bands_buried_more_than_12_db_deep_and_bands_without_voice():
     values = [(-10.0, 0.0)] * 16
-    values[9] = (14.0, -2.0)  # 2 kHz buried 14 dB deep: a 3 dB dip uncovers nothing
+    values[9] = (14.0, -2.0)  # 2 kHz buried 14 dB deep: even dipped 3 dB, the voice stays 11 dB under
     values[6] = (0.0, -25.0)  # 1 kHz: the voice is 25 dB under its strongest band
     values[12] = (2.0, -5.0)  # 4 kHz
     values[3] = (12.0, -3.0)  # 500 Hz, 12 dB deep: still a candidate
@@ -186,8 +186,8 @@ def test_the_carve_reason_says_how_the_bands_were_chosen():
     assert len(bands) == 3 and all(lo >= 222 and hi <= 8980 for lo, hi in bands)
     assert carve.reason.startswith("Bandes où un creux rend le plus de paroles audibles (importance de la bande "
                                    "pour les paroles × audibilité gagnée, ANSI S3.5)")
-    assert "sans celles qu'elle couvre de plus de 12 dB (un creux de 3 dB n'y découvre rien) ni celles où la " \
-        "voix est à plus de 20 dB sous sa bande la plus forte" in carve.reason
+    assert "sans celles qu'elle couvre de plus de 12 dB (choix d'Eden : même creusée de 3 dB, la voix y resterait à " \
+        "plus de 9 dB sous l'instru) ni celles où la voix est à plus de 20 dB sous sa bande la plus forte" in carve.reason
 
 
 # -- the other voices' dip leaves their FL effects alone ------------------------------------------

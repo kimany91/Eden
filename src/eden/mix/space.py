@@ -259,7 +259,7 @@ def render_space(dry: np.ndarray, fs: float, plan: SpacePlan, k: float) -> tuple
         total += wet * k
         level = send.level_db + 20 * math.log10(k)  # what the intensity really leaves of it
         report.append(f"{send.label} : {level:+.0f} dB sous la voix"
-                      + (f", baissé de {send.duck_db:.0f} dB pendant qu'elle chante" if send.duck_db else ""))
+                      + (f", baissé de {send.duck_db:g} dB pendant qu'elle chante" if send.duck_db else ""))
     if factor > 1:
         total = resample_poly(total, factor, 1, axis=0)[:n]
         total = np.pad(total, ((0, n - total.shape[0]), (0, 0)))
