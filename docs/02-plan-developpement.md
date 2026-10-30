@@ -107,8 +107,9 @@ Fait (détails, seuils et sources : `docs/mixage.md`) :
 - niveaux (voix principale au-dessus de l'instru pendant le chant, autres voix par rapport
   à elle), suivi phrase par phrase, espace en quatre envois pour les voix qui n'en ont pas,
   placement stéréo, place pour les paroles (bandes pondérées par leur importance pour
-  l'intelligibilité), kick / 808, harmoniques du 808 pour petites enceintes ;
-- mastering Eden : graves en mono, tenue des graves, compression de bus, clip doux puis
+  l'intelligibilité), tenue des notes du 808, kick / 808, harmoniques du 808 pour petites
+  enceintes ;
+- mastering Eden : graves en mono, compression de bus, clip doux puis
   limiteur true-peak, volume cible rap commercial, simulation de la lecture sur chaque
   plateforme ;
 - versions conservées, export WAV (dossier, nom, fréquence, 16/24/32 bits) ;

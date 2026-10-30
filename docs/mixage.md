@@ -82,8 +82,8 @@ est marqué :
 | Accordage | écart de l'instru au La 440 Hz, mode d'un histogramme au cent près des pics spectraux, mesuré **avant** le chroma (sourcé : méthode d'Essentia) ; ramené au demi-ton le plus proche, de −50 à +50 cents (choix d'Eden : Essentia replie de −35 à +65 cents, ce qui lit une instru à 430 Hz un demi-ton trop bas) | lire les notes sur la bonne grille (une instru en 432 Hz est lue juste) |
 | Tonalité | chroma des pics au-dessus de **200 Hz** (kick, 808 et lignes de basse brouillent le chroma ; Faraldo, sourcé) des parties harmoniques : instru complète, éléments musicaux, effets, inconnus et reste du mix, sans les groupes batterie et 808 (quand tous les groupes sont batterie ou 808 : tout le beat) ; corrélation avec trois profils (Krumhansl-Kessler, Shaath, edma ; valeurs sourcées sur Essentia) ; Temperley écarté (penche vers le majeur relatif, sourcé). Quand majeur et mineur relatifs sont proches (scores à moins de 0,1), le 808 tranche s'il joue vraiment une des deux toniques : au moins 10 % de son énergie grave et 1,5 fois plus que l'autre (choix d'Eden) ; sinon les deux sont affichées | affichage, contrôle des notes du 808 |
 | Tempo | tempo du projet FL ; pulsation « ressentie » ramenée entre 65 et 135 BPM (corpus MCFlow de rap : 79–124 BPM, non vérifié ; la trap écrite à 140 se ressent à 70) | delays, pré-delay, relâchements, phrases |
-| Notes du 808 | NSDF (McLeod & Wyvill) sur la bande < 200 Hz décimée de tous les groupes basse / 808 réunis, notes de 25 à 150 Hz, affinage parabolique ; les trames d'un glissando (> 30 cents en 60 ms) sont ignorées : les hauteurs qu'un slide traverse ne sont pas des notes | note principale, notes hors gamme (averties, jamais corrigées ; ≥ 0,5 s et ≥ 3 % du jeu du 808), désaccord > 25 cents |
-| Kick / 808 | attaques du kick sous 150 Hz, sur tous les groupes batterie réunis (FL rend souvent chaque élément sur son propre insert) : montée de 4 dB en 20 ms, à moins de 12 dB des plus forts (ghost kicks compris) ; part des kicks qui tombent sur une note de 808, et de combien le 808 baisse déjà après le kick, mesuré contre sa propre décroissance | décider d'un ducking |
+| Notes du 808 | NSDF (McLeod & Wyvill) sur la bande < 200 Hz décimée de tous les groupes basse / 808 réunis, notes de 25 à 150 Hz, affinage parabolique ; les trames d'un glissando (> 30 cents en 60 ms) sont ignorées : les hauteurs qu'un slide traverse ne sont pas des notes | note principale, notes hors gamme (averties, jamais corrigées ; ≥ 0,5 s et ≥ 3 % du jeu du 808), désaccord > 25 cents, tenue des notes du 808 (§ 6) |
+| Kick / 808 | attaques du kick sous 150 Hz, sur tous les groupes batterie réunis (FL rend souvent chaque élément sur son propre insert) : montée de 4 dB en 20 ms, à moins de 12 dB des plus forts (ghost kicks compris) ; part des kicks qui tombent sur une note de 808, et de combien le 808 baisse déjà après le kick, mesuré contre sa propre décroissance | décider d'un ducking ; pas de tenue des notes du 808 sur un 808 que FL baisse déjà (§ 6) |
 | Graves en stéréo | corrélation G/D sous 100 Hz | mono des graves au master |
 
 ## 2. La chaîne de chaque voix
@@ -257,6 +257,49 @@ synthèse de la recherche ; niveaux : choix d'Eden) :
   mêmes moments (choix d'Eden) : un doublage chante sous la voix principale. Seule la voix
   baisse : ses reverbs et delays FL rendus à part restent tels quels (sur une voix
   « prudente », ils sont dans la voix et baissent avec elle).
+- **Tenue des notes du 808** : avant le ducking, Eden lit les notes du 808 sur tous les
+  groupes basse / 808 réunis, que FL rend à part : aucun kick n'y gêne la lecture des notes.
+  Le niveau est celui de la bande sous 100 Hz, moyenné sur une période de chaque note (sans
+  l'ondulation de l'onde) ; seuls comptent ses mouvements à moins de 30 dB du moment le plus
+  fort de ces groupes. Une note commence sur son attaque : le niveau monte de 3 dB en 30 ms
+  au plus depuis son point le plus bas (une même note rejouée remonte du petit creux entre
+  les deux). Le suivi de hauteur (§ 1) place une note jusqu'à environ 150 ms après son
+  attaque (un 808 dont la hauteur chute à l'attaque) et jusqu'à 30 ms avant : elle commence
+  sur la dernière montée de 200 ms avant à 40 ms après l'endroit où il la place ; sans
+  montée, là où finit la dernière baisse de 3 dB en 30 ms de ce même intervalle (une note
+  plus faible enchaînée). Un changement de hauteur sans l'une ni l'autre (un glissé)
+  continue la note : il n'a pas de tête à lui, seulement la décroissance de la note. Dans
+  une note, la même hauteur rejouée monte de 3 dB en 30 ms ; rejouée plus bas sans attaque,
+  elle baisse de 3 dB en 30 ms entre deux passages qui tiennent chacun à 1,5 dB près sur
+  80 ms, sauf si le niveau remonte dans les 80 ms qui suivent. Une note au plus par 80 ms ;
+  son niveau est le haut de ses 80 premières ms. Les notes au-dessus de 80 Hz ne sont pas
+  comparées : le filtre à 100 Hz retire déjà une part de leur fondamentale. Si au moins
+  4 notes sont lues et qu'elles varient de plus de 4 dB d'une note à l'autre (du 10ᵉ au 90ᵉ
+  centile ; dans le grave, l'oreille entend un écart plus grand qu'il ne se mesure), un
+  compresseur agit sur la bande sous 100 Hz de ces groupes : ratio 1 + intensité (2:1 à
+  100 %), au plus 3 dB × intensité, attaque 10 ms, relâchement 150 ms, seuil réglé pour que
+  la courbe du compresseur (genou doux de 6 dB compris) baisse de 1,5 dB × intensité la note
+  du 90ᵉ centile telle que la lit son détecteur (lissage 5 ms) ; l'attaque de 10 ms laisse
+  passer le début de la tête : sur des 808 de test, la réduction atteinte y est de 67 à 92 %
+  de celle de la courbe ; la réduction mesurée est affichée. Le gain est calculé une fois
+  sur la somme des groupes et appliqué tel quel à la bande sous 100 Hz de chacun (filtre à
+  phase nulle, au-dessus le 808 est intact) : leur somme reçoit exactement ce gain. Comme
+  pour les voix (§ 2), une compression dont la réduction ne bouge pas d'au moins 0,3 dB
+  n'est pas appliquée. Quand le 808 baisse déjà de 2 dB ou plus après les kicks (un
+  sidechain dans FL, mesuré comme pour le ducking ci-dessous, sur les groupes batterie
+  rendus à part), la tenue n'est pas faite : ses creux et ses remontées à chaque kick
+  passeraient pour des notes (sur des 808 de test aux notes égales, baissés de 4 à 10 dB à
+  chaque kick, elle se déclenchait à tort dans 22 cas sur 60). Tous ces seuils et réglages :
+  choix d'Eden. Le motif donne le nombre de notes lues et leur écart. Limites : une instru
+  rendue en un seul fichier, le 808 dedans (pas de groupe basse / 808 à part), n'a pas ce
+  traitement ; un 808 baissé à chaque kick dans FL alors que les kicks ne sont pas rendus
+  dans un groupe batterie à part n'est pas reconnu, ses remontées peuvent passer pour des
+  notes rejouées ; un kick rendu dans le même groupe que le 808 peut passer pour une note
+  rejouée ; une note enchaînée sans monter ni baisser de 3 dB en 30 ms n'est pas séparée de
+  la précédente ; deux notes qui se chevauchent battent, et ce battement peut passer pour
+  des notes rejouées (sur des 808 de test aux notes égales dont chaque note déborde sur la
+  suivante d'un quart de l'écart entre deux notes, la tenue s'est déclenchée à tort dans
+  8 cas sur 27).
 - **Kick / 808** : si plus d'un kick sur deux (lus sur tous les groupes batterie réunis)
   tombe sur une note de 808 qui ne baisse pas déjà (< 2 dB), chaque groupe basse / 808 est
   baissé de 3 dB sous 100 Hz à chacun de ces kicks : descente en 5 ms
@@ -279,50 +322,19 @@ synthèse de la recherche ; niveaux : choix d'Eden) :
 Chaîne (tout hors ligne, en float64) :
 
 1. graves en mono sous 100 Hz si la corrélation G/D y est < 0,9 (filtre à phase nulle) ;
-2. tenue des graves : 2:1 sous 100 Hz, ≤ 3 dB, attaque 10 ms, si les notes graves varient de
-   plus de 4 dB d'une note à l'autre (choix d'Eden) : l'écart est pris du 10ᵉ au 90ᵉ centile
-   de la crête de tête des notes, sur au moins 4 notes. La crête de tête d'une note est le
-   point le plus haut de ses 80 premières ms sur l'enveloppe des graves (moyenne sur 25 ms) :
-   la décroissance d'une note n'est donc pas un écart entre notes. Les notes sont lues sur la
-   hauteur du 808 (le même suivi de hauteur que pour les notes du 808, qui laisse de côté les
-   glissés) et sur son niveau (seuils : choix d'Eden) :
-   - une note commence là où l'enveloppe, à moins de 30 dB de son maximum, monte de 3 dB en
-     30 ms (une attaque : une nouvelle note, ou la même hauteur rejouée), ou là où elle baisse
-     de 3 dB en 30 ms entre deux passages qui tiennent chacun à 1,5 dB près sur 80 ms (une note
-     plus faible enchaînée, qui commence à la fin de la baisse). Un changement de hauteur sans
-     l'un ni l'autre (un glissé, une note liée) continue la note : il n'a pas de tête à lui,
-     seulement la décroissance de la note ;
-   - elle n'est comptée que si le suivi y lit une hauteur (au plus tard 100 ms après son
-     début) et si sa tête, de 20 à 100 ms, se répète à la période de cette hauteur (fonction
-     de différence carrée normalisée, à un quart de ton près, d'au moins 0,9) : la hauteur
-     d'un kick chute, elle ne se répète pas ;
-   - une attaque doit aussi dépasser de 1 dB le plus haut niveau des 100 à 30 ms d'avant
-     (l'enveloppe qui remonte après un creux n'est pas une nouvelle note), une au plus par
-     100 ms, perdre au plus 4,5 dB dans les 100 ms après sa crête (un kick s'éteint plus
-     vite qu'un 808) et, 150 ms après sa crête, tenir encore 1,5 dB au-dessus de la
-     décroissance que suivait l'enveloppe avant elle (droite ajustée sur ces 100 à 30 ms,
-     prolongée) : une nouvelle note relève le niveau pour de bon, un kick qui tombe sur la
-     queue d'une note ne le relève qu'un instant ;
-   - une attaque qui échoue est prise pour un coup (un kick, le plus souvent) : ce qui bouge
-     dans les 250 ms suivantes est sa queue qui bat contre le 808, pas une note.
-
-   Limites : une note dont l'attaque tombe avec un kick plus fort qu'elle, ou qui démarre
-   moins de 250 ms après un kick, n'est pas comparée ; avec des kicks plus forts que le 808
-   sous 100 Hz, peu de notes sont comparées et l'étage agit rarement. Une note qui s'enchaîne
-   sur la précédente sans monter ni baisser de 3 dB n'en est pas séparée. Un kick sans chute
-   de hauteur (une sinusoïde courte), ou dont la queue tient aussi longtemps que la note qu'il
-   frappe, peut passer pour la note rejouée : sur des notes égales, l'étage peut alors agir à
-   tort ;
-3. compression de bus : 1,6:1, seuil 4 dB sous les passages forts (P90 du niveau tel que le
+2. compression de bus : 1,6:1, seuil 4 dB sous les passages forts (P90 du niveau tel que le
    lit le détecteur du compresseur, lissé sur 5 ms : les trames brutes de 1 ms ondulent dans
    chaque cycle et placeraient le seuil ailleurs), attaque 30 ms, relâchement sur le temps
    ressenti, ≤ 3 dB ; 1,5 dB de réduction au niveau des passages forts (sur la courbe du
    compresseur ; la réduction mesurée est affichée, voir plus bas) ;
-4. gain → clip doux suréchantillonné ×8 (arrondi à partir de 70 % du plafond du clip,
+3. gain → clip doux suréchantillonné ×8 (arrondi à partir de 70 % du plafond du clip,
    plafond du clip à −1 dBFS, ou −2 dBFS avec un plafond final à −3 dBTP) → limiteur
    true-peak (sur la crête de l'onde continue, anticipation 1,5 ms : le gain descend en rampe
    sur au moins 1,5 ms avant une crête, jamais d'un coup ; tenue 20 ms pour ne pas onduler
    dans un cycle de 808) au plafond final.
+
+La tenue des notes du 808 ne se fait pas ici mais au mixage, sur les groupes 808 (§ 6) : sur
+le mix complet, les kicks gênent la lecture des notes.
 
 Comme pour les voix (§ 2), une compression dont la réduction ne bouge pas d'au moins 0,3 dB n'est pas
 appliquée et n'apparaît pas dans le rapport ; celles qui agissent affichent la réduction
