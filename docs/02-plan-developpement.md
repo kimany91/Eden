@@ -56,7 +56,11 @@ Fait :
   dépasser le maximum et être coupé là, pas ses pistes : si la somme des pistes le redonne
   partout ailleurs, Eden mixe contre cette somme. En cas d'échec, Eden dit à quoi ressemble
   l'écart (une partie, le morceau entier) et où il est le plus fort, et propose « Mixer quand
-  même » : ce qu'il n'a pas pu séparer reste tel quel, et le mix le signale ;
+  même » : ce qu'il n'a pas pu séparer reste tel quel, et le mix le signale. Avant de conclure,
+  Eden rend le morceau une 2e fois : si deux rendus du même morceau diffèrent déjà autant (à
+  3 dB près) que les pistes, c'est la variation de FL (plugin à modulation aléatoire, plugin en
+  version d'essai) et la vérification passe ; sinon l'écart vient de la séparation (un effet
+  commun à l'instru et aux voix) et Eden le dit ;
 - reprise après interruption (manifeste, rendus déjà faits réutilisés) ;
 - `eden fl-probe` : sur ton PC, essaie les syntaxes connues de FL Studio et enregistre la
   première qui produit un WAV (un seul rendu). Ce qu'Eden change dans ses copies (canaux

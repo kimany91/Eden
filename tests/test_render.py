@@ -525,3 +525,34 @@ def test_a_beat_that_runs_to_the_end_is_no_cut_echo(tmp_path, monkeypatch):
     result = render_project(flp, sim_renderer(), timeout_s=120, report=_report(flp))
     assert result.wav("original") and check_audio(result.wav("original")).ends_with_sound
     assert not any("Leave remainder" in w for w in result.warnings)
+
+
+def test_renders_that_vary_from_one_render_to_the_next_are_told_apart_from_a_wrong_split(session, monkeypatch):
+    # a reverb modulated at random: no two renders of the song are the same, so the parts cannot sum to it
+    # exactly; a second render of the song measures that variation, and a gap no bigger passes, said so
+    monkeypatch.setenv("EDEN_SIM_RANDOM", "1")
+    result = render_project(session, sim_renderer(), timeout_s=120)
+    test = result.null_test
+    assert test.repeat_db is not None and -60 < test.repeat_db < -10
+    assert test.passed and result.ok and "à la variation de FL Studio près" in test.message
+    assert any("variation de FL Studio" in w for w in result.warnings)
+    again = result.wav("premaster-bis")
+    assert again and again != result.wav("premaster")
+    second = render_project(session, sim_renderer(), timeout_s=120)  # kept: no third render
+    assert {j.status for j in second.jobs} == {"resumed"} and second.ok
+
+
+def test_a_wrong_split_fails_even_though_fl_renders_alike(session, monkeypatch):
+    # FL renders the song the same twice: the gap of a missing group is the split's, not FL's
+    real_plan = pipeline_mod.plan_renders
+
+    def plan_missing_a_stem(report):
+        plan = real_plan(report)
+        plan.jobs = [j for j in plan.jobs if j.name != "stem-005-808"]
+        return plan
+
+    monkeypatch.setattr(pipeline_mod, "plan_renders", plan_missing_a_stem)
+    result = render_project(session, sim_renderer(), timeout_s=120)
+    test = result.null_test
+    assert not test.passed and test.repeat_db == float("-inf")
+    assert "FL Studio rend deux fois exactement pareil ton morceau" in test.message

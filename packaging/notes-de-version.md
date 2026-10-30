@@ -1,12 +1,24 @@
-Eden 1.2.10 : un plantage possible entre deux étapes corrigé.
+Eden 1.2.11 : la vérification du son comprend pourquoi la somme des pistes diffère, et ne bloque plus à tort.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.10.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.2.11.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Corrigé dans 1.2.11
+
+- **« La somme des pistes diffère du mix d'origine » alors que rien ne manque** : certains
+  plugins ne jouent pas deux fois exactement pareil (une modulation aléatoire dans un chorus, un
+  doubleur, une reverb, ou un plugin en version d'essai qui coupe le son de temps en temps). FL
+  Studio ne rend alors jamais deux fois le même morceau, et aucune somme de pistes ne peut lui
+  être égale au sample près. Quand la vérification échoue, Eden rend maintenant ton morceau une
+  2e fois et mesure de combien FL varie : si les pistes ne s'écartent pas plus que ça, c'est la
+  variation de FL, la vérification passe et Eden le dit. Si FL rend deux fois pareil, l'écart
+  vient vraiment de la séparation, et Eden dit d'où il vient (un effet que l'instru et tes voix
+  traversent ensemble : compresseur, sidechain…) ; « Mixer quand même » reste possible.
 
 ## Corrigé dans 1.2.10
 
@@ -146,4 +158,4 @@ Eden 1.2.10 : un plantage possible entre deux étapes corrigé.
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.10/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.11/docs/mixage.md).

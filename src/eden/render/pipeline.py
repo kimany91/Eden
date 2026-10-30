@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from collections.abc import Callable
 from typing import NoReturn
@@ -31,13 +31,16 @@ from eden.project.inspector import InspectionReport, inspect_project
 from eden.project.model import MASTER_INSERT
 from eden.render.fl_studio import RenderError, Renderer
 from eden.render.plan import RenderJob, RenderPlan, plan_renders
-from eden.render.verify import AudioCheck, NullTest, check_audio, load, null_test
+from eden.render.verify import AudioCheck, NullTest, check_audio, difference_db, load, null_test
 from eden.safety import Workspace, read_project_bytes, verify_unchanged
 
 # (the part whose audio is there, in any order, -1 when FL Studio starts and the part count for the final
 # check; the number of steps; what is happening)
 StepCallback = Callable[[int, int, str], None]
 END_TOLERANCE_S = 0.1
+# a gap between the parts and the song no bigger than this above the gap between two renders of the very same
+# song is FL's own variation (an effect modulated at random, a plugin in trial version), not a wrong split
+REPEAT_MARGIN_DB = 3.0
 
 
 @dataclass
@@ -160,6 +163,14 @@ def _clock(seconds: float) -> str:
 def _why(result: RenderResult, summed: list[JobResult]) -> str:
     """What the difference of a failed null test is like: said to the user, and to whoever helps them."""
     test, hints = result.null_test, []
+    if test.repeat_db is not None:
+        if test.repeat_db <= result.null_test.threshold_db:
+            hints.append("FL Studio rend deux fois exactement pareil ton morceau : l'écart vient donc de la "
+                         "séparation des pistes, sans doute un effet que l'instru et tes voix traversent ensemble "
+                         "(compresseur, sidechain, saturation)")
+        else:
+            hints.append(f"deux rendus du même morceau diffèrent de {test.repeat_db:.1f} dB, les pistes de "
+                         f"{test.residual_db:.1f} dB : c'est plus que la variation de FL Studio")
     reference = next((j.check for j in result.jobs if j.job.name == "premaster" and j.check), None)
     if reference and reference.clipped_samples and "FLOAT" not in reference.subtype.upper():
         hints.append(f"le morceau rendu sans les effets du Master sature (export WAV de FL Studio en "
@@ -280,6 +291,39 @@ def render_project(
         for copy in copies:
             copy.unlink(missing_ok=True)
 
+    def again() -> float | None:
+        """The song before the Master rendered a second time, from the same copy: how much two renders of the
+        very same song differ on this PC (None when FL could not render it)."""
+        first = next(j for j in result.jobs if j.job.name == "premaster")
+        job = replace(first.job, name="premaster-bis", kind="repeat",
+                      description="Projet complet, effets du Master contournés, rendu une 2e fois")
+        jr = JobResult(job=job, copy_sha256=first.copy_sha256)
+        prev = previous.get(job.name)
+        if prev and prev.get("copy_sha256") == jr.copy_sha256 and prev.get("wav_path") \
+                and Path(prev["wav_path"]).is_file() and prev["wav_path"] != first.wav_path:
+            jr.wav_path, jr.status = prev["wav_path"], "resumed"  # an earlier second render: as good
+        else:
+            job_dir = folder / job.name
+            job_dir.mkdir(exist_ok=True)
+            copy = job_dir / f"{job.name}.flp"
+            copy.write_bytes(build_copy(original, job, repairs))
+            try:
+                produced = renderer.render(copy, timeout_s)
+                target = copy.with_suffix(".wav")
+                if produced != target:
+                    target.unlink(missing_ok=True)
+                    produced.replace(target)
+            except (RenderError, OSError) as exc:
+                jr.status, jr.error = "failed", str(exc)
+                return None
+            finally:
+                copy.unlink(missing_ok=True)
+            jr.wav_path, jr.status = str(target), "done"
+        jr.check = check_audio(Path(jr.wav_path))
+        result.jobs.append(jr)
+        _write_manifest(manifest, result)
+        return difference_db(Path(first.wav_path), Path(jr.wav_path))
+
     if on_step:
         on_step(len(plan.jobs), total, "Vérification : la somme des pistes reproduit-elle le mix ?")
     premaster = result.wav("premaster")
@@ -294,7 +338,19 @@ def render_project(
                             f"{test.unclipped_db:.1f} dB) ; rendu en WAV entier, le morceau sans les effets du "
                             "Master sature : Eden prend la somme des pistes, qui ne sature pas")
         elif not test.passed:
-            test.message += _why(result, summed)
+            if on_step:
+                on_step(len(plan.jobs), total, "Vérification : FL Studio rend-il deux fois pareil ton morceau ? "
+                                               "(2e rendu)")
+            test.repeat_db = again()
+            if test.repeat_db is not None and test.residual_db <= test.repeat_db + REPEAT_MARGIN_DB:
+                test.passed = True
+                test.message = (f"Somme des pistes = mix d'origine, à la variation de FL Studio près : deux rendus "
+                                f"du même morceau diffèrent déjà de {test.repeat_db:.1f} dB (un effet à modulation "
+                                "aléatoire, ou un plugin en version d'essai), les pistes de "
+                                f"{test.residual_db:.1f} dB. Eden garde cette différence telle quelle")
+                result.warnings.append(test.message)
+            else:
+                test.message += _why(result, summed)
 
     checks = [j.check for j in result.jobs if j.check]
     if len({(c.sample_rate, c.channels) for c in checks}) > 1:

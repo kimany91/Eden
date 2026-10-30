@@ -77,6 +77,8 @@ class NullTest:
     # the same, leaving out the samples where the reference clips (an integer WAV stops at full scale, its
     # parts do not): None when it does not clip
     unclipped_db: float | None = None
+    # how much two renders of the very same project differ (FL's own variation), when it was measured
+    repeat_db: float | None = None
 
 
 def _correlation(a: np.ndarray, b: np.ndarray) -> float:
@@ -95,6 +97,16 @@ def _loudest(residual: np.ndarray, sr: int) -> tuple[float, float] | None:
     rms = np.sqrt(np.mean(residual[:blocks * size].reshape(blocks, size, -1) ** 2, axis=(1, 2)))
     loud = np.flatnonzero(rms >= rms.max() / 2)
     return float(loud[0] * size / sr), float((loud[-1] + 1) * size / sr)
+
+
+def difference_db(reference: Path, other: Path) -> float:
+    """Level of what differs between two renders, relative to the first (dB; -inf when identical)."""
+    a, _ = load(reference)
+    b, _ = load(other)
+    n = max(a.shape[0], b.shape[0])
+    a, b = np.pad(a, ((0, n - a.shape[0]), (0, 0))), np.pad(b, ((0, n - b.shape[0]), (0, 0)))
+    level, gap = float(np.sqrt(np.mean(a ** 2))), float(np.sqrt(np.mean((a - b) ** 2)))
+    return _db(gap) - _db(level) if gap > 0 and level > 0 else float("-inf")
 
 
 def null_test(reference: Path, stems: list[Path], threshold_db: float = -60.0) -> NullTest:

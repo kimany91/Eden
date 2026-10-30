@@ -22,6 +22,8 @@ Environment switches used by tests:
                            effect still plays)
   EDEN_SIM_WET_REVERB=1    reverb slots give their tail only (100 % wet, as set on an
                            effect return)
+  EDEN_SIM_RANDOM=1        reverb slots modulated at random, differently at each render (as some
+                           plugins are, or a plugin in trial version): two renders of one project differ
   EDEN_SIM_PCM16=1         write 16-bit WAV files, which stop at full scale (FL's export set
                            to 16 bits), instead of 32-bit float
   EDEN_SIM_TRACE=<file>    each launch adds a line to <file>: when it started and ended
@@ -69,6 +71,8 @@ def effect(slot, x: np.ndarray) -> np.ndarray:
         return x + sum(0.5 ** k * shifted(x, 0.25 * k) for k in (1, 2, 3))
     if category == "reverb":
         tail = sum(0.3 * 0.7 ** k * shifted(x, 0.031 * k) for k in range(1, 12))
+        if os.environ.get("EDEN_SIM_RANDOM") == "1":
+            tail = tail * (1 + 0.6 * np.random.default_rng().standard_normal(x.shape[0]))[:, None]
         return tail if os.environ.get("EDEN_SIM_WET_REVERB") == "1" else x + tail
     return np.tanh(1.5 * x) / 1.5  # stands for any non-linear plugin
 
