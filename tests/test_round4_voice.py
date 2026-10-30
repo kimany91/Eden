@@ -114,18 +114,36 @@ def test_the_module_texts_say_what_the_code_does(tmp_path):
 # -- the product keeps no function, constant or field that only the tests use -----------------------------------
 
 @functools.cache
-def _read_in_src() -> tuple[frozenset[str], frozenset[str]]:
-    """(every name the product reads: loaded names, attributes and imported names; the attributes alone)."""
-    names, attributes = set(), set()
-    for path in SRC.rglob("*.py"):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-                names.add(node.id)
-            elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
-                attributes.add(node.attr)
-            elif isinstance(node, ast.ImportFrom):
-                names.update(a.name for a in node.names)
-    return frozenset(names | attributes), frozenset(attributes)
+def _product() -> tuple[tuple[Path, ast.Module], ...]:
+    return tuple((path, ast.parse(path.read_text(encoding="utf-8"))) for path in SRC.rglob("*.py"))
+
+
+def _uses_of(module: str) -> set[str]:
+    """The names of ``eden.mix.<module>`` the product reads: imported from it, read as an attribute of the
+    module, or read inside the module itself. A same-named identifier elsewhere (the engine's ``ride``,
+    imported from riding, for a ``stereo.ride``; report's local ``pan`` for ``stereo.pan``) does not count."""
+    used = set()
+    for path, tree in _product():
+        aliases = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == f"eden.mix.{module}":
+                used.update(a.name for a in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module == "eden.mix":
+                aliases.update(a.asname or a.name for a in node.names if a.name == module)
+        inside = path == SRC / "mix" / f"{module}.py"
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in aliases:
+                used.add(node.attr)
+            elif inside and isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                used.add(node.id)
+    return used
+
+
+@functools.cache
+def _attributes_read() -> frozenset[str]:
+    """Every attribute name the product reads, on any object (a field is matched by its name)."""
+    return frozenset(node.attr for _, tree in _product() for node in ast.walk(tree)
+                     if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load))
 
 
 @pytest.mark.parametrize("module", ["analysis", "dsp", "parts", "riding", "space", "stereo", "tonality",
@@ -141,7 +159,7 @@ def test_every_public_name_of_the_voice_modules_is_used_by_the_product(module):
             defined += [t.id for t in node.targets if isinstance(t, ast.Name)]
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             defined.append(node.target.id)
-    used, _ = _read_in_src()
+    used = _uses_of(module)
     assert [name for name in defined if not name.startswith("_") and name not in used] == []
 
 
@@ -152,8 +170,7 @@ def test_every_field_of_the_measures_and_parts_is_read_by_the_product(cls):
     body = ast.parse(inspect.getsource(cls)).body[0].body
     members = [item.target.id for item in body if isinstance(item, ast.AnnAssign)]
     members += [item.name for item in body if isinstance(item, ast.FunctionDef) and not item.name.startswith("__")]
-    _, read = _read_in_src()
-    assert members and [m for m in members if m not in read] == []
+    assert members and [m for m in members if m not in _attributes_read()] == []
 
 
 def test_is_mono_reads_only_the_side_against_the_mid(monkeypatch):
