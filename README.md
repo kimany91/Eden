@@ -4,7 +4,7 @@ Assistant de mixage automatique de voix rap pour projets **FL Studio**.
 Objectif : sélectionner un projet `.flp`, laisser Eden analyser et mixer, écouter,
 ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 
-## État actuel (v0.4.0)
+## État actuel (v1.0.0)
 
 | Phase | État |
 |---|---|
@@ -40,16 +40,19 @@ niveau de la voix suivi phrase par phrase au-dessus de l'instru, espace (ambianc
 delay sur le tempo, jet d'écho en fin de phrase) seulement pour les voix qui n'en ont pas,
 placement stéréo des doublages, chœurs et ad-libs, place pour les paroles dans l'instru,
 kick / 808, puis un master fort et propre pour les plateformes (−9 LUFS, crête réelle à
-−3 dBTP). Chaque décision est expliquée ; tu règles l'intensité (0 % = ton mix d'origine
+−3 dBTP, ou −2 dBTP quand le morceau s'arrête plus bas). Chaque décision est expliquée ; tu règles l'intensité (0 % = ton mix d'origine
 avant le Master, à l'identique), tu gardes chaque version et tu exportes le WAV final.
 Détails : [docs/mixage.md](docs/mixage.md).
 
 ## Installation (Windows)
 
-1. Télécharge **`Eden-Setup-x.y.z.exe`** (page *Releases* du dépôt, ou l'artefact du
-   dernier passage de « Installateur Windows » dans l'onglet *Actions*).
+1. Télécharge **`Eden-Setup-x.y.z.exe`** sur la page de la dernière version :
+   <https://github.com/kimany91/Eden/releases/latest>.
 2. Double-clique dessus : l'installation se fait sans droits administrateur, crée les
    raccourcis Menu Démarrer et Bureau (icône : l'arbre jaune d'Eden) et lance Eden.
+   L'installateur n'est pas signé (la signature de code Windows est payante) : si Windows
+   affiche « Windows a protégé votre ordinateur », clique sur « Informations
+   complémentaires » puis « Exécuter quand même ».
 3. Dans Eden : glisse ton projet `.flp`, l'analyse démarre ; clique ensuite sur
    « Récupérer le son depuis FL Studio ». La première fois, Eden apprend tout seul à
    piloter ton FL Studio (FL doit être fermé).

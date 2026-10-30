@@ -104,6 +104,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Eden ${{ steps.v.outputs.version }}
+          body_path: packaging/notes-de-version.md
           files: |
             dist-installer/Eden-Setup-*.exe
             dist-installer/SHA256SUMS.txt

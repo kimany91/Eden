@@ -24,20 +24,30 @@ Commande manuelle : `eden update`.
 - Testé (hors ligne, serveur simulé) : comparaison de versions, lecture de la release,
   téléchargement, refus d'un fichier modifié, refus sans somme de contrôle, limitation à
   une vérification par jour, lancement silencieux de l'installateur.
-- **Pas encore testé en réel** : il n'existe pas encore d'installateur Windows ni de
-  release publiée. Ils seront produits en phase 5 (PyInstaller + Inno Setup + workflow
-  GitHub Actions qui publie l'installateur et `SHA256SUMS.txt` à chaque tag `v*`).
+- Chaque installateur est construit et vérifié sur une machine Windows par le workflow
+  « Installateur Windows » (installation silencieuse, raccourcis, démarrage de la version
+  installée, désinstallation), qui publie l'installateur et `SHA256SUMS.txt` à chaque tag
+  `v*`. Première version publiée : 1.0.0.
+- **Pas encore testé en réel** : une mise à jour de bout en bout (une 1.0.0 installée qui
+  trouve, vérifie et installe la version suivante) ; elle le sera à la prochaine version.
 
-## Décision nécessaire : dépôt privé
+## Publier une version
 
-L'API GitHub ne montre pas les releases d'un dépôt privé sans jeton d'accès, et mettre un
-jeton dans l'application l'exposerait. Options :
+1. Mettre la nouvelle version dans `src/eden/__init__.py` (`__version__`) et dans le titre
+   « État actuel » du README.
+2. Écrire ce qui change dans `packaging/notes-de-version.md` : c'est le texte de la page de
+   la version sur GitHub.
+3. Pousser le tag `v<version>` (par exemple `v1.0.1`) : le workflow refuse un tag qui ne
+   correspond pas à `__version__`, construit et vérifie l'installateur, puis publie la
+   version.
 
-1. **Dépôt public séparé** `eden-releases` ne contenant que les installateurs (le code
-   reste privé) — recommandé ;
-2. rendre le dépôt `eden` public ;
-3. garder un jeton personnel en lecture seule sur ton PC uniquement (`eden update --token`),
-   acceptable pour un usage strictement personnel.
+## Dépôt public
+
+Le dépôt `kimany91/Eden` est public : l'API GitHub montre ses versions sans jeton, et les
+mises à jour fonctionnent sans rien configurer. S'il redevenait privé, l'API ne les
+montrerait plus sans jeton d'accès, et mettre un jeton dans l'application l'exposerait :
+il faudrait alors publier les installateurs dans un dépôt public séparé, ou garder un
+jeton personnel en lecture seule sur ton PC uniquement (`eden update --token`).
 
 ## Sécurité, étape suivante
 
