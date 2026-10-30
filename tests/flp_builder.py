@@ -91,6 +91,7 @@ def build_flp(
     n_inserts: int = 127,
     patterns: dict[int, tuple[str, list[int]]] | None = None,
     legacy_items: bool = False,
+    item_size: int | None = None,  # playlist items: 60 bytes (FL 21+) by default, 32 legacy, 80 FL 2024/25, 88 FL 26
 ) -> bytes:
     body = bytearray()
     body += ev(ids.PROJECT_FL_VERSION, version.encode("ascii") + b"\0")
@@ -122,8 +123,7 @@ def build_flp(
         item = c.channel if c.channel is not None else ids.PATTERN_BASE + c.pattern
         items += struct.pack("<IHHIHH2sH4sff", c.position, ids.PATTERN_BASE, item, c.length,
                              499 - (c.track - 1), 0, b"\x78\x00", 64, b"\x40\x64\x80\x80", -1.0, -1.0)
-        if not legacy_items:
-            items += b"\0" * 28  # 60-byte items (FL 21+); 32 bytes before
+        items += b"\0" * ((item_size or (32 if legacy_items else 60)) - 32)  # what later FL versions added
     body += ev(ids.ARRANGEMENT_PLAYLIST, bytes(items))
     for t in range(1, 501):
         body += ev(ids.TRACK_DATA, struct.pack("<III", t, 0, 0) + b"\x01" + b"\0" * 53)

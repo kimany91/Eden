@@ -1,14 +1,24 @@
-Eden 1.2 : tes projets en un clic, tes prods déjà mixées respectées, plus aucune fenêtre par-dessus.
+Eden 1.2.1 : les projets de FL Studio 2024 et 2025 lus en entier.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.2.0.exe` ci-dessous et double-clique dessus (pas besoin de droits
-   administrateur ni de Python). Si Eden 1.0 ou 1.1 est installé, la mise à jour se fait aussi
+1. Télécharge `Eden-Setup-1.2.1.exe` ci-dessous et double-clique dessus (pas besoin de droits
+   administrateur ni de Python). Si Eden 1.0, 1.1 ou 1.2 est installé, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
 
-## Nouveautés
+## Corrigé dans 1.2.1
+
+- **Projets FL Studio 2024 / 2025 (et 26)** : Eden ne lisait pas leur playlist (FL a agrandi
+  ses clips). Durée inconnue, voix pas reconnues par le nom de leurs pistes, et chaque canal du
+  Channel Rack comptait comme une piste du morceau. C'est lu maintenant.
+- **Canaux qui ne jouent nulle part** (la batterie d'un modèle de projet, un sample essayé puis
+  laissé) : ils sont ignorés, et un de leurs fichiers introuvable n'arrête plus Eden
+  (« Fichiers audio introuvables, le rendu serait incomplet »). Un fichier qui manque à une piste
+  qui joue arrête toujours Eden, pour ne pas rendre un morceau incomplet.
+
+## Nouveautés de la 1.2
 
 - **Tes projets en un clic** : choisis une seule fois le dossier où tu enregistres tes projets
   FL Studio (celui de FL est proposé s'il existe). Eden s'en souvient et te les montre tous, les
@@ -29,4 +39,4 @@ Eden 1.2 : tes projets en un clic, tes prods déjà mixées respectées, plus au
 
 Les réglages du mix ont été testés sur des voix et des beats de test et sur de vrais projets FL
 pour l'analyse, pas encore à l'écoute sur tes morceaux. Détails :
-[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.0/docs/mixage.md).
+[docs/mixage.md](https://github.com/kimany91/Eden/blob/v1.2.1/docs/mixage.md).

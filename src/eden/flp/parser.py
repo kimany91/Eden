@@ -477,12 +477,18 @@ def _apply_mixer_params(p: FlpProject, data: bytes) -> None:
                 route.level_raw = msg
 
 
-def _playlist_item_size(data: bytes) -> int | None:
-    """Items are 32 bytes before FL 21 and 60 bytes since. A length can be a
-    multiple of both, so the constant "pattern base" field (offset 4) decides."""
+# Playlist items: the same first 32 bytes since FL 12.9, then FL 21 added 28 bytes, FL 2024 (24) another 20,
+# FL 26 another 8 (as read by the PyFLP fork Meowrium/PyFLP and by flpkit). (version, size), newest first
+PLAYLIST_ITEM_SIZES = ((26,), 88), ((24,), 80), ((21,), 60), ((), 32)
+
+
+def _playlist_item_size(data: bytes, version: tuple[int, ...] = ()) -> int | None:
+    """The item size the project's FL version writes, tried first; a length can be a multiple of
+    several sizes, so the constant "pattern base" field (offset 4) of every item decides."""
     if not data:
         return 32
-    for size in (60, 32):
+    expected = next(size for since, size in PLAYLIST_ITEM_SIZES if version >= since)
+    for size in sorted({size for _, size in PLAYLIST_ITEM_SIZES}, key=lambda s: (s != expected, -s)):
         if len(data) % size == 0 and all(
             struct.unpack("<H", data[off + 4:off + 6])[0] == ids.PATTERN_BASE
             for off in range(0, len(data), size)
@@ -492,7 +498,7 @@ def _playlist_item_size(data: bytes) -> int | None:
 
 
 def _parse_playlist(p: FlpProject, arr_index: int, data: bytes, max_track: int) -> list[PlaylistClip]:
-    size = _playlist_item_size(data)
+    size = _playlist_item_size(data, _version_tuple(p.fl_version))
     if size is None:
         p.warnings.append(
             f"Playlist de l'arrangement {arr_index} : format de clips non reconnu "

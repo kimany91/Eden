@@ -39,7 +39,7 @@ paramètres du Mixer → inserts.
 | Drapeaux d'insert (2e u32 de 236) | bit 0 polarité, 1 inversion G/D, 2 effets actifs, 3 insert actif, 11 verrouillé | |
 | Slot d'effet | événements plugin puis 98 (fin de slot) | 10 slots par insert |
 | Paramètres du Mixer | 225 | enregistrements de 12 octets ; insert = (canal >> 6) & 0x7F, slot = canal & 0x3F ; id 0 slot actif, 1 dry/wet, 64–191 niveau d'envoi vers l'insert (id − 64), 192 volume, 193 pan, 194 séparation stéréo |
-| Playlist | 233 | 32 octets par clip (60 depuis FL 21) ; base des patterns 20480 ; piste stockée inversée (499 − n) |
+| Playlist | 233 | 32 octets par clip, 60 depuis FL 21, 80 depuis FL 2024 (24), 88 en FL 26 : les 32 premiers ne changent pas (relevé par le fork Meowrium/PyFLP et par flpkit ; pas encore vérifié sur un projet FL 25 réel). Taille de la version essayée d'abord, chaque clip validé par la base des patterns 20480 à l'offset 4 ; piste stockée inversée (499 − n) |
 | Piste de playlist | 238 données (activée = octet 12), 239 nom (après ses données) | |
 | Marqueurs | 148 position (octet haut = type, 8 = signature), 205 nom | |
 | Notes de pattern | 224 | 24 octets par note, canal du rack en u16 à l'offset 6 |

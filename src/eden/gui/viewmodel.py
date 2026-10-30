@@ -73,6 +73,7 @@ def report_view(r: InspectionReport) -> dict:
                            "category": CATEGORY_LABELS_FR.get(fx.category, fx.category),
                            "active": fx.active} for fx in r.master_effects],
         "insertCount": len(r.used_inserts),
+        "idleChannels": r.idle_channels,
         "warnings": r.warnings,
         "limitations": r.limitations,
     }
@@ -266,6 +267,10 @@ def analysis_lines(report: dict) -> list[tuple[str, str]]:
     others = [f"« {o['label']} » ({o['role']})" for o in report["others"]]
     if others:
         lines.append(("Instru : " + _names(others), "detail"))
+    idle = report.get("idleChannels", [])
+    if idle:
+        lines.append((f"{len(idle)} canal(aux) du Channel Rack ne joue(nt) nulle part dans le morceau, ignoré(s) "
+                      f"même si un fichier manque : {_names([f'« {n} »' for n in idle])}", "detail"))
     master = [fx["name"] for fx in report["masterEffects"] if fx["active"]]
     if master:
         lines.append((f"Effets de ton Master FL : {_names(master)} ; ils restent pour ton écoute dans FL, "
