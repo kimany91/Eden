@@ -24,11 +24,12 @@ Everything is done on FL Studio's own renders (parts, see ``parts.py``):
    the window), riding phrase by phrase (``riding.py``; the phrases are read
    on the voice without its FL reverbs and delays, which follow the same
    gain), space when they have none (``space.py``);
-5. the other voices one by one: chain, level against the lead (copies of
-   the lead are never raised: comb filtering; a warning when the change
-   cannot bring them into their window), placement (``stereo.py``), a dip
-   in 1–4 kHz of the voice alone (not its FL effects) while the lead sings,
-   space when they have none;
+5. the other voices one by one: chain, level against the lead (inside
+   their window they follow the lead's own static change; copies of the
+   lead are never raised against it: comb filtering; a warning when the
+   change cannot bring them into their window), placement (``stereo.py``),
+   a dip in 1–4 kHz of the voice alone (not its FL effects) while the lead
+   sings, space when they have none;
 6. the reverb of the whole mix (the user's FL effects and Eden's) is kept
    under a ceiling by lowering Eden's returns (a warning when the user's FL
    effects alone go over it) — when a voice's FL reverb could not be
@@ -72,7 +73,9 @@ RELATIVE_TO_LEAD = {
     "adlib": (-6.0, -9.0, -3.0),
     "double": (-6.0, -10.0, -3.0),
 }
-MAX_LEVEL_CHANGE_DB = 4.0  # static level change of the other voices against the lead
+# static level change of the other voices beyond the span between keeping their level and following the
+# lead's own change (choix d'Eden)
+MAX_LEVEL_CHANGE_DB = 4.0
 # static level change of a lead (or of leads that sing together) against the beat: a raw vocal over an
 # already mastered beat can sit 10 dB under it (choix d'Eden)
 MAX_LEAD_CHANGE_DB = 10.0
@@ -223,7 +226,7 @@ def _chain(v: Part, fs: float, k: float, status: str, tempo_bpm: float | None
     m = measure_vocal(source, fs)
     treatments = plan_voice(m, v.role, k, status == "untracked")
     hold = tail_hold(m, source, fs, tempo_bpm) if status == "untracked" else None
-    processed = apply(source, fs, treatments, hold=hold) if treatments else source
+    processed = apply(source, fs, treatments, hold=hold, input_lufs=m.loudness_lufs) if treatments else source
     treatments = [t for t in treatments if t.applied]
     fl_wet = None
     before = m.loudness_lufs
@@ -604,15 +607,27 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         processed, fl_wet, level, res = _chain(v, fs, k, fl_space.get(v.key, "none"), tempo_bpm)
         results[v.key] = res
         if v.role in RELATIVE_TO_LEAD and reference is not None and math.isfinite(level.lufs):
-            current = res.loudness_after - results[reference.key].loudness_after
-            change = _level_change(current, RELATIVE_TO_LEAD[v.role], k, MAX_LEVEL_CHANGE_DB)
-            if change > 0 and copies.get(v.key, 0.0) > stereo.COPY_CORRELATION:
-                res.treatments.append(Treatment(
-                    "gain", "Niveau gardé", "Copie de la voix principale : la monter créerait un filtrage "
-                    "en peigne", {"gain_db": 0.0}))
+            # the voice may keep its level, follow the lead's own static change (the balance the user set
+            # inside the stack is kept) or anything between; out of its window it moves towards its goal, at
+            # most MAX_LEVEL_CHANGE_DB beyond that span
+            base = results[reference.key].level_change_db
+            current = res.loudness_after + base - results[reference.key].loudness_after  # once it follows
+            reach = MAX_LEVEL_CHANGE_DB * k
+            change = float(np.clip(base + _level_change(current, RELATIVE_TO_LEAD[v.role], k, math.inf),
+                                   min(0.0, base) - reach, max(0.0, base) + reach))
+            against = f"{current:+.1f} dB par rapport à « {reference.label} »" + (
+                f" en suivant son gain ({base:+.1f} dB)" if abs(base) >= 0.1 else "")
+            if change > base and copies.get(v.key, 0.0) > stereo.COPY_CORRELATION:
+                if abs(base) < 0.1:
+                    res.treatments.append(Treatment(
+                        "gain", "Niveau gardé", "Copie de la voix principale : la monter créerait un filtrage "
+                        "en peigne", {"gain_db": 0.0}))
+                else:
+                    set_level(v, base, against + ", pas plus : copie de la voix principale, la monter davantage "
+                              "créerait un filtrage en peigne")
             else:
-                set_level(v, change, f"{current:+.1f} dB par rapport à « {reference.label} »")
-                still_off(f"« {v.label} »", False, f"de « {reference.label} »", current + res.level_change_db,
+                set_level(v, change, against)
+                still_off(f"« {v.label} »", False, f"de « {reference.label} »", current + change - base,
                           RELATIVE_TO_LEAD[v.role],
                           ("monte cette voix dans FL Studio", "baisse cette voix dans FL Studio"))
             gain = 10 ** (res.level_change_db / 20)

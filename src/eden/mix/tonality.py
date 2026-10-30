@@ -48,7 +48,7 @@ class Key:
     chroma: list[float]
     relative_close: bool = False  # the relative key scored almost as well and the 808 did not settle it
     tuning_cents: float = 0.0  # the beat's tuning relative to A = 440 Hz
-    decided_by_bass: bool = False
+    decided_by_bass: bool = False  # the relative key scored almost as well and the 808 settled it
 
     @property
     def name(self) -> str:
@@ -62,7 +62,11 @@ class Key:
 
     @property
     def display(self) -> str:
-        return f"{self.name} (ou {self.relative.name})" if self.relative_close else self.name
+        if self.relative_close:
+            return f"{self.name} (ou {self.relative.name})"
+        if self.decided_by_bass:
+            return f"{self.name} (le 808 tranche face à {self.relative.name})"
+        return self.name
 
     @property
     def scale(self) -> set[int]:

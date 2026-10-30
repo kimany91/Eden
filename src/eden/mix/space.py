@@ -204,12 +204,13 @@ def throw_envelope(dry: np.ndarray, fs: float, gap_s: float, last_s: float = 0.3
 
 def _deess_send(dry: np.ndarray, fs: float) -> np.ndarray:
     """The send is de-essed harder than the voice: an echoed 's' is only noise."""
-    high, _ = dsp.split_band(dry, fs, 5000.0, None)
-    level, _ = dsp.band_levels_db(high, fs)
+    high, rest = dsp.split_band(dry, fs, 5000.0, None)
+    level, size = dsp.band_levels_db(high, fs)
     loud = level[level > -90.0]
     if loud.size == 0:
         return dry
-    return dsp.deess(dry, fs, float(np.percentile(loud, 75)) - 3.0, 8.0, low_hz=5000.0)
+    gr = dsp.deess_reduction_db(level, float(np.percentile(loud, 75)) - 3.0, 8.0)
+    return rest + dsp._apply_gain(high, dsp._to_samples(gr, size, dry.shape[0]))
 
 
 def render_space(dry: np.ndarray, fs: float, plan: SpacePlan, k: float) -> tuple[np.ndarray, list[str]]:

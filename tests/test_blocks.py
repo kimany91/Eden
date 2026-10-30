@@ -94,6 +94,7 @@ def test_the_808_settles_a_minor_loop_against_its_relative_major():
     bass = np.concatenate([_tone(36, 2.0, 0.5)] * 12)  # the 808 sits on C
     key = detect_key(harmony, FS, bass_pitch_classes(bass, FS))
     assert key.name == "Do mineur" and key.decided_by_bass and not key.relative_close
+    assert key.display == "Do mineur (le 808 tranche face à Mi♭ majeur)"
 
 
 def test_beat_tuned_to_432_hz_is_measured_and_read_on_its_own_grid():

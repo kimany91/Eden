@@ -245,21 +245,19 @@ def deess_gain_db(x: np.ndarray, fs: float, threshold_db: float, max_reduction_d
     """(sibilance band, rest, gain reduction per 1 ms frame in dB, frame size) of a de-esser."""
     high, rest = split_band(x, fs, low_hz, None)
     level, size = band_levels_db(high, fs)
+    return high, rest, deess_reduction_db(level, threshold_db, max_reduction_db, ratio, lookahead_ms), size
+
+
+def deess_reduction_db(level: np.ndarray, threshold_db: float, max_reduction_db: float, ratio: float = 4.0,
+                       lookahead_ms: float = 5.0) -> np.ndarray:
+    """Gain reduction in dB per 1 ms frame of a de-esser whose sibilance band reads ``level`` (dB per
+    frame): the band is lowered only when it exceeds ``threshold_db``."""
     gr = np.clip(-(level - threshold_db) * (1 - 1 / ratio), -max_reduction_db, 0.0)
     gr = _smooth(gr, 1.0, 60.0)
     ahead = int(round(lookahead_ms / (FRAME_S * 1000)))
     if ahead:  # the gain is already down when the 's' starts
         gr = np.minimum(gr, np.concatenate([gr[ahead:], np.zeros(ahead)]))
-    return high, rest, gr, size
-
-
-def deess(x: np.ndarray, fs: float, threshold_db: float, max_reduction_db: float,
-          ratio: float = 4.0, low_hz: float = 4500.0, lookahead_ms: float = 5.0) -> np.ndarray:
-    """Reduce the sibilance band only when it exceeds ``threshold_db`` (1 ms frames)."""
-    if max_reduction_db <= 0:
-        return x
-    high, rest, gr, size = deess_gain_db(x, fs, threshold_db, max_reduction_db, ratio, low_hz, lookahead_ms)
-    return rest + _apply_gain(high, _to_samples(gr, size, x.shape[0]))
+    return gr
 
 
 def activity_envelope(x: np.ndarray, fs: float, threshold_db: float,

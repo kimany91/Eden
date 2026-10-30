@@ -83,10 +83,11 @@ def _vowel_level(y: np.ndarray, fs: float) -> float:
     return vowel_level(y, fs, level, active)
 
 
-def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarray | None = None
-          ) -> np.ndarray:
+def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarray | None = None,
+          input_lufs: float | None = None) -> np.ndarray:
     """``hold``: 1 ms frames of the rests between phrases (effect tails), where tail-safe
-    compressors freeze their gain at the phrase's mean reduction (see ``dsp._smooth``).
+    compressors freeze their gain at the phrase's mean reduction (see ``dsp._smooth``);
+    ``input_lufs``: the integrated loudness of ``x``, when the caller has already measured it.
 
     Dynamic stages read the level of the signal as it reaches them (after the
     stages before), so a chain of compressors stays as planned. A dynamic
@@ -125,7 +126,8 @@ def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarra
             if not any(o.kind in ("compressor", "deesser") and o.applied for o in treatments[:i]):
                 t.applied = False  # no compressor or de-esser took level: there is nothing to give back
                 continue
-            before, after = integrated_loudness(x, fs), integrated_loudness(y, fs)
+            before = integrated_loudness(x, fs) if input_lufs is None else input_lufs
+            after = integrated_loudness(y, fs)
             change = before - after if math.isfinite(before) and math.isfinite(after) else 0.0
             t.params = {"gain_db": change}
             t.label = f"Gain de compensation {change:+.1f} dB"

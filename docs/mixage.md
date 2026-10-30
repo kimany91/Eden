@@ -80,7 +80,7 @@ est marqué :
 | Quoi | Comment | Sert à |
 |---|---|---|
 | Accordage | écart de l'instru au La 440 Hz, mode d'un histogramme au cent près des pics spectraux, mesuré **avant** le chroma (sourcé : méthode d'Essentia) ; ramené au demi-ton le plus proche, de −50 à +50 cents (choix d'Eden : Essentia replie de −35 à +65 cents, ce qui lit une instru à 430 Hz un demi-ton trop bas) | lire les notes sur la bonne grille (une instru en 432 Hz est lue juste) |
-| Tonalité | chroma des pics au-dessus de **200 Hz** (kick, 808 et lignes de basse brouillent le chroma ; Faraldo, sourcé) des parties harmoniques : instru complète, éléments musicaux, effets, inconnus et reste du mix, sans les groupes batterie et 808 (quand tous les groupes sont batterie ou 808 : tout le beat) ; corrélation avec trois profils (Krumhansl-Kessler, Shaath, edma ; valeurs sourcées sur Essentia) ; Temperley écarté (penche vers le majeur relatif, sourcé). Quand majeur et mineur relatifs sont proches (scores à moins de 0,1), le 808 tranche s'il joue vraiment une des deux toniques : au moins 10 % de son énergie grave et 1,5 fois plus que l'autre (choix d'Eden) ; sinon les deux sont affichées | affichage, contrôle des notes du 808 |
+| Tonalité | chroma des pics au-dessus de **200 Hz** (kick, 808 et lignes de basse brouillent le chroma ; Faraldo, sourcé) des parties harmoniques : instru complète, éléments musicaux, effets, inconnus et reste du mix, sans les groupes batterie et 808 (quand tous les groupes sont batterie ou 808 : tout le beat) ; corrélation avec trois profils (Krumhansl-Kessler, Shaath, edma ; valeurs sourcées sur Essentia) ; Temperley écarté (penche vers le majeur relatif, sourcé). Quand majeur et mineur relatifs sont proches (scores à moins de 0,1), le 808 tranche s'il joue vraiment une des deux toniques : au moins 10 % de son énergie grave et 1,5 fois plus que l'autre (choix d'Eden), et l'affichage le dit ; sinon les deux sont affichées | affichage, contrôle des notes du 808 |
 | Tempo | tempo du projet FL ; pulsation « ressentie » ramenée entre 65 et 135 BPM (corpus MCFlow de rap : 79–124 BPM, non vérifié ; la trap écrite à 140 se ressent à 70) | delays, pré-delay, relâchements, phrases |
 | Notes du 808 | NSDF (McLeod & Wyvill) sur la bande < 200 Hz décimée de tous les groupes basse / 808 réunis, notes de 25 à 150 Hz, affinage parabolique ; les trames d'un glissando (> 30 cents en 60 ms) sont ignorées : les hauteurs qu'un slide traverse ne sont pas des notes | note principale, notes hors gamme (averties, jamais corrigées ; ≥ 0,5 s et ≥ 3 % du jeu du 808), désaccord > 25 cents, tenue des notes du 808 (§ 6) |
 | Kick / 808 | attaques du kick sous 150 Hz, sur tous les groupes batterie réunis (FL rend souvent chaque élément sur son propre insert) : montée de 4 dB en 20 ms, à moins de 12 dB des plus forts (ghost kicks compris) ; un coup n'est un kick que si la bande sous 150 Hz porte au moins 10 % de sa puissance sur ses 30 premières ms (choix d'Eden) : les 12 dB se comptent depuis les coups les plus forts de la bande grave des groupes batterie, et dans un groupe batterie sans kick (hi-hats, caisse claire, percussions ; le kick est alors dans l'instru complète, ou c'est le 808 qui en tient lieu) le peu de grave qu'ils laissent passer serait lu comme des kicks. Sur des batteries de test : hi-hats 0 %, caisses claires au corps de 180 à 200 Hz 4 % au plus, kicks de 11 % (une couche de clic qui porte 8 dB de plus que le coup sur leurs 30 premières ms) à 82 %, 18 % sous une crash ; un tom au corps sous 150 Hz (44 %) passe pour un kick ; part des kicks qui tombent sur une note de 808, et de combien le 808 baisse déjà après le kick, mesuré contre sa propre décroissance | décider d'un ducking ; pas de tenue des notes du 808 sur un 808 que FL baisse déjà (§ 6) |
@@ -187,11 +187,16 @@ choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Dou
   suivent donc leur phrase. Sur une voix « prudente », ils sont dans la voix et ne peuvent pas
   être mis de côté.
 - **Doublages / ad-libs / chœurs** par rapport à la voix principale : −6 (−10 à −3), −6
-  (−9 à −3), −7 (−10 à −4) dB (moyennes de blogs, **non vérifié**), changement statique
-  4 dB max ; hors de leur fenêtre une fois ce changement fait, Eden le signale aussi
-  (« monte cette voix » ou « baisse cette voix dans FL Studio »). Un doublage **copie** de
-  la voix principale (corrélation > 0,8 à ±40 ms, choix d'Eden) n'est jamais remonté
-  (filtrage en peigne), et rien n'est signalé : c'est voulu.
+  (−9 à −3), −7 (−10 à −4) dB (moyennes de blogs, **non vérifié**). Une voix qui reste dans
+  sa fenêtre en suivant le gain de la voix principale le suit : l'équilibre que tu as réglé
+  entre elles est gardé. Sinon, elle va vers sa cible ; son changement peut aller de
+  « garder son niveau » à « suivre la voix principale », et 4 dB au plus au-delà (choix
+  d'Eden) : un ad-lib déjà trop fort n'est pas monté avec une voix principale enterrée.
+  Hors de sa fenêtre une fois ce changement fait, Eden le signale aussi
+  (« monte cette voix » ou « baisse cette voix dans FL Studio »). Un doublage **copie** de la
+  voix principale (corrélation > 0,8 à ±40 ms, choix d'Eden) n'est jamais remonté par
+  rapport à elle (filtrage en peigne) ; il en suit au plus le gain, et rien n'est signalé :
+  c'est voulu.
 
 ## 4. Espace
 

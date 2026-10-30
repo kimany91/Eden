@@ -80,7 +80,6 @@ def phrases_of(active: np.ndarray, gap_frames: int) -> list[tuple[int, int]]:
 class Phrase:
     start_s: float
     end_s: float
-    difference_db: float  # voice minus beat (above MASKING_FROM_HZ) over the phrase
     gain_db: float
     exposed: bool  # the beat is more than EXPOSED_DB under its median phrase: left alone
 
@@ -185,7 +184,7 @@ def ride(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None
             if move < 0:  # down only as far as the voice itself got louder than its median phrase
                 move = max(move, -max(0.0, v - voice_median))
             g = float(np.clip(move, -MAX_RIDE_DB, MAX_RIDE_DB)) * k
-        result.append(Phrase(s * dsp.FRAME_S, e * dsp.FRAME_S, float(d), g, bool(exposed[i])))
+        result.append(Phrase(s * dsp.FRAME_S, e * dsp.FRAME_S, g, bool(exposed[i])))
         # the new gain fades in at the end of the previous phrase's rest, then holds through
         # this phrase and its own rest, up to the fade before the next phrase
         start = max(s - fade, phrases[i - 1][1]) if i else 0

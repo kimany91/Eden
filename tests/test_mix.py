@@ -95,7 +95,7 @@ def test_band_split_is_exact():
 def test_processors_at_zero_change_nothing():
     x = voice(seconds=6)
     assert not dsp.compressor_gain_db(x, FS, -20, 1.0)[0].any()
-    assert dsp.deess(x, FS, -30, 0.0) is x
+    assert not dsp.deess_gain_db(x, FS, -30, 0.0)[2].any()
     assert dsp.parallel_compress(x, FS, -30, 0.0) is x
     env, size = dsp.activity_envelope(x, FS, -40)
     assert dsp.dip_band_when(x, FS, env, size, 0.0) is x
@@ -145,7 +145,8 @@ def test_program_dependent_release_is_slower_after_long_reduction():
 
 def test_deesser_only_touches_the_high_band():
     x = voice(sibilance=1.5, seconds=8)
-    change = dsp.deess(x, FS, threshold_db=-40, max_reduction_db=8) - x
+    high, rest, gr, size = dsp.deess_gain_db(x, FS, threshold_db=-40, max_reduction_db=8)
+    change = rest + dsp._apply_gain(high, dsp._to_samples(gr, size, x.shape[0])) - x
     low_change, _ = dsp.split_band(change, FS, None, 2000)
     assert np.sum(change ** 2) > 1e-3
     assert np.sum(low_change ** 2) < 0.01 * np.sum(change ** 2)
