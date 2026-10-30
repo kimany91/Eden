@@ -39,7 +39,8 @@ Commande manuelle : `eden update`.
    la version sur GitHub.
 3. Pousser le tag `v<version>` (par exemple `v1.0.1`) : le workflow refuse un tag qui ne
    correspond pas à `__version__`, construit et vérifie l'installateur, puis publie la
-   version.
+   version. Sans tag : lancer « Installateur Windows » depuis l'onglet *Actions* avec
+   « Publier la version » coché ; le workflow crée le tag `v<version>` sur ce commit.
 
 ## Dépôt public
 
