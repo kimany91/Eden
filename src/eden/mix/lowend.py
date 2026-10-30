@@ -41,6 +41,7 @@ CROSSOVER_HZ = 100.0
 SUB_BAND = (25.0, 80.0)
 HARMONIC_BAND = (80.0, 400.0)
 MAX_DUCK_DB = 3.0
+DUCKED_DB = 2.0  # the 808 already dips this much after the kicks: FL ducks it (choix d'Eden)
 # 808 notes evened out (choix d'Eden)
 NOTE_STEP_DB = 3.0  # the same pitch played again: the low band rises this much (legato: drops)...
 NOTE_STEP_MS = 30  # ...within this time (1 ms frames)

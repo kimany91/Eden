@@ -1,7 +1,7 @@
 """Third review round on the low end and the reverb ceiling, checked by measurement: the 808's
 notes evened out at the mix on the bass groups, where the kicks FL renders apart do not get in the
-way, no low-band compressor left at the master, and the FL effects of a voice set on one side
-taken out of the dry mix exactly as they are in it."""
+way (not when FL already ducks the 808 at each kick), no low-band compressor left at the master,
+and the FL effects of a voice set on one side taken out of the dry mix exactly as they are in it."""
 
 import re
 
@@ -61,18 +61,34 @@ UNEVEN = {  # notes up to 4 dB louder or quieter than the others
 }
 
 
+def _kick_starts(fs):
+    """Beats 1, 1¾, 2½, 3½ and 4¼ of every bar (samples)."""
+    return [int((bar + b * BEAT_S) * fs) for bar in np.arange(0, SECONDS - 1, 4 * BEAT_S)
+            for b in (0, 0.75, 1.5, 2.5, 3.25)]
+
+
 def _kicks(fs, level):
-    """Kicks (pitch falling from 120 to 50 Hz) on beats 1, 1¾, 2½, 3½ and 4¼ of every bar: some
-    land on an 808 note's attack, the others on its tail."""
+    """Kicks (pitch falling from 120 to 50 Hz) on ``_kick_starts``: some land on an 808 note's
+    attack, the others on its tail."""
     t = np.arange(int(0.3 * fs)) / fs
     kick = np.sin(2 * np.pi * np.cumsum(50 + 70 * np.exp(-t / 0.03)) / fs) * np.exp(-t / 0.12)
     out = np.zeros(int(SECONDS * fs))
-    for bar in np.arange(0, SECONDS - 1, 4 * BEAT_S):
-        for b in (0, 0.75, 1.5, 2.5, 3.25):
-            start = int((bar + b * BEAT_S) * fs)
-            if start + kick.size < out.size:
-                out[start:start + kick.size] += kick
+    for start in _kick_starts(fs):
+        if start + kick.size < out.size:
+            out[start:start + kick.size] += kick
     return np.stack([level * out] * 2, 1)
+
+
+def _sidechained(bass, fs, depth_db=6.0, release_s=0.15):
+    """``bass`` ducked in FL at each kick (a sidechain): ``depth_db`` down in 5 ms, then back up
+    with a ``release_s`` time constant."""
+    gain_db = np.zeros(bass.shape[0])
+    t = np.arange(int(1.5 * fs)) / fs
+    shape = -depth_db * np.where(t < 0.005, t / 0.005, np.exp(-(t - 0.005) / release_s))
+    for start in _kick_starts(fs):
+        span = gain_db[start:start + t.size]
+        span[:] = np.minimum(span, shape[:span.size])
+    return bass * 10 ** (gain_db[:, None] / 20)
 
 
 def _song(fs, bass, kick_level=0.45):
@@ -253,6 +269,21 @@ def test_a_beat_in_one_file_gets_no_808_evening(evened):
     parts = _parts([], [("g1", "Instru", "beat", _kicks(FS, 0.45) + UNEVEN["decaying"](FS))])
     out = mix(parts, 1.0, 140.0, {})
     assert evened == [] and not any(_evening(p) for p in out.parts)
+
+
+@pytest.mark.parametrize("fs", [44100, 48000])
+def test_an_808_that_fl_already_ducks_at_each_kick_is_not_evened(fs, evened):
+    # equal notes ducked by 6 dB at each kick in FL (a sidechain): read alone, its dips and its climbs
+    # back pass for many more notes than there are, and very uneven ones
+    bass = _sidechained(_808(fs, 2 * BEAT_S, 0.6), fs)
+    heads = _heads(bass, fs)
+    assert len(heads) > 2 * _count(2 * BEAT_S) and _spread(heads) > 3 * lowend.EVEN_SPREAD_DB
+    assert lowend.even_notes(bass, fs, lowend.track_bass(bass, fs), 1.0) is not None
+    # the mix measures that duck on the kicks rendered apart: the 808's notes are left as they are
+    evened.clear()
+    out = mix(_song(fs, bass), 1.0, 140.0, {})
+    assert evened == [] and not any(_evening(p) for p in out.parts)
+    assert not any(t.kind in ("compressor", "duck") for p in out.parts for t in p.treatments)
 
 
 def test_the_master_no_longer_evens_the_low_band():

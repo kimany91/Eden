@@ -13,10 +13,11 @@ Everything is done on FL Studio's own renders (parts, see ``parts.py``):
    they were measured on: groups and rest of the mix, or the groups alone
    when voices were left in the rest of the mix), the 808's notes evened out
    when they vary by more than 4 dB from one to the next (read on the bass
-   groups, where no kick gets in the way),
-   kick / 808 duck when they collide and nothing ducks already, harmonics
-   for small speakers when the 808 is a bare sine. This comes before the
-   balance, so the balance is measured on the beat as it will be heard;
+   groups, where no kick gets in the way, unless FL already ducks the 808 at
+   each kick), kick / 808 duck when they collide and nothing ducks already,
+   harmonics for small speakers when the 808 is a bare sine. This comes
+   before the balance, so the balance is measured on the beat as it will be
+   heard;
 4. the leads: level against the beat while they sing (leads that sing
    together are set as one; a warning when the change cannot bring them into
    the window), riding phrase by phrase (``riding.py``), space when they
@@ -320,10 +321,13 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
     if basses:
         say("Basses et 808")
         bass = _sum_of(parts.groups, "bass")
-        if low.kick_overlap > 0.5 and low.existing_duck_db < 2.0:  # measured only with drums and bass groups
+        ducked = low.existing_duck_db >= lowend.DUCKED_DB  # measured only with drums and bass groups
+        if low.kick_overlap > 0.5 and not ducked:
             _, _, hits = lowend.kick_808_interaction(bass, _sum_of(parts.groups, "drums"), fs)
-        # the 808's notes are read on the bass groups alone, where no kick gets in the way
-        evened = lowend.even_notes(bass, fs, low.notes, k)
+        # the 808's notes are read on the bass groups alone, where no kick gets in the way; not when FL already
+        # ducks the 808 at each kick: its dips and its climbs back would read as notes
+        if not ducked:
+            evened = lowend.even_notes(bass, fs, low.notes, k)
         del bass
     if evened is not None:
         evening = Treatment(
