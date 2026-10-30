@@ -1,8 +1,7 @@
 """Eden's mastering and export, checked by measurement: true peak, limiter, peak-reduction budget,
-low band, checks, gain search, export names, and how the measured reductions are reported."""
+checks, gain search, export names, and how the measured reductions are reported."""
 
 import math
-import re
 from types import SimpleNamespace
 
 import numpy as np
@@ -265,43 +264,6 @@ def test_a_master_capped_just_under_its_goal_keeps_the_dense_ceiling_and_says_wh
 def test_dense_ceiling_reason_does_not_round_its_figure():
     r = M.master(mix(6.0), FS, 1.0, tempo_bpm=140, target_lufs=-9.6)
     assert "laisserait au plus 7.6 dB entre crête et volume : sous 8 dB" in r.treatments[-1].reason
-
-
-# -- low band ---------------------------------------------------------------------------------
-
-def _808(vary_db, decay_s=0.6, seconds=14.0):
-    """Decaying 808 notes, each one up to ``vary_db`` louder or quieter than the others."""
-    rng = np.random.default_rng(4)
-    n = int(seconds * FS)
-    sub = np.zeros(n)
-    note = int(0.857 * FS)
-    t = np.arange(note) / FS
-    for start in range(0, n - note, note):
-        level = 10 ** (rng.uniform(-vary_db, vary_db) / 20)
-        f = rng.choice([41.2, 43.65, 49.0, 55.0])
-        sub[start:start + note] = level * np.exp(-t / decay_s) * np.sin(2 * np.pi * f * t)
-    return 0.4 * sub
-
-
-@pytest.mark.parametrize("decay_s", [0.3, 0.6])
-def test_a_decaying_808_is_not_uneven(decay_s):
-    peaks = M._note_peaks_db(_808(0.0, decay_s), FS)
-    assert peaks.size >= 14  # one per note
-    assert np.percentile(peaks, 90) - np.percentile(peaks, 10) < 1.0
-
-
-def test_uneven_808_notes_get_the_low_band_compressor():
-    sub = _808(4.0)
-    peaks = M._note_peaks_db(sub, FS)
-    spread = np.percentile(peaks, 90) - np.percentile(peaks, 10)
-    assert peaks.size >= 13 and spread > 4.0
-    above = dsp.split_band(beat(14, level=0.2), FS, 150, None)[0]  # the 808 alone under 100 Hz
-    r = M.master(above + np.stack([sub, sub], 1), FS, 1.0, tempo_bpm=140)
-    low = next(t for t in r.treatments if t.label.startswith("Tenue des graves"))
-    shown = re.search(r"Les crêtes des \d+ notes graves varient de (\d+\.\d) dB", low.reason)
-    assert shown and float(shown.group(1)) == pytest.approx(spread, abs=0.6)
-    steady = M.master(above + np.stack([_808(0.0)] * 2, 1), FS, 1.0, tempo_bpm=140)
-    assert not any(t.label.startswith("Tenue des graves") for t in steady.treatments)
 
 
 # -- checks -----------------------------------------------------------------------------------

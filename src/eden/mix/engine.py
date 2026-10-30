@@ -11,7 +11,9 @@ Everything is done on FL Studio's own renders (parts, see ``parts.py``):
 3. the beat: room for the words (the bands where a dip makes the most of
    the lead's words audible are dipped while it sings, in the whole instru
    they were measured on: groups and rest of the mix, or the groups alone
-   when voices were left in the rest of the mix),
+   when voices were left in the rest of the mix), the 808's notes evened out
+   when they vary by more than 4 dB from one to the next (read on the bass
+   groups, where no kick gets in the way),
    kick / 808 duck when they collide and nothing ducks already, harmonics
    for small speakers when the 808 is a bare sine. This comes before the
    balance, so the balance is measured on the beat as it will be heard;
@@ -51,7 +53,7 @@ from eden.mix.parts import Part, Parts
 from eden.mix.riding import EXPOSED_DB, MASKING_FROM_HZ, TOLERANCE_DB, apply_ride, felt_quarter, ride
 from eden.mix.space import design_space, render_space, returns_scale
 from eden.mix.tonality import bass_pitch_classes, detect_key, tuning
-from eden.mix.treatments import Treatment, apply
+from eden.mix.treatments import Treatment, _record_gain, apply
 from eden.mix.vocal import LEAD_ROLES, plan_voice, tail_hold
 
 # role -> (target, lowest acceptable, highest acceptable) in dB
@@ -314,14 +316,34 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         if g.role != "bass":
             groups += g.audio
     basses = [g for g in parts.groups if g.role == "bass"]
-    hits = None
-    if low.kick_overlap > 0.5 and low.existing_duck_db < 2.0:  # measured only with drums and bass groups
-        _, _, hits = lowend.kick_808_interaction(_sum_of(parts.groups, "bass"), _sum_of(parts.groups, "drums"), fs)
+    hits = evened = evening = None
     if basses:
         say("Basses et 808")
+        bass = _sum_of(parts.groups, "bass")
+        if low.kick_overlap > 0.5 and low.existing_duck_db < 2.0:  # measured only with drums and bass groups
+            _, _, hits = lowend.kick_808_interaction(bass, _sum_of(parts.groups, "drums"), fs)
+        # the 808's notes are read on the bass groups alone, where no kick gets in the way
+        evened = lowend.even_notes(bass, fs, low.notes, k)
+        del bass
+    if evened is not None:
+        evening = Treatment(
+            "compressor", f"Tenue des notes du 808 {evened.ratio:.1f}:1 sous {lowend.CROSSOVER_HZ:.0f} Hz",
+            f"Les {len(evened.heads)} notes du 808 varient de {evened.spread_db:.1f} dB d'une note à l'autre (haut "
+            f"de leurs {lowend.NOTE_HEAD_MS} premières ms, du 10e au 90e centile, sur tous les groupes 808 réunis) : "
+            f"plus de {lowend.EVEN_SPREAD_DB:.0f} dB, et dans le grave l'oreille entend un écart plus grand qu'il "
+            f"ne se mesure. Seuil {evened.p90_db - evened.threshold_db:.1f} dB sous la note du 90e centile, soit "
+            f"{lowend.EVEN_P90_DB * k:.1f} dB de réduction sur elle (courbe du compresseur), "
+            f"{lowend.EVEN_MAX_DB * k:.1f} dB au plus, attaque {lowend.EVEN_ATTACK_MS:.0f} ms, relâchement "
+            f"{lowend.EVEN_RELEASE_MS:.0f} ms" + (" ; le même gain sur chaque groupe 808" if len(basses) > 1 else ""),
+            {"threshold_db": evened.threshold_db, "ratio": evened.ratio, "attack_ms": lowend.EVEN_ATTACK_MS,
+             "release_ms": lowend.EVEN_RELEASE_MS, "max_reduction_db": lowend.EVEN_MAX_DB * k})
+        _record_gain(evening, evened.gain_db)
     for g in basses:  # every bass group ducks on the same kicks: the ones measured against all of them
         audio = g.audio
         res = results[g.key]
+        if evened is not None:
+            audio = lowend.apply_low_gain(audio, fs, evened)
+            res.treatments.append(evening)
         if hits is not None:
             audio = lowend.duck_low_band(audio, fs, hits, lowend.MAX_DUCK_DB * k)
             res.treatments.append(Treatment(

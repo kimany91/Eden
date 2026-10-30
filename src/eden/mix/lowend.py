@@ -5,6 +5,12 @@
   refinement); the frames of a glide are left out, so the pitches a slide
   passes through are not taken for notes; the notes are then compared with
   the song's scale and with equal temperament on the beat's own tuning;
+* 808 notes evened out: the head of each note (where the tracker reads one,
+  and where the same pitch is played again) is read on the bass groups
+  alone, where no kick gets in the way; when the notes vary by more than
+  4 dB from one to the next, a gentle compressor below 100 Hz brings the
+  loudest ones closer (hearing is far less sensitive down there, so level
+  differences sound bigger than they measure);
 * kick / 808 collisions: how often the 808 is still sounding when a kick
   hits, and whether the 808 already dips after each kick (against its own
   decay); a duck below 100 Hz only, at most 3 dB, is added only when they
@@ -23,16 +29,34 @@ import math
 from dataclasses import dataclass, field
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 from scipy.signal import butter, resample_poly, sosfiltfilt, welch
 
 from eden.mix import dsp, stereo
 from eden.mix.oversampling import shape_change
 from eden.mix.tonality import NOTE_NAMES
+from eden.mix.treatments import _moves
 
 CROSSOVER_HZ = 100.0
 SUB_BAND = (25.0, 80.0)
 HARMONIC_BAND = (80.0, 400.0)
 MAX_DUCK_DB = 3.0
+# 808 notes evened out (choix d'Eden)
+NOTE_STEP_DB = 3.0  # the same pitch played again: the low band rises this much (legato: drops)...
+NOTE_STEP_MS = 30  # ...within this time (1 ms frames)
+NOTE_STEADY_DB = 1.5  # a legato drop lies between two stretches that each hold within this over 80 ms
+NOTE_HEAD_MS = 80  # a note's level: the top of its first 80 ms; one note per 80 ms at most
+NOTE_LATE_MS = 200  # the pitch tracker places a note up to this long after its attack...
+NOTE_EARLY_MS = 40  # ...or up to this long before it
+NOTE_RANGE_DB = 30.0  # moves count within this of the loudest moment of the low band
+EVEN_MAX_F0_HZ = 80.0  # higher notes lose part of their fundamental to the band split: not compared
+EVEN_MIN_NOTES = 4
+EVEN_SPREAD_DB = 4.0  # heads spread more than this (10th to 90th percentile): the notes are evened out
+EVEN_P90_DB = 1.5  # what the compressor's curve takes from the 90th-percentile head at 100 %
+EVEN_MAX_DB = 3.0  # its largest reduction at 100 %
+EVEN_ATTACK_MS = 10.0
+EVEN_RELEASE_MS = 150.0
+EVEN_KNEE_DB = 6.0  # its soft knee
 
 
 @dataclass
@@ -145,21 +169,162 @@ def track_bass(x: np.ndarray, fs: float, fmin: float = 25.0, fmax: float = 150.0
     return notes
 
 
-def periodicity(mono: np.ndarray, lfs: float, start_s: float, length_s: float, f0: float) -> float:
-    """How exactly ``mono`` (``_low_mono``'s output) repeats at the period of ``f0``, within a
-    quarter tone, from ``start_s`` for ``length_s``: the normalised square difference function
-    at that lag, as in ``track_bass`` (1: a steady note; a kick, whose pitch falls, repeats far
-    less). −1 when the stretch is shorter than two periods."""
-    seg = mono[max(int(start_s * lfs), 0):int((start_s + length_s) * lfs)]
-    lag = lfs / f0
-    best = -1.0
-    for tau in range(int(lag * 2 ** (-1 / 24)), int(math.ceil(lag * 2 ** (1 / 24))) + 1):
-        if 0 < tau <= seg.size // 2:
-            head, tail = seg[:-tau], seg[tau:]
-            energy = float(np.sum(head * head + tail * tail))
-            if energy > 0:
-                best = max(best, 2 * float(np.sum(head * tail)) / energy)
-    return best
+@dataclass
+class NoteHead:
+    """Where an 808 note starts and how loud its head is."""
+    start_s: float
+    level_db: float  # top of the note's first NOTE_HEAD_MS, its power averaged over one of its periods
+    detector_db: float  # the same top as a compressor's detector reads it (5 ms smoothing)
+
+
+@dataclass
+class EvenNotes:
+    """The compressor that evens out the 808's notes, computed once on all the bass groups
+    together: the same gain goes on each group's band below ``CROSSOVER_HZ``."""
+    heads: list[NoteHead]
+    spread_db: float  # 10th to 90th percentile of the heads' levels
+    p90_db: float  # 90th percentile of the heads as the compressor's detector reads them
+    ratio: float
+    threshold_db: float  # on the compressor's detector level
+    gain_db: np.ndarray = field(repr=False)  # reduction per frame (≤ 0 dB)
+    frame: int  # samples per frame
+
+
+def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    """(first, end) of each run of True in ``mask``."""
+    edges = np.diff(np.concatenate([[0], mask.astype(np.int8), [0]]))
+    return list(zip(np.flatnonzero(edges == 1).tolist(), np.flatnonzero(edges == -1).tolist(), strict=True))
+
+
+def _note_starts(ms: np.ndarray, frame_s: float, note: BassNote, floor_db: float
+                 ) -> tuple[list[int], np.ndarray, int]:
+    """The frames where ``note`` starts and where its pitch is played again, read on its power
+    per 1 ms frame ``ms`` averaged over one of its periods (a sub's waveform does not ripple in
+    it): (starts, that level in dB from the frame ``offset``, offset). Only moves that reach
+    ``floor_db`` count (the filters' faint ringing before an attack does not).
+
+    A note starts on its attack: the level climbs ``NOTE_STEP_DB`` over its lowest point of the
+    ``NOTE_STEP_MS`` before (a note played again climbs back from the short dip between the two).
+    The tracker places a note up to about 150 ms after its attack (an 808 whose pitch falls at
+    the attack) and up to about 30 ms before it: the note starts on the last rise from
+    ``NOTE_LATE_MS`` before to ``NOTE_EARLY_MS`` after where the tracker places it; without
+    one, where the last fall of as much in that stretch ends (a quieter note played legato). A
+    pitch change with neither (a slide) goes on with the note before: what it has then is that
+    note's decay, not a head of its own. Inside the note, the same pitch played again rises as
+    much; held legato at a lower level, it falls as much between two stretches that each hold
+    within ``NOTE_STEADY_DB`` over ``NOTE_HEAD_MS`` (it starts where the fall ends), unless it
+    rises again within those ``NOTE_HEAD_MS``."""
+    period = max(1, int(round(1 / (note.f0_hz * frame_s))))
+    first, last = int(note.start_s / frame_s), int(note.end_s / frame_s)
+    offset = first - NOTE_LATE_MS - NOTE_STEP_MS - period  # the rise, and the 30 ms before it
+    stop = min(last + NOTE_HEAD_MS + period, ms.size)  # every start is before ``last``: its head too
+    power = ms[max(offset, 0):stop]
+    if offset < 0:  # before the song: silence
+        power = np.concatenate([np.zeros(-offset), power])
+    level = 10 * np.log10(np.maximum(np.convolve(power, np.ones(period) / period, mode="same"), 1e-20))
+    # how far each frame stands over the lowest of the NOTE_STEP_MS before it, and under the highest
+    up, down = np.zeros(level.size), np.zeros(level.size)
+    if level.size > NOTE_STEP_MS:
+        span = sliding_window_view(level, NOTE_STEP_MS + 1)
+        up[NOTE_STEP_MS:] = level[NOTE_STEP_MS:] - span.min(axis=1)
+        down[NOTE_STEP_MS:] = level[NOTE_STEP_MS:] - span.max(axis=1)
+    valid = NOTE_STEP_MS + period  # a step read from the averaging's edge is not a move
+    loud = level >= floor_db
+    rises = [offset + r for r, _ in _runs((up >= NOTE_STEP_DB) & loud) if r >= valid]
+    drops = [(low, high) for low, high in _runs(down <= -NOTE_STEP_DB) if low >= valid and high < loud.size
+             and loud[high]]
+
+    def near(frames: list[int]) -> list[int]:
+        return [f for f in frames if first - NOTE_LATE_MS <= f <= first + NOTE_EARLY_MS][-1:]
+
+    starts = near(rises) or near([offset + high for _, high in drops])
+    after = starts[0] if starts else first
+    starts += [r for r in rises if after < r < last]
+    for low, high in drops:
+        before = level[max(low - NOTE_STEP_MS - NOTE_HEAD_MS, 0):max(low - NOTE_STEP_MS, 0)]
+        held = level[high:high + NOTE_HEAD_MS]
+        at = offset + high
+        if (after < at < last and before.size == held.size == NOTE_HEAD_MS
+                and np.ptp(before) <= NOTE_STEADY_DB and np.ptp(held) <= NOTE_STEADY_DB
+                and not any(at <= r < at + NOTE_HEAD_MS for r in rises)):
+            starts.append(at)
+    return starts, level, offset
+
+
+def note_heads(low: np.ndarray, fs: float, notes: list[BassNote]) -> list[NoteHead]:
+    """The head of each note of ``notes`` (``track_bass``) whose pitch is under ``EVEN_MAX_F0_HZ``,
+    and of each time the same pitch is played again, on ``low``, the bass below the crossover:
+    the top of its first ``NOTE_HEAD_MS`` (see ``_note_starts``). One note per ``NOTE_HEAD_MS``
+    at most: a start closer to the one before is in that one's head."""
+    ms, size = dsp._frames(low, fs)
+    if ms.size == 0:
+        return []
+    frame_s = size / fs  # a frame is a whole number of samples: 44 at 44.1 kHz, not quite 1 ms
+    floor_db = float(_centred_db(ms).max()) - NOTE_RANGE_DB
+    power, _ = dsp.detector_power(low, fs)
+    detector = 10 * np.log10(np.maximum(power, 1e-20))
+    found: list[tuple[int, float]] = []
+    for n in notes:
+        if n.f0_hz > EVEN_MAX_F0_HZ:
+            continue
+        starts, level, offset = _note_starts(ms, frame_s, n, floor_db)
+        for at in starts:
+            at = max(at, 0)  # a climb out of the silence before the song: the song's first frame
+            if at + NOTE_HEAD_MS <= ms.size:
+                found.append((at, float(level[at - offset:at - offset + NOTE_HEAD_MS].max())))
+    heads: list[NoteHead] = []
+    last = -math.inf
+    for at, level_db in sorted(found):
+        if at - last >= NOTE_HEAD_MS:
+            heads.append(NoteHead(at * frame_s, level_db, float(detector[at:at + NOTE_HEAD_MS].max())))
+            last = at
+    return heads
+
+
+def _over_for(reduction_db: float, ratio: float) -> float:
+    """How far above its threshold a level gets ``reduction_db`` on the compressor's curve
+    (``ratio``, soft knee of ``EVEN_KNEE_DB``: within half the knee of the threshold, the reduction
+    is slope · (over + knee / 2)² / (2 · knee), as in ``dsp.compressor_gain_db``)."""
+    slope = 1 - 1 / ratio
+    if reduction_db / slope >= EVEN_KNEE_DB / 2:
+        return reduction_db / slope
+    return math.sqrt(2 * EVEN_KNEE_DB * reduction_db / slope) - EVEN_KNEE_DB / 2
+
+
+def even_notes(bass: np.ndarray, fs: float, notes: list[BassNote], k: float) -> EvenNotes | None:
+    """When the 808's notes (``notes``, tracked on ``bass``: all the bass groups together) vary by
+    more than ``EVEN_SPREAD_DB`` from one to the next (10th to 90th percentile of their heads,
+    at least ``EVEN_MIN_NOTES`` of them), a compressor on the band below ``CROSSOVER_HZ``:
+    ratio 1 + ``k``, at most ``EVEN_MAX_DB`` · ``k``, its threshold set so its curve (soft knee
+    included) takes ``EVEN_P90_DB`` · ``k`` from the 90th-percentile head as its detector reads
+    it. None when they do not vary that much, or when its reduction would not move
+    (``treatments._moves``)."""
+    if k <= 0 or not notes:
+        return None
+    low, _ = dsp.split_band(bass, fs, None, CROSSOVER_HZ)
+    heads = note_heads(low, fs, notes)
+    if len(heads) < EVEN_MIN_NOTES:
+        return None
+    levels = np.array([h.level_db for h in heads])
+    spread = float(np.percentile(levels, 90) - np.percentile(levels, 10))
+    if spread <= EVEN_SPREAD_DB:
+        return None
+    ratio = 1 + k
+    p90 = float(np.percentile([h.detector_db for h in heads], 90))
+    threshold = p90 - _over_for(EVEN_P90_DB * k, ratio)
+    gain_db, frame = dsp.compressor_gain_db(low, fs, threshold, ratio, attack_ms=EVEN_ATTACK_MS,
+                                            release_ms=EVEN_RELEASE_MS, knee_db=EVEN_KNEE_DB,
+                                            max_reduction_db=EVEN_MAX_DB * k)
+    if not _moves(gain_db, low, fs):
+        return None
+    return EvenNotes(heads, spread, p90, ratio, threshold, gain_db, frame)
+
+
+def apply_low_gain(x: np.ndarray, fs: float, even: EvenNotes) -> np.ndarray:
+    """``even``'s gain on the band of ``x`` below the crossover (zero-phase split, exact: above
+    it, ``x`` is untouched; the split is linear, so on each group it is the gain on their sum)."""
+    low, high = dsp.split_band(x, fs, None, CROSSOVER_HZ)
+    return dsp._apply_gain(low, dsp._to_samples(even.gain_db, even.frame, low.shape[0])) + high
 
 
 def _low_power(x: np.ndarray, fs: float, cutoff: float) -> np.ndarray:
