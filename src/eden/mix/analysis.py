@@ -31,8 +31,9 @@ RESONANCE_MIN_DB = 4.5  # how far a resonance must stick out (strict: a missed o
 # read 2.94 dB or more on the test voices (seeds 1–20); clean voices show no bump on two notes at all
 LOW_MID_MIN_DB = 2.5
 # a note shows a low-mid bump when its harmonics there stand above their neighbours' line in this share of
-# the cases (Eden's choice): a fixed bump lifts them every time (100 % on the test voices), the vowels' first
-# formant only when the vowel puts it there (on the test voices: one note 85 % at most, a second one 74 %)
+# the cases (Eden's choice): a fixed bump lifts them every time (two notes or more at 100 % on the test voices),
+# the vowels' first formant only when the vowel puts it there (clean test voices, where every note pooled reads
+# 2.5 dB or more with mud over 6 dB: one note 85 % at most, a second one 74 %)
 LOW_MID_STEADY_SHARE = 0.9
 FREQUENT_NOTE_SHARE = 0.3  # a semitone holding this share of the pitched frames is a note the voice dwells on
 LOW_SPECTRUM_HZ = 100.0  # the high-pass is decided on the spectrum below this (half its highest cut is 80 Hz)
@@ -315,7 +316,8 @@ def note_groups(pitches: np.ndarray) -> np.ndarray:
     note; its frames are set aside and the next span is sought among the
     others, until every pitched frame has its note. Unlike rounding to the
     nearest semitone, a note sung between two semitones (240 Hz with its
-    vibrato) stays one note instead of two.
+    vibrato) stays one note instead of two; a vibrato wider than a semitone
+    end to end still makes two.
     """
     semitones = 12 * np.log2(pitches / 440.0)
     labels = np.full(pitches.size, -1)

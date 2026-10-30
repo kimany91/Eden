@@ -38,6 +38,12 @@ def test_a_note_sung_between_two_semitones_stays_one_note():
     assert np.unique(labels[:60]).size == 1 and np.unique(labels[60:]).size == 1 and labels[0] != labels[60]
 
 
+def test_a_vibrato_wider_than_a_semitone_makes_two_notes():
+    swing = np.sin(2 * np.pi * np.arange(600) / 7.3)
+    assert np.unique(note_groups(240.0 * 2 ** (0.45 * swing / 12))).size == 1  # 0.9 semitone end to end
+    assert np.unique(note_groups(240.0 * 2 ** (0.7 * swing / 12))).size == 2  # 1.4 semitones
+
+
 def test_notes_a_semitone_apart_are_two_notes_and_frames_without_pitch_none():
     pitches = np.concatenate([_sung(247.0, frames=40), _sung(262.0, frames=70), [np.nan] * 5])
     labels = note_groups(pitches)
@@ -209,5 +215,5 @@ def test_the_docs_state_the_two_note_rule():
     assert f"bosse ≥ {_french(LOW_MID_MIN_DB)} dB" in row
     assert "deux notes" in row and f"{_french(LOW_MID_MIN_DB - 1)} dB" in row
     assert f"{LOW_MID_STEADY_SHARE * 100:.0f} %" in row
-    assert "une seule note" in row and "456 Hz" in row
+    assert "une seule note" in row and "456 Hz" in row and "tient dans un demi-ton" in row
     assert "c'est la mesure qu'il faudrait revoir" not in row
