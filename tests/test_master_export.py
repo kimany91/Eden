@@ -205,12 +205,12 @@ def test_gain_search_reaims_on_the_proxy_after_one_pass(monkeypatch):
     before = felt_loudness(x, FS)
     stages = []
 
-    def stage(y, fs, gain, ceiling):
+    def stage(y, fs, gain, ceiling, clip=True):
         stages.append(gain)
         return y * 10 ** (gain / 20), M.PeakReduction(0.0, 0.0, gain - 3.0, 0.0, 0.0)
 
     monkeypatch.setattr(M, "_loud_stage", stage)
-    monkeypatch.setattr(M, "_proxy_loudness", lambda y, fs, gain, c: before + gain - 0.5)
+    monkeypatch.setattr(M, "_proxy_loudness", lambda y, fs, gain, c, clip=True: before + gain - 0.5)
     out, gain, red, reached, capped = M._loudest(x, FS, before + 6.0, -3.0)
     assert len(stages) == 2 and reached == pytest.approx(before + 6.0, abs=0.15) and not capped
     stages.clear()
@@ -261,7 +261,9 @@ def test_a_master_capped_just_under_its_goal_keeps_the_dense_ceiling_and_says_wh
     # 1 dB more, so that master would reach the goal itself (not 0.7 LU above it), still dense
     x = mix(6.0)
     red = M.PeakReduction(6.0, 2.0, 7.2, 13.2, 3.0)
-    monkeypatch.setattr(M, "_loudest", lambda y, fs, goal, ceiling, on_pass=None, budget_db=None: (y, 8.0, red, goal - 0.3, True))
+    monkeypatch.setattr(M, "_loudest",
+                        lambda y, fs, goal, ceiling, on_pass=None, budget_db=None, clip=True:
+                        (y, 8.0, red, goal - 0.3, True))
     r = M.master(x, FS, 1.0, tempo_bpm=140)
     loud = r.treatments[-1]
     assert loud.measured["ceiling_dbtp"] == M.DENSE_CEILING_DBTP
