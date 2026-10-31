@@ -426,6 +426,24 @@ chaque version).
 
 ## 7. Mastering Eden
 
+Le mastering appartient à l'utilisateur : trois modes, choisis dans la fenêtre Mastering de la
+page résultat (bouton « Mastering : … ») et gardés dans les réglages (`settings.json` ; en ligne
+de commande, `eden mix --master aucun|simple|complet`).
+
+- **Simple — le mode par défaut** : gain vers la cible ressentie puis limiteur true-peak, rien
+  d'autre. Les crêtes sont réduites (dans le budget ci-dessous) et le niveau est mis pour les
+  plateformes, **rien ne sature** (pas d'écrêtage doux), pas de compression de bus, pas de mono
+  sous 100 Hz.
+- **Complet** : toute la chaîne ci-dessous ; la compression de bus et l'écrêtage doux se coupent
+  dans la fenêtre.
+- **Aucun** : le mix d'Eden est laissé tel quel, seulement mesuré (un avertissement part si la
+  crête réelle dépasse −1 dBTP : l'encodage des plateformes peut écrêter).
+
+Dans la même fenêtre : la cible (−14 à −7 LUFS ressentis), le budget de réduction des crêtes
+(3 à 9 dB) et le plafond (automatique, −2 ou −3 dBTP — fixé, il n'est plus rechoisi sur le
+volume atteint). Le reste de cette section décrit la chaîne complète ; le mode simple n'en garde
+que le gain et le limiteur.
+
 Chaîne (tout hors ligne, en float64) :
 
 1. graves en mono sous 100 Hz si la corrélation G/D y est < 0,9 (filtre à phase nulle) ;

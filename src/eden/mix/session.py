@@ -22,7 +22,7 @@ import soundfile as sf
 from eden.mix import ProgressCallback
 from eden.mix.engine import MixOutcome, PartResult, SongAnalysis, mix
 from eden.mix.loudness import integrated_loudness, sample_peak_db, true_peak_db
-from eden.mix.master import MasterChecks, master
+from eden.mix.master import MasterChecks, MasterSettings, master
 from eden.mix.parts import Parts, PartsError, split
 from eden.mix.treatments import Treatment
 from eden.project.inspector import InspectionReport
@@ -113,10 +113,13 @@ def mix_project(
     on_step: StepCallback | None = None,
     on_progress: ProgressCallback | None = None,
     unchecked: bool = False,
+    master_settings: MasterSettings | None = None,
 ) -> MixVersion:
     """``on_step`` is told each of STEPS; ``on_progress``, during the mix and the master, what Eden
     is doing and the share of that step done (None: a detail of the running step). ``unchecked``: mix
-    renders whose parts do not sum to the song, as the user asked (what they miss is kept as it is)."""
+    renders whose parts do not sum to the song, as the user asked (what they miss is kept as it is).
+    ``master_settings``: the mastering-window choices; without them, the simple master (peaks and
+    level only, nothing that saturates) — the product's default."""
     def step(i: int) -> None:
         if on_step:
             on_step(i, len(STEPS), STEPS[i])
@@ -143,7 +146,8 @@ def mix_project(
 
     step(2)
     mastered = master(outcome.premaster, parts.sample_rate, intensity, report.project.tempo_bpm,
-                      progress=on_progress, finished_beat=any(g.role == "beat" for g in parts.groups))
+                      progress=on_progress, finished_beat=any(g.role == "beat" for g in parts.groups),
+                      settings=master_settings or MasterSettings())
 
     step(3)
     stamp = datetime.now(UTC)

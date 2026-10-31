@@ -1,5 +1,10 @@
 """Eden's mastering: a loud, clean rap master ready for the streaming platforms.
 
+The mastering is the user's option (``MasterSettings``, set in the mastering window): ``simple``
+(the product's default) keeps only step 3's gain and limiter — peaks reduced and the level set
+for the platforms, nothing that saturates; ``complet`` is the full chain below, bus compression
+and soft clip switchable; ``aucun`` only measures the mix.
+
 Chain (all offline, float64):
 
 1. mono below 100 Hz when the sub is not already mono (club subs, phones
@@ -70,6 +75,24 @@ PLATFORMS = {  # reference loudness (LUFS) of the playback normalisation
     "Spotify": -14.0, "Apple Music": -16.0, "YouTube": -14.0, "Deezer": -15.0,
     "TIDAL": -14.0, "Amazon Music": -14.0, "SoundCloud": -14.0,
 }
+MASTER_MODES = ("aucun", "simple", "complet")
+
+
+@dataclass(frozen=True)
+class MasterSettings:
+    """What the user chose in the mastering window.
+
+    ``simple`` (the product's default): gain to the felt target, then the true-peak limiter —
+    peaks reduced and the global level set for the platforms, nothing that saturates (no soft
+    clipper), no bus compression, no mono fold of the low end. ``complet`` is Eden's full
+    chain, each stage switchable. ``aucun`` leaves Eden's mix untouched and only measures it.
+    ``ceiling_dbtp`` None lets Eden choose on the density (−2 dBTP, −3 when dense)."""
+    mode: str = "simple"
+    target_lufs: float = TARGET_LUFS  # felt loudness aimed at 100 % intensity
+    ceiling_dbtp: float | None = None
+    bus_compression: bool = True  # complet only
+    soft_clip: bool = True  # complet only
+    budget_db: float = MAX_PEAK_REDUCTION_DB  # clip + limiter on the recurring peaks
 
 
 @dataclass
@@ -242,15 +265,16 @@ def _peak_reduction(before: np.ndarray, after: np.ndarray, clip_db: float, limit
     return PeakReduction(clip_db, limiter_db, recurring, float(kept[worst]), worst * EVENT_BLOCK_S)
 
 
-def _loud_stage(x: np.ndarray, fs: float, gain_db: float, ceiling_dbtp: float
+def _loud_stage(x: np.ndarray, fs: float, gain_db: float, ceiling_dbtp: float, clip: bool = True
                 ) -> tuple[np.ndarray, PeakReduction]:
-    """Gain → soft clip → limiter; returns the audio and how hard clipper and limiter worked."""
+    """Gain → soft clip (unless ``clip`` is off: the simple master saturates nothing) → limiter;
+    returns the audio and how hard clipper and limiter worked."""
     size = max(1, int(round(EVENT_BLOCK_S * fs)))
     y = x * 10 ** (gain_db / 20)
     before = _block_peaks(y, size)
     peak = 20 * math.log10(before.max()) if before.size and before.max() > 0 else -math.inf
     clip_dbfs = _clip_dbfs(ceiling_dbtp)
-    clipped = soft_clip(y, fs, 10 ** (clip_dbfs / 20)) if peak > clip_dbfs - 3.0 else y
+    clipped = soft_clip(y, fs, 10 ** (clip_dbfs / 20)) if clip and peak > clip_dbfs - 3.0 else y
     del y  # memory: only one full-length copy at a time
     clip_db = max(0.0, peak - sample_peak_db(clipped))
     lim = limit(clipped, fs, ceiling_dbtp)
@@ -258,10 +282,12 @@ def _loud_stage(x: np.ndarray, fs: float, gain_db: float, ceiling_dbtp: float
     return lim.audio, _peak_reduction(before, _block_peaks(lim.audio, size), clip_db, -lim.max_reduction_db)
 
 
-def _proxy_loudness(x: np.ndarray, fs: float, gain_db: float, ceiling_dbtp: float) -> float:
-    """Loudness after gain → soft clip → the limiter's own gain law on the sample peaks, all at
-    the base rate: a cheap stand-in for the real chain to aim the gain."""
-    shaped = clip_curve(x * 10 ** (gain_db / 20), 10 ** (_clip_dbfs(ceiling_dbtp) / 20))
+def _proxy_loudness(x: np.ndarray, fs: float, gain_db: float, ceiling_dbtp: float, clip: bool = True
+                    ) -> float:
+    """Loudness after gain → soft clip (when the chain has one) → the limiter's own gain law on
+    the sample peaks, all at the base rate: a cheap stand-in for the real chain to aim the gain."""
+    y = x * 10 ** (gain_db / 20)
+    shaped = clip_curve(y, 10 ** (_clip_dbfs(ceiling_dbtp) / 20)) if clip else y
     peak = np.abs(shaped).max(axis=1) if shaped.ndim == 2 else np.abs(shaped)
     gain = gain_for(peak, fs, 10 ** (ceiling_dbtp / 20))
     return felt_loudness(shaped * (gain[:, None] if shaped.ndim == 2 else gain), fs)
@@ -277,7 +303,7 @@ def _slope(points: list[tuple[float, float]]) -> float:
 
 
 def _aim(y: np.ndarray, fs: float, target: float, ceiling_dbtp: float,
-         tried: list[tuple[float, float]]) -> float:
+         tried: list[tuple[float, float]], clip: bool = True) -> float:
     """Gain at which the proxy reads ``target`` LUFS (within 0.05), by secant steps from the
     (gain, proxy reading) pairs in ``tried``: the last one is the start, each reading is added."""
     for _ in range(6):
@@ -285,12 +311,13 @@ def _aim(y: np.ndarray, fs: float, target: float, ceiling_dbtp: float,
         if not math.isfinite(got) or abs(got - target) < 0.05:
             break
         gain += (target - got) * _slope(tried)
-        tried.append((gain, _proxy_loudness(y, fs, gain, ceiling_dbtp)))
+        tried.append((gain, _proxy_loudness(y, fs, gain, ceiling_dbtp, clip)))
     return tried[-1][0]
 
 
 def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float,
              on_pass: Callable[[int, float], None] | None = None, budget_db: float = MAX_PEAK_REDUCTION_DB,
+             clip: bool = True,
              ) -> tuple[np.ndarray, float, PeakReduction, float, bool]:
     """Gain landing the FELT loudness (the loud sections, ``felt_loudness``) on ``goal`` LUFS
     unless clipper + limiter would go over ``budget_db`` on the recurring peaks
@@ -307,15 +334,15 @@ def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float,
     never kept: if the last one is, one more pass runs at the lowered gain. ``on_pass(n, gain)``
     is told before each real pass."""
     start = goal - felt_loudness(y, fs)
-    tried = [(start, _proxy_loudness(y, fs, start, ceiling_dbtp))]
-    gain = _aim(y, fs, goal, ceiling_dbtp, tried)
+    tried = [(start, _proxy_loudness(y, fs, start, ceiling_dbtp, clip))]
+    gain = _aim(y, fs, goal, ceiling_dbtp, tried, clip)
     passes: list[tuple[float, float]] = []
     capped = False
     for n in range(REAL_PASSES):
         out = None  # the previous pass's audio is let go before the next one runs
         if on_pass:
             on_pass(n, gain)
-        out, red = _loud_stage(y, fs, gain, ceiling_dbtp)
+        out, red = _loud_stage(y, fs, gain, ceiling_dbtp, clip)
         got = felt_loudness(out, fs)
         passes.append((gain, got))
         if red.over_db(budget_db) > 0.1:
@@ -325,7 +352,7 @@ def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float,
         if not math.isfinite(got) or abs(got - goal) < 0.15 or n == REAL_PASSES - 1:
             break
         if len(passes) == 1:  # aim again on the proxy, shifted by what this pass measured
-            step = _aim(y, fs, goal - (got - tried[-1][1]), ceiling_dbtp, tried) - gain
+            step = _aim(y, fs, goal - (got - tried[-1][1]), ceiling_dbtp, tried, clip) - gain
         else:
             step = (goal - got) * _slope(passes)
         if capped and step > 0:  # once over the budget, the gain never climbs back to its edge
@@ -341,87 +368,115 @@ def _loudest(y: np.ndarray, fs: float, goal: float, ceiling_dbtp: float,
         out = None
         if on_pass:
             on_pass(REAL_PASSES, gain)
-        out, red = _loud_stage(y, fs, gain, ceiling_dbtp)
+        out, red = _loud_stage(y, fs, gain, ceiling_dbtp, clip)
         got = felt_loudness(out, fs)
         if red.over_db(budget_db) > 0.1:  # peaks in the clip knee give back less than a dB per dB
             gain -= red.over_db(budget_db) + 0.5
             out = None
-            out, red = _loud_stage(y, fs, gain, ceiling_dbtp)
+            out, red = _loud_stage(y, fs, gain, ceiling_dbtp, clip)
             got = felt_loudness(out, fs)
     return out, gain, red, got, capped and got < goal - 0.2
 
 
 def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
            target_lufs: float = TARGET_LUFS, progress: ProgressCallback | None = None,
-           finished_beat: bool = False) -> MasterResult:
+           finished_beat: bool = False, settings: MasterSettings | None = None) -> MasterResult:
     """Master Eden's mix; at ``k`` = 0 the mix is returned unchanged (only measured). ``progress``
     is told each step with the share of the master done (None: a detail of the running step).
     ``finished_beat``: the beat is a complete one, already mixed and mastered (a WAV downloaded
     whole): clipper and limiter take its drums down by ``FINISHED_BEAT_PEAK_REDUCTION_DB`` at
-    most, the master stays quieter rather than squash them a second time."""
+    most, the master stays quieter rather than squash them a second time. ``settings`` is the
+    user's mastering-window choice (its target wins over ``target_lufs``); without one, the full
+    chain runs as before."""
     def say(text: str, done: float | None) -> None:
         if progress:
             progress(text, done)
 
+    s = settings or MasterSettings(mode="complet", target_lufs=target_lufs)
     k = max(0.0, min(1.0, k))
     treatments: list[Treatment] = []
     warnings: list[str] = []
     if k <= 0:
         return MasterResult(x, [], 0.0, 0.0, 0.0, checks(x, fs), [])
+    if s.mode == "aucun":
+        say("Mastering désactivé : ton mix est seulement mesuré", 0.5)
+        c = checks(x, fs)
+        off = Treatment("master_mode", "Mastering désactivé",
+                        "Ton choix dans les réglages du mastering : le mix d'Eden est laissé tel quel, "
+                        "seulement mesuré")
+        if c.true_peak_dbtp > -1.0:
+            warnings.append(f"Sans mastering, la crête réelle est à {c.true_peak_dbtp:+.1f} dBTP : au-dessus "
+                            "de −1 dBTP, l'encodage des plateformes peut écrêter")
+        return MasterResult(x, [off], 0.0, 0.0, 0.0, c, warnings)
+    simple = s.mode != "complet"
+    clip = not simple and s.soft_clip
 
     before = felt_loudness(x, fs)  # how loud the mix FEELS as it came in (its loud sections)
     if not math.isfinite(before):
         return MasterResult(x, [], 0.0, 0.0, 0.0, checks(x, fs), ["Mix silencieux : rien à masteriser"])
-    goal = before + (target_lufs - before) * k  # from the mix as it came in: a tiny k changes little
+    goal = before + (s.target_lufs - before) * k  # from the mix as it came in: a tiny k changes little
 
     y = x
-    say(f"Graves : sont-ils en phase sous {LOW_HZ:.0f} Hz ? (une enceinte mono les additionne)", 0.0)
-    corr = stereo.low_band_correlation(y, fs, LOW_HZ)
-    if corr < 0.9:
-        y = stereo.mono_below(y, fs, LOW_HZ)
-        treatments.append(Treatment("mono_low", f"Graves en mono sous {LOW_HZ:.0f} Hz",
-                                    f"Corrélation gauche/droite de {corr:+.2f} sous {LOW_HZ:.0f} Hz : le sub "
-                                    "s'annulerait en partie sur une enceinte mono (club, téléphone, Bluetooth)"))
+    if simple:
+        treatments.append(Treatment("master_mode", "Mastering simple (automatique)",
+                                    "Réduction des crêtes et mise à niveau pour les plateformes, sans "
+                                    "saturation ni compression : le mastering complet et ses réglages sont "
+                                    "dans la fenêtre Mastering"))
+    else:
+        say(f"Graves : sont-ils en phase sous {LOW_HZ:.0f} Hz ? (une enceinte mono les additionne)", 0.0)
+        corr = stereo.low_band_correlation(y, fs, LOW_HZ)
+        if corr < 0.9:
+            y = stereo.mono_below(y, fs, LOW_HZ)
+            treatments.append(Treatment("mono_low", f"Graves en mono sous {LOW_HZ:.0f} Hz",
+                                        f"Corrélation gauche/droite de {corr:+.2f} sous {LOW_HZ:.0f} Hz : le sub "
+                                        "s'annulerait en partie sur une enceinte mono (club, téléphone, Bluetooth)"))
 
     # glue: slow, light bus compression with a release on the felt beat; the threshold sits 4 dB
     # under the loud passages (P90) and only the ratio follows the intensity (1.5 dB of reduction
     # at that level at 100 %). The level is read as the compressor's detector reads it (5 ms
     # smoothing): raw 1 ms frames ripple within each cycle and would set the threshold elsewhere
     quarter = felt_quarter(tempo_bpm) if tempo_bpm else 0.5
-    say("Compression de bus : la cohésion du mix", 0.05)
-    power, _ = dsp.detector_power(y, fs)
-    level = 10 * np.log10(np.maximum(power, 1e-20))
-    loud = level[level > -80.0]
-    if loud.size:
-        ratio = 1 + 0.6 * k
-        t = Treatment("compressor", f"Compression de bus {ratio:.2f}:1",
-                      f"Cohésion : seuil 4 dB sous les passages forts, soit {4 * (1 - 1 / ratio):.1f} dB de "
-                      "réduction à leur niveau (courbe du compresseur) ; relâchement sur le temps "
-                      f"({quarter * 1000:.0f} ms)",
-                      {"threshold_db": float(np.percentile(loud, 90)) - 4.0, "ratio": ratio,
-                       "attack_ms": 30.0, "release_ms": quarter * 1000, "max_reduction_db": 3.0})
-        y = apply(y, fs, [t])
-        if t.applied:
-            treatments.append(t)
+    if not simple and s.bus_compression:
+        say("Compression de bus : la cohésion du mix", 0.05)
+        power, _ = dsp.detector_power(y, fs)
+        level = 10 * np.log10(np.maximum(power, 1e-20))
+        loud = level[level > -80.0]
+        if loud.size:
+            ratio = 1 + 0.6 * k
+            t = Treatment("compressor", f"Compression de bus {ratio:.2f}:1",
+                          f"Cohésion : seuil 4 dB sous les passages forts, soit {4 * (1 - 1 / ratio):.1f} dB de "
+                          "réduction à leur niveau (courbe du compresseur) ; relâchement sur le temps "
+                          f"({quarter * 1000:.0f} ms)",
+                          {"threshold_db": float(np.percentile(loud, 90)) - 4.0, "ratio": ratio,
+                           "attack_ms": 30.0, "release_ms": quarter * 1000, "max_reduction_db": 3.0})
+            y = apply(y, fs, [t])
+            if t.applied:
+                treatments.append(t)
 
     # loudness: at −9 LUFS a −2 dBTP ceiling leaves at most 7 dB of peak-to-loudness; under 8 dB,
     # Opus 96k / MP3 128k overshoot by 1.2–2.2 dB, so such a master gets −3 dBTP from the start
-    ceiling = DENSE_CEILING_DBTP if _dense(goal) else CEILING_DBTP
+    auto_ceiling = s.ceiling_dbtp is None
+    ceiling = (DENSE_CEILING_DBTP if _dense(goal) else CEILING_DBTP) if auto_ceiling else s.ceiling_dbtp
     say(f"Volume final : viser {goal:.1f} LUFS ressentis (les passages forts, pas la moyenne), "
         f"crête réelle sous {ceiling:.0f} dBTP", 0.1)
 
     def on_pass(n: int, gain: float) -> None:
-        say(f"Écrêtage doux puis limiteur, passage {n + 1} (gain {gain:+.1f} dB), mesure du volume obtenu",
+        say(("Écrêtage doux puis limiteur" if clip else "Limiteur") +
+            f", passage {n + 1} (gain {gain:+.1f} dB), mesure du volume obtenu",
             min(0.85, 0.12 + 0.25 * n))
 
-    recurring = FINISHED_BEAT_PEAK_REDUCTION_DB if finished_beat else MAX_PEAK_REDUCTION_DB
-    out, gain, red, reached, capped = _loudest(y, fs, goal, ceiling, on_pass, recurring)
+    recurring = min(s.budget_db, FINISHED_BEAT_PEAK_REDUCTION_DB) if finished_beat else s.budget_db
+    out, gain, red, reached, capped = _loudest(y, fs, goal, ceiling, on_pass, recurring, clip)
     del y
     budget = recurring + SINGLE_PEAK_MARGIN_DB
+    stages_text = (f"écrêtage doux : crête la plus forte baissée de {red.clip_db:.1f} dB, "
+                   f"puis limiteur jusqu'à {red.limiter_db:.1f} dB ; les deux ensemble baissent de "
+                   if clip else
+                   f"limiteur seul, sans écrêtage doux (rien qui sature) : il baisse jusqu'à "
+                   f"{red.limiter_db:.1f} dB, et de ")
     reason = (f"Cible {goal:.1f} LUFS ressentis — le volume que tiennent les passages forts (95e centile du "
               "court terme), pas la moyenne du morceau : un couplet calme ne pousse plus le gain, le refrain "
-              f"ne sature pas ; écrêtage doux : crête la plus forte baissée de {red.clip_db:.1f} dB, "
-              f"puis limiteur jusqu'à {red.limiter_db:.1f} dB ; les deux ensemble baissent de "
+              f"ne sature pas ; " + stages_text +
               f"{red.recurring_db:.1f} dB les crêtes qui reviennent dans le morceau ({recurring:.0f} dB au plus"
               + (", l'instru étant déjà mixée et masterisée" if finished_beat else "")
               + f") ; leur plus forte baisse tenue sur 30 ms de suite est de {red.single_db:.1f} dB "
@@ -429,7 +484,7 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
     if capped:
         # the ceiling is chosen again on the loudness reached; every stage scales with the ceiling,
         # so the same master with −2 dBTP is exactly this one 1 dB higher, same reductions
-        shift = min(CEILING_DBTP - ceiling, max(0.0, goal - reached))  # never shifted past the goal
+        shift = min(CEILING_DBTP - ceiling, max(0.0, goal - reached)) if auto_ceiling else 0.0
         if shift > 0 and not _dense(reached + shift):
             out = out * 10 ** (shift / 20)
             gain, reached, ceiling = gain + shift, reached + shift, CEILING_DBTP
@@ -454,13 +509,17 @@ def master(x: np.ndarray, fs: float, k: float, tempo_bpm: float | None = None,
                             f"(plus de {recurring:.0f} dB d'écrêtage et de limiteur sur ses crêtes)")
         else:
             warnings.append(f"Le morceau est masterisé à {reached:.1f} LUFS au lieu de {goal:.1f} : aller plus "
-                            f"fort demanderait plus de {MAX_PEAK_REDUCTION_DB:.0f} dB d'écrêtage et de limiteur "
+                            f"fort demanderait plus de {recurring:.0f} dB d'écrêtage et de limiteur "
                             "sur les crêtes qui reviennent dans le morceau, ce qui écraserait les percussions")
-    elif ceiling == DENSE_CEILING_DBTP:
+    elif auto_ceiling and ceiling == DENSE_CEILING_DBTP:
         reason += (f" ; à ce volume, un plafond à {CEILING_DBTP:.0f} dBTP laisserait au plus "
                    f"{CEILING_DBTP - goal:.1f} dB entre crête et volume : sous {DENSE_PLR_DB:.0f} dB, l'encodage à "
                    f"bas débit dépasse de 1 à 2 dB, d'où {ceiling:.0f} dBTP")
-    treatments.append(Treatment("loudness", f"Niveau final {gain:+.1f} dB, clip doux puis limiteur à {ceiling:.0f} dBTP",
+    if not auto_ceiling:
+        reason += f" ; plafond fixé à {ceiling:.0f} dBTP (ton choix dans les réglages du mastering)"
+    treatments.append(Treatment("loudness", f"Niveau final {gain:+.1f} dB, "
+                                + ("clip doux puis limiteur" if clip else "limiteur")
+                                + f" à {ceiling:.0f} dBTP",
                                 reason, measured={"clip_db": red.clip_db, "limiter_db": red.limiter_db,
                                                   "peak_reduction_db": red.recurring_db,
                                                   "single_peak_reduction_db": red.single_db,

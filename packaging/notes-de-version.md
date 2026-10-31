@@ -1,12 +1,26 @@
-Eden 1.5.0 : mix et master analysés élément par élément et recorrigés — master au ressenti, voix ni écrasées ni inversées, fini le son crunchy.
+Eden 1.6.0 : le mastering devient ton option — simple et sans saturation par défaut, une fenêtre de réglages pour le reste.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.5.0.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.6.0.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Nouveau dans 1.6.0 (ta demande : un mastering en option, simple par défaut)
+
+- **Le mastering simple est le nouveau mode automatique.** Réduction des crêtes (limiteur
+  true-peak) et mise à niveau du volume pour les plateformes, c'est tout : **rien qui sature**
+  (pas d'écrêtage doux), pas de compression de bus. Si le limiteur ne suffit pas pour atteindre
+  le volume visé sans écraser, le master reste moins fort et te le dit.
+- **Une fenêtre « Mastering »** sur la page du mixage (bouton sous « Remixer ») pour tout le
+  reste : trois modes — **Aucun** (ton mix Eden laissé tel quel, juste mesuré), **Simple**,
+  **Complet** (toute la chaîne d'Eden) — et les réglages : volume visé (−14 à −7 LUFS
+  ressentis), réduction des crêtes au plus (3 à 9 dB), plafond de crête (auto, −2 ou −3 dBTP),
+  et en mode complet la compression de bus et l'écrêtage doux débrayables. Tes choix sont
+  gardés et s'appliquent à chaque mixage suivant.
+- En ligne de commande : `eden mix --master aucun|simple|complet`.
 
 ## Refait dans 1.5.0 (tout le mix et le master ré-analysés, chaque problème trouvé refait)
 

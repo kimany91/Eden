@@ -130,7 +130,8 @@ def test_one_journey_from_the_project_to_the_result(ui, tmp_path):
                  "done Somme des pistes = mix d'origine", "stage Mixage Eden",
                  "step Voix « Lead » : mesures", "detail « Lead » : Coupe-bas", "stage Mastering Eden",
                  # the project's "Instru" is a complete beat: kept as it is, not squashed a second time
-                 "instru complète, déjà mixée et masterisée", "step Écrêtage doux puis limiteur, passage 1",
+                 # the default mastering is the simple one: a limiter, no soft clip (nothing saturates)
+                 "instru complète, déjà mixée et masterisée", "step Limiteur, passage 1",
                  "done Avec Eden : -"):
         assert said in text, said
     assert all(line["time"][2] == ":" for line in lines)

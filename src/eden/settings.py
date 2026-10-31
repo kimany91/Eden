@@ -20,6 +20,26 @@ class Settings:
     projects_folder: str | None = None  # where the user saves FL projects; FL's own folder when empty
     # whether several FL Studios render at once on this PC, learned from the renders (None until tried)
     render_side_by_side: bool | None = None
+    # the mastering window's choices (see eden.mix.master.MasterSettings)
+    master_mode: str = "simple"  # "aucun" | "simple" | "complet"
+    master_target_lufs: float = -9.0  # felt loudness aimed at 100 % intensity
+    master_ceiling_dbtp: float | None = None  # None: chosen on the density (−2, or −3 when dense)
+    master_bus_compression: bool = True  # complet only
+    master_soft_clip: bool = True  # complet only
+    master_budget_db: float = 6.0  # clip + limiter on the recurring peaks
+
+
+def master_settings(settings: Settings):
+    """The ``MasterSettings`` these stored choices describe (imported here: the master module
+    loads scipy, which every ``eden`` command should not)."""
+    from eden.mix.master import MASTER_MODES, MasterSettings
+
+    mode = settings.master_mode if settings.master_mode in MASTER_MODES else "simple"
+    return MasterSettings(mode=mode, target_lufs=float(settings.master_target_lufs),
+                          ceiling_dbtp=settings.master_ceiling_dbtp,
+                          bus_compression=bool(settings.master_bus_compression),
+                          soft_clip=bool(settings.master_soft_clip),
+                          budget_db=float(settings.master_budget_db))
 
 
 def settings_path() -> Path:

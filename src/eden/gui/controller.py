@@ -117,6 +117,12 @@ class EdenController(QObject):
     needsFlPathChanged = Signal()
     updateMessageChanged = Signal()
     intensityChanged = Signal()
+    masterModeChanged = Signal()
+    masterTargetChanged = Signal()
+    masterCeilingChanged = Signal()
+    masterCompressionChanged = Signal()
+    masterClipChanged = Signal()
+    masterBudgetChanged = Signal()
     mixResultChanged = Signal()
     mixVersionsChanged = Signal()
     exportFolderChanged = Signal()
@@ -150,6 +156,14 @@ class EdenController(QObject):
         self._needsFlPath = False
         self._updateMessage = ""
         self._intensity = 1.0
+        from eden.settings import load_settings
+        prefs = load_settings()
+        self._masterMode = prefs.master_mode if prefs.master_mode in ("aucun", "simple", "complet") else "simple"
+        self._masterTarget = float(prefs.master_target_lufs)
+        self._masterCeiling = 0.0 if prefs.master_ceiling_dbtp is None else float(prefs.master_ceiling_dbtp)
+        self._masterCompression = bool(prefs.master_bus_compression)
+        self._masterClip = bool(prefs.master_soft_clip)
+        self._masterBudget = float(prefs.master_budget_db)
         self._mixResult: dict = {}
         self._mixVersions: list = []
         self._exportFolder = str(default_export_folder())
@@ -224,6 +238,49 @@ class EdenController(QObject):
         self._set("intensity", max(0.0, min(1.0, float(value))))
 
     intensity = Property(float, _get_intensity, _set_intensity, notify=intensityChanged)
+
+    # -- the mastering window's choices, kept in settings.json ----------------
+    def _save_master_pref(self, name: str, field: str, value) -> None:
+        from eden.settings import load_settings, save_settings
+        self._set(name, value)
+        settings = load_settings()
+        setattr(settings, field, value)
+        save_settings(settings)
+
+    def _set_masterMode(self, value: str) -> None:
+        if value in ("aucun", "simple", "complet"):
+            self._save_master_pref("masterMode", "master_mode", str(value))
+
+    def _set_masterTarget(self, value: float) -> None:
+        self._save_master_pref("masterTarget", "master_target_lufs", max(-14.0, min(-7.0, float(value))))
+
+    def _set_masterCeiling(self, value: float) -> None:
+        value = float(value)  # 0: Eden chooses on the density; else −2 or −3 dBTP
+        from eden.settings import load_settings, save_settings
+        self._set("masterCeiling", value)
+        settings = load_settings()
+        settings.master_ceiling_dbtp = None if value == 0.0 else value
+        save_settings(settings)
+
+    def _set_masterCompression(self, value: bool) -> None:
+        self._save_master_pref("masterCompression", "master_bus_compression", bool(value))
+
+    def _set_masterClip(self, value: bool) -> None:
+        self._save_master_pref("masterClip", "master_soft_clip", bool(value))
+
+    def _set_masterBudget(self, value: float) -> None:
+        self._save_master_pref("masterBudget", "master_budget_db", max(3.0, min(9.0, float(value))))
+
+    masterMode = Property(str, lambda self: self._masterMode, _set_masterMode, notify=masterModeChanged)
+    masterTarget = Property(float, lambda self: self._masterTarget, _set_masterTarget,
+                            notify=masterTargetChanged)
+    masterCeiling = Property(float, lambda self: self._masterCeiling, _set_masterCeiling,
+                             notify=masterCeilingChanged)
+    masterCompression = Property(bool, lambda self: self._masterCompression, _set_masterCompression,
+                                 notify=masterCompressionChanged)
+    masterClip = Property(bool, lambda self: self._masterClip, _set_masterClip, notify=masterClipChanged)
+    masterBudget = Property(float, lambda self: self._masterBudget, _set_masterBudget,
+                            notify=masterBudgetChanged)
 
     @Property(str, constant=True)
     def version(self) -> str:
@@ -511,10 +568,16 @@ class EdenController(QObject):
         if self._busy or self.report_obj is None or renders is None or not (
                 renders.ok or (unchecked and renders.complete)):
             return
+        from eden.mix.master import MasterSettings
         from eden.mix.session import MixError, mix_project
 
         project, report, renders = Path(self._projectPath), self.report_obj, self.renders
         intensity = self._intensity
+        master_settings = MasterSettings(
+            mode=self._masterMode, target_lufs=self._masterTarget,
+            ceiling_dbtp=None if self._masterCeiling == 0.0 else self._masterCeiling,
+            bus_compression=self._masterCompression, soft_clip=self._masterClip,
+            budget_db=self._masterBudget)
         self._set("exportMessage", "")
         self._player.close()
         # a remix grows the tree again from where the mix starts
@@ -526,6 +589,7 @@ class EdenController(QObject):
         def job(worker: _Worker):
             try:
                 return mix_project(project, report, renders, intensity, unchecked=unchecked,
+                                   master_settings=master_settings,
                                    on_step=lambda i, n, s: worker.progress.emit(i, n, s),
                                    on_progress=lambda s, share: worker.detail.emit(s, -1.0 if share is None
                                                                                    else share))

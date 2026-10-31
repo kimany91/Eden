@@ -164,8 +164,15 @@ def _cmd_mix(args: argparse.Namespace) -> int:
     except (InspectionError, RenderError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    from dataclasses import replace
+
+    from eden.settings import master_settings
+    chosen = master_settings(settings)
+    if args.master:
+        chosen = replace(chosen, mode=args.master)
     try:
-        version = mix_project(project, report, renders, args.intensite / 100, on_step=_progress)
+        version = mix_project(project, report, renders, args.intensite / 100, on_step=_progress,
+                              master_settings=chosen)
     except MixError as exc:
         for w in renders.warnings:  # a mix carries them in its own warnings; without one, said here
             print(f"Avertissement : {w}")
@@ -211,6 +218,9 @@ def main(argv: list[str] | None = None) -> int:
                                    "(les effets du Master FL Studio ne sont pas utilisés)")
     m.add_argument("project", help="Chemin du fichier .flp")
     m.add_argument("--intensite", type=float, default=100.0, help="Intensité des corrections, 0 à 100")
+    m.add_argument("--master", choices=["aucun", "simple", "complet"],
+                   help="Mastering : aucun, simple (crêtes et niveau, sans saturation — par défaut) ou "
+                        "complet (la chaîne entière, réglée dans la fenêtre Mastering de l'interface)")
     m.add_argument("--export", help="Fichier WAV à écrire (sans écraser un fichier existant)")
     # the rates and depths are checked against the export's own lists, in _cmd_mix: importing the
     # export module here would load scipy for every eden command

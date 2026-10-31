@@ -63,6 +63,14 @@ EdenPage {
                     enabled: !controller.busy
                     onClicked: controller.mixProject()
                 }
+                EdenButton {
+                    Layout.fillWidth: true
+                    text: "Mastering : " + (controller.masterMode === "aucun" ? "aucun"
+                          : controller.masterMode === "complet" ? "complet" : "simple")
+                    iconName: "wave"
+                    enabled: !controller.busy
+                    onClicked: masterDialog.open()
+                }
 
                 // versions
                 Text {
@@ -438,6 +446,182 @@ EdenPage {
                     }
                     Item { width: 1; height: 16 }
                 }
+            }
+        }
+    }
+
+    // -- the mastering window: mode and settings, applied at the next mix ----------------------
+    Popup {
+        id: masterDialog
+        objectName: "masterDialog"
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 540
+        modal: true
+        focus: true
+        padding: 24
+        background: Rectangle {
+            radius: Theme.radius
+            color: Theme.surface
+            border.width: 1
+            border.color: Theme.borderStrong
+        }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.55) }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            RowLayout {
+                Layout.fillWidth: true
+                Text { text: "Mastering"; color: Theme.text; font.family: Theme.displayFamily; font.pixelSize: 22; font.weight: Font.DemiBold }
+                Item { Layout.fillWidth: true }
+                EdenButton { compact: true; text: "Fermer"; iconName: "close"; onClicked: masterDialog.close() }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Repeater {
+                    model: [
+                        { value: "aucun", label: "Aucun" },
+                        { value: "simple", label: "Simple (auto)" },
+                        { value: "complet", label: "Complet" }
+                    ]
+                    delegate: Rectangle {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 38
+                        radius: 10
+                        readonly property bool current: controller.masterMode === modelData.value
+                        color: current ? Theme.goldSoft : Theme.surface2
+                        border.width: 1
+                        border.color: current ? Qt.rgba(0.97, 0.77, 0.19, 0.5) : Theme.border
+                        Behavior on color { ColorAnimation { duration: Theme.fast } }
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData.label
+                            color: parent.current ? Theme.gold : Theme.text
+                            font.family: Theme.fontFamily; font.pixelSize: 13; font.weight: Font.Medium
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: controller.masterMode = modelData.value
+                        }
+                    }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: controller.masterMode === "aucun"
+                      ? "Ton mix Eden est laissé tel quel : aucune crête réduite, aucun gain. À toi de masteriser ailleurs."
+                      : controller.masterMode === "complet"
+                        ? "La chaîne complète d'Eden : graves en mono, compression de bus, écrêtage doux puis limiteur. Chaque étage se règle ci-dessous."
+                        : "Réduction des crêtes (limiteur) et mise à niveau pour les plateformes, sans saturation ni compression. Rien d'autre."
+                color: Theme.textMuted
+                font.family: Theme.fontFamily; font.pixelSize: 13
+            }
+
+            ColumnLayout {
+                visible: controller.masterMode !== "aucun"
+                Layout.fillWidth: true
+                spacing: 4
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { text: "Volume visé (ressenti)"; color: Theme.text; font.family: Theme.fontFamily; font.pixelSize: 13; font.weight: Font.Medium }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: controller.masterTarget.toFixed(1).replace(".", ",") + " LUFS"
+                        color: Theme.gold
+                        font.family: Theme.displayFamily; font.pixelSize: 16; font.weight: Font.DemiBold
+                    }
+                }
+                EdenSlider {
+                    Layout.fillWidth: true
+                    from: -14; to: -7; stepSize: 0.5
+                    value: controller.masterTarget
+                    onMoved: controller.masterTarget = value
+                }
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: "Le volume que tiennent les passages forts du morceau. −9 : fort comme le rap commercial ; −14 : le niveau de lecture des plateformes."
+                    color: Theme.textDim
+                    font.family: Theme.fontFamily; font.pixelSize: 11
+                }
+            }
+
+            ColumnLayout {
+                visible: controller.masterMode !== "aucun"
+                Layout.fillWidth: true
+                spacing: 4
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { text: "Réduction des crêtes, au plus"; color: Theme.text; font.family: Theme.fontFamily; font.pixelSize: 13; font.weight: Font.Medium }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: controller.masterBudget.toFixed(1).replace(".", ",") + " dB"
+                        color: Theme.gold
+                        font.family: Theme.displayFamily; font.pixelSize: 16; font.weight: Font.DemiBold
+                    }
+                }
+                EdenSlider {
+                    Layout.fillWidth: true
+                    from: 3; to: 9; stepSize: 0.5
+                    value: controller.masterBudget
+                    onMoved: controller.masterBudget = value
+                }
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: "Ce que le limiteur (et l'écrêtage, en mode complet) peut prendre sur les crêtes qui reviennent. Quand cela ne suffit pas pour atteindre le volume visé, le master reste moins fort et te le dit."
+                    color: Theme.textDim
+                    font.family: Theme.fontFamily; font.pixelSize: 11
+                }
+            }
+
+            RowLayout {
+                visible: controller.masterMode !== "aucun"
+                Layout.fillWidth: true
+                spacing: 10
+                Text { text: "Plafond de crête"; color: Theme.text; font.family: Theme.fontFamily; font.pixelSize: 13; font.weight: Font.Medium }
+                EdenCombo {
+                    id: ceilingCombo
+                    Layout.fillWidth: true
+                    model: [
+                        { label: "Automatique : −2 dBTP, ou −3 si le master est dense", value: 0 },
+                        { label: "−2 dBTP", value: -2 },
+                        { label: "−3 dBTP", value: -3 }
+                    ]
+                    Component.onCompleted: currentIndex = Math.max(0, indexOfValue(controller.masterCeiling))
+                    onActivated: controller.masterCeiling = currentValue
+                }
+            }
+
+            EdenSwitch {
+                visible: controller.masterMode === "complet"
+                Layout.fillWidth: true
+                label: "Compression de bus"
+                hint: "1 à 2 dB de cohésion, relâchée sur le temps du morceau"
+                checked: controller.masterCompression
+                onToggled: value => controller.masterCompression = value
+            }
+            EdenSwitch {
+                visible: controller.masterMode === "complet"
+                Layout.fillWidth: true
+                label: "Écrêtage doux avant le limiteur"
+                hint: "Arrondit les crêtes comme les masters rap très forts : une saturation contrôlée"
+                checked: controller.masterClip
+                onToggled: value => controller.masterClip = value
+            }
+
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Ces réglages sont gardés et s'appliquent au prochain mixage : clique « Remixer »."
+                color: Theme.textDim
+                font.family: Theme.fontFamily; font.pixelSize: 12
             }
         }
     }
