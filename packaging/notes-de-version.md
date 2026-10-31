@@ -1,12 +1,28 @@
-Eden 1.3.2 : toutes tes voix reliées en un seul bus — ton équilibre entre voix n'est plus jamais changé.
+Eden 1.4.0 : le mixage refondu — plus de fantôme dans le mix, et ta prise produite reste intacte.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.3.2.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.4.0.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Refondu dans 1.4.0 (retours d'écoute : voix robotique, toujours trop fort par moments)
+
+- **Le « fantôme » est retiré du mix.** Eden reconstruisait ton morceau comme voix + instru +
+  « reste » (ton morceau moins toutes les pistes). Comme FL Studio ne rend pas deux fois
+  exactement pareil sur ton PC, ce « reste » n'était pas une vraie piste : c'était un fantôme de
+  toutes tes voix, légèrement différent. Dès qu'Eden bougeait le volume d'une voix, elle battait
+  contre son fantôme : son **robotique**, « **sous l'eau** », et des moments où les deux
+  s'additionnent — **trop fort d'un coup**. Désormais, si la somme des pistes ne redonne pas ton
+  morceau à l'identique, ce reste est retiré et le morceau est reconstruit uniquement à partir
+  des vraies pistes.
+- **Ta prise produite n'est plus refaçonnée.** Tes prises sont enregistrées à travers ta chaîne
+  FL (Auto-Tune…) : leur son est fini. Eden ne leur applique plus que deux choses — respirations
+  baissées, et un de-esser si les « s » dépassent. Plus de compression, plus de saturation, plus
+  d'EQ correctif sur une voix déjà produite : saturer une voix autotunée, c'est le son métallique
+  que tu entendais.
 
 ## Corrigé dans 1.3.2 (retours d'écoute : les voix doivent être reliées ensemble)
 

@@ -132,3 +132,45 @@ def test_every_voice_follows_the_one_ride_of_the_leads(monkeypatch):
     assert len({id(r) for r in rides}) == 1  # one gain for the whole vocal performance
     assert any("garde l'équilibre" in t.reason for t in res["ch1"].treatments if t.kind == "ride")
 
+
+
+def test_a_produced_take_keeps_its_sound():
+    # recorded through its FL chain (a printed Auto-Tune): breaths down, a de-esser only when the 's'
+    # truly poke out, and nothing that reshapes the sound (saturation on a tuned voice reads metallic)
+    m = measure_vocal(voice(20, seed=3, breaths=0.25, sibilance=1.4), FS)
+    kinds = [t.kind for t in plan_voice(m, "lead_vocal", 1.0, False, produced=True)]
+    assert kinds == ["breath", "deesser"]
+    soft = measure_vocal(voice(20, seed=3, sibilance=0.1), FS)
+    assert [t.kind for t in plan_voice(soft, "lead_vocal", 1.0, False, produced=True)] == ["breath"]
+    assert "saturation" in {t.kind for t in plan_voice(m, "lead_vocal", 1.0, False)}  # a raw take keeps the chain
+
+
+def test_a_ghost_residual_is_dropped(tmp_path, monkeypatch):
+    # FL renders the same project a little differently each time (EDEN_SIM_RANDOM): the residual is only
+    # the difference between renders — a ghost of each part. Kept, it beats against the voices whenever
+    # their level moves (a watery, robotic sound); it is dropped and the song rebuilt from the parts
+    import numpy as np
+
+    from eden.mix.parts import split
+    from eden.project.inspector import inspect_project
+    from eden.project.sources import SearchRoots
+    from eden.render.pipeline import render_project
+    from test_render import make_session, sim_renderer
+
+    project = make_session(tmp_path)
+    report = inspect_project(project, roots=SearchRoots())
+    monkeypatch.setenv("EDEN_SIM_RANDOM", "1")
+    renders = render_project(project, sim_renderer(), timeout_s=120, report=report)
+    assert renders.ok and renders.null_test.repeat_db is not None  # passed as FL's own variation
+    parts = split(report, renders)
+    assert not parts.residual.audio.any()
+    assert any(w.startswith("Reste du mix retiré") for w in parts.warnings)
+
+    monkeypatch.delenv("EDEN_SIM_RANDOM")
+    other = tmp_path / "exact"
+    other.mkdir()
+    strict = render_project(make_session(other), sim_renderer(), timeout_s=120)
+    report2 = inspect_project(other / "Session" / "Session.flp", roots=SearchRoots())
+    parts2 = split(report2, strict)
+    total = sum((p.audio.astype(np.float64) for p in [*parts2.voices, *parts2.groups]), parts2.residual.audio)
+    assert np.allclose(total, parts2.premaster, atol=1e-6)  # strict pass: the residual stays, the sum is the song

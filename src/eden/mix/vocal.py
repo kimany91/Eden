@@ -80,12 +80,21 @@ def tail_hold(m: VocalMeasure, x: np.ndarray, fs: float, tempo_bpm: float | None
     return hold
 
 
-def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -> list[Treatment]:
+def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool,
+               produced: bool = False) -> list[Treatment]:
     """Corrective and shaping chain of one voice (level changes are decided elsewhere).
 
     ``fl_space_untracked``: the FL chain holds a reverb or delay that could
     not be rendered apart (tail-safe compression, see module docstring:
     ``apply`` then gets the frames to hold from ``tail_hold``).
+
+    ``produced``: the take already carries its production — recorded through
+    its FL chain, an Auto-Tune or a reverb printed into the file. Its sound
+    is the artist's, finished: only what never reshapes it is planned —
+    breaths brought down, and a de-esser when the 's' truly poke out. The
+    corrective chain is for raw mic takes; run on a produced voice it works
+    on a sound already made (saturating a tuned voice reads metallic, its
+    compression pumps against the printed one: heard by a user).
     """
     if k <= 0 or not math.isfinite(m.loudness_lufs):
         return []
@@ -99,6 +108,20 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
         f"à {BREATH_UNDER_DB:.0f} dB sous la voix chantée avant toute compression, qui les remonterait ; "
         "les plus douces sont laissées telles quelles",
         {"max_reduction_db": MAX_BREATH_REDUCTION_DB * k}))
+
+    deess_low_hz = deess_band_low_hz(m.sibilant_peak_hz)
+    band_text = (f" ; ils culminent vers {m.sibilant_peak_hz:.0f} Hz, bande dès {deess_low_hz / 1000:.1f} kHz"
+                 if m.sibilant_peak_hz else " ; pic des « s » non mesuré, bande dès 4,5 kHz")
+    if produced:
+        if m.sibilant_excess_db > 0.0:  # the 's' rise over the vowels themselves: worth softening
+            depth = min(profile.deess_main_db, max(2.0, m.sibilant_excess_db + 2.0))
+            out.append(Treatment(
+                "deesser", f"De-esser (max {depth * k:.1f} dB)",
+                f"Prise déjà produite : seuls les « s » qui dépassent les voyelles sont adoucis "
+                f"({m.sibilant_excess_db:+.1f} dB){band_text}. Le reste de la chaîne n'est pas appliqué : "
+                "ton son est déjà fait, Eden ne le refaçonne pas",
+                {"below_vowels_db": 4.0, "max_reduction_db": depth * k, "low_hz": deess_low_hz}))
+        return out
 
     # 1. high-pass: never above the lowest sustained note of the voice, and only when something sounds
     #    under the planned cut. While the voice sings, it is read an octave under the cut, where the
@@ -152,9 +175,7 @@ def plan_voice(m: VocalMeasure, role: str, k: float, fl_space_untracked: bool) -
     # 4. light de-esser before compression, on the strongest 's' only (louder than the vowels − 2 dB);
     #    both de-essers set their threshold on the vowels of the signal they receive, and the 's' are
     #    measured in their band: the level the de-essers compare with that threshold
-    deess_low = deess_band_low_hz(m.sibilant_peak_hz)
-    where = (f" ; ils culminent vers {m.sibilant_peak_hz:.0f} Hz, bande dès {deess_low / 1000:.1f} kHz"
-             if m.sibilant_peak_hz else " ; pic des « s » non mesuré, bande dès 4,5 kHz")
+    deess_low, where = deess_low_hz, band_text
     if m.sibilant_excess_db > -1.0:
         out.append(Treatment(
             "deesser", f"De-esser léger (max {profile.deess_first_db * k:.1f} dB)",

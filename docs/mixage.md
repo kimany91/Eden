@@ -14,6 +14,14 @@ est marqué :
 
 ## Les morceaux du mix
 
+Le morceau est reconstruit comme voix + groupes + « reste du mix » (le morceau moins toutes les
+pistes). Le reste n'est gardé que si la somme des pistes redonne le morceau strictement : il
+porte alors les vrais bus partagés. Sinon (FL ne rend pas deux fois pareil, ou un effet commun
+aux pistes), il n'est qu'un **fantôme de chaque piste** — l'écart entre deux rendus — qui bat
+contre les voix dès qu'Eden bouge leur niveau (son métallique ou « sous l'eau », sautes de
+volume : retour d'écoute d'un utilisateur) : il est retiré, et le morceau est reconstruit à
+partir des pistes elles-mêmes (sauf si des voix y sont restées : elles passent avant).
+
 - **Chaque voix seule**, rendue par FL avec toute sa chaîne (inserts, bus, envois). Une voix,
   ce sont tous les fichiers d'une même piste du Mixer avec le même rôle (les couplets du
   lead, les ad-libs…), rendus ensemble : ils passent dans les effets de la piste comme dans
@@ -129,6 +137,13 @@ de 1 ms à moins de 35 dB des passages forts ; seul le silence numérique (sous 
 « notes tenues » sont les demi-tons qui portent plus de 30 % des trames de 40 ms où la voix
 a une hauteur nette (**choix d'Eden**) : ni résonance ni bosse n'est cherchée à moins
 d'1/6 d'octave d'une note tenue ou de son octave.
+
+**Prise déjà produite** (enregistrée à travers sa chaîne FL : Auto-Tune, reverb imprimés dans
+le fichier — détectée à l'écoute, voix « printed ») : son son est fini, c'est celui de
+l'artiste. Eden n'applique que les respirations et, si les « s » dépassent vraiment les
+voyelles (> 0 dB), un de-esser ; **rien d'autre** — la chaîne corrective ci-dessous est pour
+les prises brutes (saturer une voix autotunée sonne métallique, compresser une prise déjà
+compressée pompe : retours d'écoute d'un utilisateur).
 
 | Étape | Mesure | Eden agit si… | Traitement à 100 % | Statut |
 |---|---|---|---|---|

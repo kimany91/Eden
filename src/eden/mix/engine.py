@@ -223,8 +223,8 @@ def _chain(v: Part, fs: float, k: float, status: str, tempo_bpm: float | None
     its FL effects, as heard."""
     source = v.dry if v.dry is not None else v.audio
     m = measure_vocal(source, fs)
-    treatments = plan_voice(m, v.role, k, status in ("untracked", "printed"))
-    hold = tail_hold(m, source, fs, tempo_bpm) if status in ("untracked", "printed") else None
+    treatments = plan_voice(m, v.role, k, status == "untracked", produced=status == "printed")
+    hold = tail_hold(m, source, fs, tempo_bpm) if status == "untracked" else None
     processed = apply(source, fs, treatments, hold=hold, input_lufs=m.loudness_lufs) if treatments else source
     treatments = [t for t in treatments if t.applied]
     fl_wet = None

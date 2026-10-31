@@ -99,7 +99,10 @@ Fait (détails, seuils et sources : `docs/mixage.md`) :
   gamme, collisions kick / 808, stéréo des graves ;
 - chaîne vocale complète par rôle, dans l'ordre des chaînes pro documentées, chaque étape
   déclenchée par une mesure et plafonnée ; respirations détectées (souffle non voisé entre
-  les phrases) et baissées avant toute compression, qui les remonterait ;
+  les phrases) et baissées avant toute compression, qui les remonterait ; une prise déjà
+  produite (effets imprimés dedans) ne reçoit que respirations et de-esser, son son est fini ;
+  le « reste du mix » n'est gardé que si la somme des pistes redonne le morceau strictement
+  (sinon ce n'est qu'un fantôme des pistes : retiré) ;
 - voix sèche quand FL joue vraiment une reverb ou un delay sur la chaîne de la voix : un
   effet désactivé ou inaudible (mix à 0 %, insert coupé, volume de l'insert à zéro, insert
   sans sortie vers le Master) ne compte pas, et l'inspection dit lequel des deux il est ; un

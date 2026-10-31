@@ -16,6 +16,16 @@
 By construction ``sum(voices) + sum(groups) + residual`` equals the
 pre-master render exactly, so Eden at intensity 0 gives back the song.
 
+The residual is kept only when the null test passed strictly: it then holds
+real content (shared buses). When the parts do not sum back to the song (FL
+renders the same project a little differently each time, or an effect the
+parts cross together), the residual is nothing but a GHOST of every part —
+the difference between two renders. Mixed back in, the ghost of a voice
+beats against the voice whenever Eden changes its level: phasing, a watery
+or robotic sound, moments that jump out (heard by a user). It is then
+dropped, and the song is rebuilt from the real parts alone — unless voices
+were left inside it, which are kept over coherence.
+
 Voices and groups are kept in 32-bit float, the format FL renders them in
 (24-bit integer renders fit in it exactly too): half the memory, nothing
 lost. The pre-master mix and the residual stay in 64-bit.
@@ -152,7 +162,7 @@ def dry_render_problem(full: np.ndarray, dry: np.ndarray, fs: float) -> str | No
 
 
 def split(report: InspectionReport, renders: RenderResult) -> Parts:
-    premaster_path = renders.premaster()
+    premaster_path = renders.premaster()  # the reference the residual is read against
     if premaster_path is None:
         raise PartsError("Le rendu de référence (pré-Master) est absent : relance la récupération du son")
     premaster, fs = _load(premaster_path, "float64")
@@ -200,5 +210,15 @@ def split(report: InspectionReport, renders: RenderResult) -> Parts:
         residual -= part.audio  # float32 parts promoted to float64: the sum stays exact
     rendered = {c for v in voices for c in v.channels}
     left = any(s.reaches_master and s.role.is_vocal and s.channel not in rendered for s in report.sources)
+    test = renders.null_test
+    ghost = test is not None and not (test.passed and test.repeat_db is None)
+    if ghost and not left:
+        why = ("FL Studio ne rend pas deux fois pareil" if test.repeat_db is not None and test.passed
+               else "la somme des pistes ne redonne pas le morceau")
+        warnings.append(f"Reste du mix retiré : {why}, il ne contenait donc que l'écart entre deux rendus "
+                        "(un fantôme de chaque piste, pas une vraie piste) ; mixé, ce fantôme bat contre les "
+                        "voix dès qu'Eden bouge leur niveau (son métallique ou « sous l'eau », sautes de "
+                        "volume). Le morceau est reconstruit à partir des pistes elles-mêmes")
+        residual = np.zeros_like(residual)
     return Parts(voices, groups, Part("residual", "Reste du mix (bus partagés, autres sources)",
                                       "residual", residual), fs, premaster, warnings, left)
