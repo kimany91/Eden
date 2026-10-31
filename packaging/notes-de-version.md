@@ -1,12 +1,48 @@
-Eden 1.4.0 : le mixage refondu — plus de fantôme dans le mix, et ta prise produite reste intacte.
+Eden 1.5.0 : mix et master analysés élément par élément et recorrigés — master au ressenti, voix ni écrasées ni inversées, fini le son crunchy.
 
 ## Installation
 
-1. Télécharge `Eden-Setup-1.4.0.exe` ci-dessous et double-clique dessus (pas besoin de droits
+1. Télécharge `Eden-Setup-1.5.0.exe` ci-dessous et double-clique dessus (pas besoin de droits
    administrateur ni de Python). Si une version précédente d'Eden est installée, la mise à jour se fait aussi
    toute seule à sa fermeture.
 2. L'installateur n'est pas signé : si Windows affiche « Windows a protégé votre ordinateur »,
    clique sur « Informations complémentaires » puis « Exécuter quand même ».
+
+## Refait dans 1.5.0 (tout le mix et le master ré-analysés, chaque problème trouvé refait)
+
+Tes quatre retours (voix crunchy/robotique qui sature, « bas devient super fort et fort devient
+super bas », mastering qui abuse, voix basse remontée jusqu'à saturer), chacun remonté à sa cause :
+
+- **Le master vise maintenant le ressenti, pas la moyenne.** Il règle le volume sur ce que
+  **tiennent les passages forts** du morceau (le 95ᵉ centile du volume court terme), plus sur la
+  moyenne : visée sur la moyenne, un couplet calme la tirait vers le bas, le gain surcompensait —
+  le refrain saturait et les passages calmes sortaient trop fort. C'est la cause principale du
+  « quand le son est bas il le met super fort, quand il est fort il le met super bas ».
+- **Un mastering moins abusé.** L'écrêtage + limiteur ne prennent plus que **6 dB** sur les crêtes
+  qui reviennent (au lieu de 9 : les refrains sortaient écrasés) ; une fois cette limite touchée,
+  le master reste un peu moins fort et te le dit, au lieu de revenir se garer sur la limite. Le
+  clip doux passe sous le plafond du limiteur (avant, les deux étages travaillaient en permanence,
+  l'un par-dessus l'autre) et son genou est resserré : le haut du mix ne vit plus en permanence
+  dans la distorsion. Le limiteur anticipe sur 5 ms et relâche sur 250 ms : plus de pompage entre
+  deux kicks.
+- **Fini le son crunchy / robotique.** Le détecteur des de-essers lisait le signal sur des trames
+  de 1 ms : son gain ondulait au rythme de la hauteur de ta voix — une modulation métallique,
+  « crunchy ». Il est maintenant lissé (5 ms) avec une attaque de 3 ms.
+- **Une voix basse de base n'est plus remontée jusqu'à saturer.** Quand toutes tes prises sont
+  enregistrées à travers ta chaîne FL (Auto-Tune, reverb imprimés), leurs niveaux sont ceux que tu
+  as validés : le réglage statique est borné à ±4 dB (au lieu de 10) et le suivi phrase par phrase
+  est coupé — tes variations de jeu ne sont plus « corrigées ». Si un écart reste, Eden te le dit
+  au lieu de forcer.
+- **Et trois causes de crêtes en trop retirées** : une voix posée d'un côté ne sort plus +3 dB
+  au-dessus de sa prise (compensation de panoramique plafonnée) ; un mix sorti plus bas n'est plus
+  remonté avant le master (les crêtes de l'instru entraient plus fort que FL ne les a jamais
+  jouées) ; le gain de compensation ne rend plus que ce que compresseurs et de-essers ont pris —
+  il ne remonte plus les respirations ni ce que les filtres ont retiré.
+- **Eden voit toujours tes plugins FL** (reverb, delay sur tes pistes et leurs envois) et n'ajoute
+  jamais d'espace par-dessus le tien ; en plus, il **écoute** chaque prise : une queue de reverb
+  qui sonne après tes fins de phrases suffit à la classer « produite », même si le plugin n'est
+  pas reconnu — détection affinée dans cette version (seuil −48 dB, deux fins de phrases au
+  moins).
 
 ## Refondu dans 1.4.0 (retours d'écoute : voix robotique, toujours trop fort par moments)
 

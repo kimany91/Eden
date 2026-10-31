@@ -4,7 +4,7 @@ Assistant de mixage automatique de voix rap pour projets **FL Studio**.
 Objectif : sélectionner un projet `.flp`, laisser Eden analyser et mixer, écouter,
 ajuster, puis exporter un WAV final — sans jamais modifier le projet original.
 
-## État actuel (v1.4.0)
+## État actuel (v1.5.0)
 
 | Phase | État |
 |---|---|
@@ -46,8 +46,13 @@ niveau d'un seul bus voix suivi phrase par phrase au-dessus de l'instru (ton éq
 voix jamais changé : une voix qui couvre est baissée, aucune n'est montée), espace (ambiance, plate,
 delay sur le tempo, jet d'écho en fin de phrase) seulement pour les voix qui n'en ont pas,
 placement stéréo des doublages, chœurs et ad-libs, place pour les paroles dans l'instru,
-kick / 808, puis un master fort et propre pour les plateformes (−9 LUFS, crête réelle à
-−3 dBTP, ou −2 dBTP quand le morceau s'arrête plus bas). Chaque décision est expliquée ; tu règles l'intensité (0 % = ton mix d'origine
+kick / 808, puis un master fort et propre pour les plateformes (−9 LUFS **ressentis** — le
+volume que tiennent les passages forts, pas la moyenne du morceau —, crête réelle à
+−3 dBTP, ou −2 dBTP quand le morceau s'arrête plus bas ; l'écrêtage + limiteur ne prennent
+jamais plus de 6 dB sur les crêtes qui reviennent : au-delà, le master reste un peu moins
+fort et le dit). Une prise enregistrée à travers ta chaîne FL (Auto-Tune, reverb imprimés)
+garde son son et ses niveaux : pas de chaîne corrective, pas de suivi, un réglage borné à
+±4 dB. Chaque décision est expliquée ; tu règles l'intensité (0 % = ton mix d'origine
 avant le Master, à l'identique), tu gardes chaque version et tu exportes le WAV final.
 Détails : [docs/mixage.md](docs/mixage.md).
 

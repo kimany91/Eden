@@ -114,8 +114,8 @@ def _lag_correlation(f: np.ndarray, d: np.ndarray, lag: int) -> np.ndarray:
     return out
 
 
-def dry_render_problem(full: np.ndarray, dry: np.ndarray, fs: float) -> str | None:
-    """Why FL's dry render cannot be trusted as "the voice without its effects", or None.
+def _dry_check(full: np.ndarray, dry: np.ndarray, fs: float) -> tuple[str | None, int]:
+    """(why FL's dry render cannot be trusted, or None; the small lag to roll it by).
 
     FL must have removed something (an effect it did not bypass, or one that
     was not heard, leaves the dry render equal to the full one). On the
@@ -135,30 +135,35 @@ def dry_render_problem(full: np.ndarray, dry: np.ndarray, fs: float) -> str | No
     d = dry.mean(axis=1) if dry.ndim == 2 else dry
     level, size = band_levels_db(d, fs)
     if level.size == 0:
-        return None
+        return None, 0
     active = np.repeat(level > float(np.percentile(level, 95)) - 30.0, size)
     mask = np.pad(active, (0, max(0, d.size - active.size)))[:d.size]
     fm, dm = f * mask, d * mask
     e_full, e_dry = float(np.dot(fm, fm)), float(np.dot(dm, dm))
     if e_dry <= 0:
-        return "elle est muette"
+        return "elle est muette", 0
     window = int(round(DRY_LAG_SEARCH_S * fs))
     near = _lag_correlation(fm, dm, window + 1)  # one sample further: a lag beyond the window shows
     best = int(np.argmax(near)) - window - 1
     if abs(best) > 2:
         if abs(best) > window or near[best + window + 1] < 0.5 * np.sqrt(e_dry * min(e_dry, e_full)):
-            return f"décalée de plus de {DRY_LAG_SEARCH_S * 1000:.0f} ms"
-        return f"décalée de {abs(best) / fs * 1000:.1f} ms"
+            return f"décalée de plus de {DRY_LAG_SEARCH_S * 1000:.0f} ms", 0
+        return f"décalée de {abs(best) / fs * 1000:.1f} ms", 0
+    if best:  # 1 or 2 samples off: rolled into place, or the space (full − dry) would be comb-filtered
+        d = np.roll(d, best)
+        dm = d * mask
+        e_dry = float(np.dot(dm, dm))
     space = fm - dm
     e_space = float(np.dot(space, space))
     if e_space <= 1e-6 * e_dry:
-        return "FL Studio n'a rien retiré (effets coupés non respectés ou inaudibles)"
+        return "FL Studio n'a rien retiré (effets coupés non respectés ou inaudibles)", best
     corr = float(np.dot(space, dm)) / np.sqrt(e_dry * e_space)
     if abs(corr) > 0.5:
-        return "la voix elle-même reste dans la part des effets (retour d'effet ou réglage dry/wet d'un plugin)"
+        return ("la voix elle-même reste dans la part des effets (retour d'effet ou réglage dry/wet "
+                "d'un plugin)"), best
     if e_space > e_dry:
-        return "les effets y seraient plus forts que la voix"
-    return None
+        return "les effets y seraient plus forts que la voix", best
+    return None, best
 
 
 def split(report: InspectionReport, renders: RenderResult) -> Parts:
@@ -194,7 +199,9 @@ def split(report: InspectionReport, renders: RenderResult) -> Parts:
             s = members[0] if members else None
             label = voice_title(report.project, members) if members else job.description
             voice_dry = dry.get(job.channels[0])
-            problem = dry_render_problem(audio, voice_dry, fs) if voice_dry is not None else None
+            problem, lag = _dry_check(audio, voice_dry, fs) if voice_dry is not None else (None, 0)
+            if voice_dry is not None and lag:  # 1-2 samples of plugin delay: rolled, the space stays clean
+                voice_dry = np.roll(voice_dry, lag, axis=0)
             if problem:
                 warnings.append(f"« {label} » : la voix sèche rendue par FL Studio ne colle pas à la voix "
                                 f"complète ({problem}) ; ses effets FL sont traités avec prudence")
@@ -211,7 +218,11 @@ def split(report: InspectionReport, renders: RenderResult) -> Parts:
     rendered = {c for v in voices for c in v.channels}
     left = any(s.reaches_master and s.role.is_vocal and s.channel not in rendered for s in report.sources)
     test = renders.null_test
-    ghost = test is not None and not (test.passed and test.repeat_db is None)
+    # no null test at all means the sum was never verified: treated as a ghost too
+    ghost = test is None or not (test.passed and test.repeat_db is None)
+    if ghost and left:
+        warnings.append("Le reste du mix porte des voix non rendues à part : il est gardé, mais la somme des "
+                        "pistes ne redonne pas le morceau, il peut battre contre les voix (son métallique)")
     if ghost and not left:
         why = ("FL Studio ne rend pas deux fois pareil" if test.repeat_db is not None and test.passed
                else "la somme des pistes ne redonne pas le morceau")

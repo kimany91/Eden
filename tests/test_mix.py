@@ -13,7 +13,7 @@ from eden.mix import dsp, stereo
 from eden.mix.analysis import measure_vocal
 from eden.mix.engine import LEAD_BALANCE, MAX_LEAD_CHANGE_DB, _level_change, mix
 from eden.mix.export import ExportError, export_wav
-from eden.mix.loudness import integrated_loudness, k_weighting, loudness_range, true_peak_db
+from eden.mix.loudness import felt_loudness, integrated_loudness, k_weighting, loudness_range, true_peak_db
 from eden.mix.master import CEILING_DBTP, DENSE_CEILING_DBTP, TARGET_LUFS, master
 from eden.mix.parts import Part, Parts, split
 from eden.mix.session import MixError, list_versions, mix_project
@@ -334,23 +334,23 @@ def test_master_reaches_the_target_under_the_ceiling():
 
 
 def test_ceiling_follows_how_dense_the_target_makes_the_master():
-    x = beat(16, level=0.5) * 3.0
+    x = 0.5 * beat(16, level=0.5) + voice(16, seed=3)  # reaches −9 within the budget: the goal decides
     loud = master(x, FS, 1.0, tempo_bpm=140)  # −9 LUFS: at most 7 dB between peak and loudness at −2 dBTP
     assert loud.treatments[-1].measured["ceiling_dbtp"] == DENSE_CEILING_DBTP
     assert "sous 8 dB" in loud.treatments[-1].reason
     assert loud.checks.true_peak_dbtp <= DENSE_CEILING_DBTP + 0.05
     calm = master(x, FS, 1.0, tempo_bpm=140, target_lufs=-14.0)  # 12 dB of room: the usual ceiling
     assert calm.treatments[-1].measured["ceiling_dbtp"] == CEILING_DBTP
-    assert calm.checks.integrated_lufs == pytest.approx(-14.0, abs=0.3)
+    assert felt_loudness(calm.audio, FS) == pytest.approx(-14.0, abs=0.3)  # the target is FELT loudness
 
 
 def test_master_gain_search_respects_its_budget_and_says_so():
     x = beat(16, level=0.5) * 0.05  # very quiet and very peaky: −9 LUFS would need a huge reduction
     r = master(x, FS, 1.0, tempo_bpm=140)
     loud = r.treatments[-1].measured  # the budget holds for the recurring peaks and for isolated events
-    assert loud["peak_reduction_db"] <= 9.0 + 0.1 and loud["single_peak_reduction_db"] <= 13.0 + 0.1
-    if r.checks.integrated_lufs < TARGET_LUFS - 0.3:
-        assert any("au lieu de" in w for w in r.warnings)
+    assert loud["peak_reduction_db"] <= 6.0 + 0.1 and loud["single_peak_reduction_db"] <= 10.0 + 0.1
+    assert felt_loudness(r.audio, FS) < TARGET_LUFS - 0.2  # this material is stopped by the budget
+    assert any("au lieu de" in w for w in r.warnings)
 
 
 def test_small_intensity_changes_the_master_little():

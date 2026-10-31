@@ -53,7 +53,10 @@ def test_the_make_up_follows_only_a_compressor_or_a_deesser_that_acted():
     working, makeup = _compressor(-40.0), _makeup()
     out = apply(x, FS, [cut, working, makeup])
     assert working.applied and makeup.applied and makeup.params["gain_db"] > 10.0
-    assert integrated_loudness(out, FS) == pytest.approx(integrated_loudness(x, FS), abs=0.05)
+    # the voice comes back to the level that reached the compressor, not to the chain's input:
+    # the EQ's cut is the mix's decision, the make-up gives back only what the compressor took
+    assert integrated_loudness(out, FS) == pytest.approx(integrated_loudness(apply(x, FS, [cut]), FS), abs=0.05)
+    assert integrated_loudness(out, FS) < integrated_loudness(x, FS) - 1.0
     # a de-esser that acted is enough
     sibilant = voice(seconds=8, seed=6, sibilance=1.5)
     chain = [t for t in plan_voice(measure_vocal(sibilant, FS), "lead_vocal", 1.0, False)

@@ -10,7 +10,7 @@ from eden.mix import dsp, lowend, riding, stereo
 from eden.mix.limiter import limit
 from eden.mix.loudness import integrated_loudness, true_peak_db
 from eden.mix.oversampling import meter_peak
-from eden.mix.parts import dry_render_problem, split
+from eden.mix.parts import _dry_check, split
 from eden.mix.saturation import saturate, soft_clip
 from eden.mix.space import (ReverbDesign, design_space, duck, impulse_response, render_space, reverb, tempo_delay,
                             throw_envelope)
@@ -44,6 +44,11 @@ def test_parts_add_up_to_the_original_mix(tmp_path):
 
 
 # -- key -------------------------------------------------------------------------------------
+
+def dry_render_problem(full, dry, fs):
+    """The check's verdict alone (the product uses ``_dry_check``, which also returns the lag)."""
+    return _dry_check(full, dry, fs)[0]
+
 
 def test_a_dry_render_that_does_not_fit_the_voice_is_not_used():
     v = voice(12, seed=5)
@@ -191,10 +196,16 @@ def test_mono_low_end_keeps_the_top_wide():
     assert _low_side_ratio_db(stereo.mono_below(x, FS, 120)) < _low_side_ratio_db(x) - 20
 
 
-def test_pan_is_constant_power_and_mid_side_gives_the_signal_back():
+def test_pan_never_pushes_a_channel_over_its_source_and_mid_side_gives_the_signal_back():
+    # constant power at and near the centre; towards the sides the loud channel is capped at the
+    # source's level (the plain √2 compensation put it up to +3 dB over: peaks drove the limiter)
     mono = np.ones(100)
-    energies = [float(np.sum(stereo.pan(mono, p) ** 2)) for p in (-1, -0.3, 0, 0.6, 1)]
-    assert max(energies) - min(energies) < 1e-9
+    for p in (-1, -0.85, -0.3, 0, 0.6, 0.85, 1):
+        y = stereo.pan(mono, p)
+        assert float(np.abs(y).max()) <= 1.0 + 1e-9, p
+        assert float(np.sum(y ** 2)) <= 2 * 100 + 1e-6
+    assert float(np.sum(stereo.pan(mono, 0.0) ** 2)) == pytest.approx(200.0)  # unity at the centre
+    assert float(np.sum(stereo.pan(mono, 1.0) ** 2)) == pytest.approx(100.0)  # hard side: one channel, 0 dB
     x = np.stack([np.ones(10), np.zeros(10)], 1)
     mid, side = stereo.mid_side(x)
     assert np.array_equal(stereo.from_mid_side(mid, side), x)
@@ -378,7 +389,9 @@ def test_adlib_phrases_alternate_sides_without_losing_power():
         seg = y[int(start * FS):int(end * FS)]
         sides.append(10 * math.log10(np.sum(seg[:, 0] ** 2) / np.sum(seg[:, 1] ** 2)))
     assert sides[0] * sides[1] < 0 and sides[1] * sides[2] < 0 and min(map(abs, sides)) > 5
-    assert np.sum(y ** 2) == pytest.approx(np.sum(v ** 2), rel=1e-6)
+    # at most 3 dB under the source's power (the loud channel is capped at the source: no +3 dB
+    # peaks driving the limiter), and never above it
+    assert np.sum(v ** 2) * 0.5 < np.sum(y ** 2) <= np.sum(v ** 2) * (1 + 1e-6)
 
 
 def test_a_double_that_copies_the_lead_stays_centred():

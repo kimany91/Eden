@@ -103,6 +103,20 @@ def short_term_loudness(x: np.ndarray, fs: float) -> np.ndarray:
     return block_loudness(x, fs, block_s=3.0, overlap=1 - 0.1 / 3.0)
 
 
+FELT_PERCENTILE = 95.0
+
+
+def felt_loudness(x: np.ndarray, fs: float) -> float:
+    """How loud the song FEELS: the loudness its loud sections hold (95th percentile of the 3 s
+    short-term loudness, over the windows above the absolute gate). A song with quiet verses and a
+    full hook feels as loud as its hook; its average (integrated) sits far lower, and a master
+    aimed on the average over-gains it — the hook saturates and the verses swell (heard by a
+    user). −inf when the signal is silent."""
+    st = short_term_loudness(x, fs)
+    st = st[st > ABS_GATE]
+    return float(np.percentile(st, FELT_PERCENTILE)) if st.size else -math.inf
+
+
 def loudness_range(x: np.ndarray, fs: float) -> float:
     """EBU Tech 3342 loudness range in LU (0 for signals shorter than a few seconds)."""
     st = short_term_loudness(x, fs)

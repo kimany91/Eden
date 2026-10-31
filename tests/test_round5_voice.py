@@ -1,12 +1,12 @@
-"""A voice's chain, fifth review round: the make-up reuses the loudness the chain measured on the voice as it
-came in, and the send's de-esser splits the voice once; both give the same sound as before."""
+"""A voice's chain, fifth review round, revised: the make-up gives back only what compressors and
+de-essers took — measured as the voice reaches the first of them, never as it came into the chain
+(that gave back what breaths and filters removed and over-boosted the voice) — and the send's
+de-esser splits the voice once."""
 
 import numpy as np
 
 from eden.mix import dsp, space, treatments
-from eden.mix.analysis import measure_vocal
-from eden.mix.engine import _chain
-from eden.mix.parts import Part
+from eden.mix.loudness import integrated_loudness
 from eden.mix.treatments import Treatment, apply
 from synth_voice import FS, voice
 
@@ -29,21 +29,24 @@ def _counting(monkeypatch, module, name):
     return calls
 
 
-def test_the_make_up_reuses_the_loudness_measured_on_the_voice_as_it_came_in(monkeypatch):
+def _shelf():
+    return Treatment("shelf", "Recul", "test", {"freq_hz": 200.0, "gain_db": -4.0, "high": True})
+
+
+def test_the_make_up_gives_back_only_what_the_dynamics_took(monkeypatch):
     x = voice(seconds=8, seed=3)
-    measured = apply(x, FS, _chain_steps())
+    # a shelf lowers the whole voice before the compressor: the make-up must not give that back
+    # (measured from the chain's input, it also returned what breaths and filters had removed)
     calls = _counting(monkeypatch, treatments, "integrated_loudness")
-    given = apply(x, FS, steps := _chain_steps(), input_lufs=measure_vocal(x, FS).loudness_lufs)
-    assert np.array_equal(given, measured) and steps[1].applied
-    assert len(calls) == 1 and calls[0] is not x  # only the voice as it goes out is measured
-
-
-def test_the_chain_gives_the_make_up_the_loudness_it_measured(monkeypatch):
-    x = voice(seconds=8, seed=3, sibilance=1.5)
-    calls = _counting(monkeypatch, treatments, "integrated_loudness")
-    _, _, _, result = _chain(Part("ch0", "Lead", "lead_vocal", x, [0]), FS, 1.0, "none", 95.0)
-    assert any(t.kind == "makeup" for t in result.treatments)
-    assert not any(c is x for c in calls)
+    y = apply(x, FS, steps := [_shelf(), *_chain_steps()])
+    assert steps[-1].applied
+    # measured twice: as the voice reaches the compressor, and as it goes out — never the chain's input
+    assert len(calls) == 2 and not any(c is x for c in calls)
+    monkeypatch.undo()
+    at_dynamics = integrated_loudness(apply(x, FS, [_shelf()]), FS)
+    out = integrated_loudness(y, FS)
+    assert abs(out - at_dynamics) < 0.1  # back to the level that reached the compressor...
+    assert out < integrated_loudness(x, FS) - 1.5  # ...not to the input's: the shelf's cut stays
 
 
 def test_the_send_deesser_splits_the_voice_once_and_touches_only_its_high_band(monkeypatch):

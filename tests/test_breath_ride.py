@@ -36,7 +36,7 @@ def test_breaths_are_found_and_brought_down_before_compression():
     m = measure_vocal(v, FS)
     treatments = plan_voice(m, "lead_vocal", 1.0, False)
     assert treatments[0].kind == "breath"  # first: everything after raises what is left loud
-    y = apply(v, FS, treatments, input_lufs=m.loudness_lufs)
+    y = apply(v, FS, treatments)
     breath_treatment = next(t for t in treatments if t.kind == "breath")
     assert breath_treatment.applied and "respiration" in breath_treatment.label
     assert _rms_db(y, *BREATH) < _rms_db(v, *BREATH) - 3.0  # the breath goes down
@@ -44,7 +44,7 @@ def test_breaths_are_found_and_brought_down_before_compression():
 
     # without the stage, the same chain raises the breath: the bug the user heard
     rest = [t for t in plan_voice(m, "lead_vocal", 1.0, False) if t.kind != "breath"]
-    raised = apply(v, FS, rest, input_lufs=m.loudness_lufs)
+    raised = apply(v, FS, rest)
     assert _rms_db(raised, *BREATH) > _rms_db(v, *BREATH) + 1.0
 
 
@@ -66,10 +66,11 @@ def test_every_ride_needs_its_cause_and_stays_small():
     assert r.moved >= 1 and r.max_change_db <= riding.MAX_RIDE_DB == 3.0
     # a phrase is raised only as far as the voice dropped plus the beat rose: never more than its cause
     _, voice_db, beat_db, _ = riding.phrase_levels(sig, beat(30), FS, 95.0)
-    v_med, b_med = float(np.median(voice_db)), float(np.median(beat_db))
+    anchor = float(np.percentile(voice_db[np.isfinite(voice_db)], 75))
+    b_med = float(np.median(beat_db))
     for p, v_db, b_db in zip(r.phrases, voice_db, beat_db, strict=True):
         if p.gain_db > 0:
-            assert p.gain_db <= max(0.0, v_med - v_db) + max(0.0, b_db - b_med) + 1e-6
+            assert p.gain_db <= max(0.0, anchor - v_db) + max(0.0, b_db - b_med) + 1e-6
 
 
 def test_a_take_with_a_printed_reverb_gets_no_space_on_top():

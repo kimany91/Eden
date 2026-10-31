@@ -81,6 +81,9 @@ MAX_LEVEL_CHANGE_DB = 4.0
 # static level change of a lead (or of leads that sing together) against the beat: a raw vocal over an
 # already mastered beat can sit 10 dB under it (choix d'Eden)
 MAX_LEAD_CHANGE_DB = 10.0
+# ...but a PRINTED performance (takes recorded through their FL chain) was levelled by the artist:
+# Eden nudges it at most this far and otherwise says what to change in FL (choix d'Eden)
+PRINTED_LEAD_CHANGE_DB = 4.0
 MAX_CARVE_DB = 3.0  # dip of the beat in one band while the lead sings
 # bands left out of the carve (choix d'Eden): the beat covers the voice there by more than this, so even dipped
 # MAX_CARVE_DB the voice stays more than 9 dB under it (by ANSI S3.5's audibility, that dip would still gain as much
@@ -225,7 +228,7 @@ def _chain(v: Part, fs: float, k: float, status: str, tempo_bpm: float | None
     m = measure_vocal(source, fs)
     treatments = plan_voice(m, v.role, k, status == "untracked", produced=status == "printed")
     hold = tail_hold(m, source, fs, tempo_bpm) if status == "untracked" else None
-    processed = apply(source, fs, treatments, hold=hold, input_lufs=m.loudness_lufs) if treatments else source
+    processed = apply(source, fs, treatments, hold=hold) if treatments else source
     treatments = [t for t in treatments if t.applied]
     fl_wet = None
     before = m.loudness_lufs
@@ -358,6 +361,9 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
 
     results: dict[str, PartResult] = {}
     shape = parts.premaster.shape
+    # takes recorded through their FL chain: their levels and phrase dynamics are the artist's
+    all_printed = bool(parts.voices) and all(fl_space.get(v.key) == "printed" for v in parts.voices)
+    lead_reach = PRINTED_LEAD_CHANGE_DB if all_printed else MAX_LEAD_CHANGE_DB
 
     # -- 1. the leads' chains ------------------------------------------------------------
     # kept until they are balanced together, in 32-bit float like the parts (half the memory); their FL
@@ -464,8 +470,7 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         # ONE static change for the whole vocal performance, measured on all the leads together: sections
         # the artist set apart (a quiet verse, a stacked hook) keep their distances — set cluster by
         # cluster, a quiet section was pulled up to the same balance as a loud one (heard by a user)
-        performance = _level_change(balance_against(all_leads, uncarved, fs), LEAD_BALANCE, k,
-                                    MAX_LEAD_CHANGE_DB)
+        performance = _level_change(balance_against(all_leads, uncarved, fs), LEAD_BALANCE, k, lead_reach)
         for i, together in enumerate(clusters):
             copied = copies_in(i) if performance > 0 and len(together) > 1 else {}
             planned.update({v.key: 0.0 if v.key in copied else performance for v in together})
@@ -567,35 +572,36 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
     before = counts()
     target = (f"visé {LEAD_BALANCE[0]:+.0f} dB, accepté de {LEAD_BALANCE[1]:+.0f} à {LEAD_BALANCE[2]:+.0f} dB "
               "(mesure BS.1770, où une voix lit environ 2 LU plus bas qu'à l'oreille)")
+    one_gain = (" ; un seul gain pour toutes les voix principales, mesuré sur leur somme : tes sections "
+                "gardent leurs écarts" if len(clusters) > 1 else "")
+    change = 0.0
     for i, together in enumerate(clusters):
+        # every cluster AND every take singing alone gets the same change, the performance's own
+        # (measured on the carved beat, as it will be heard), so sections keep their distances: set one
+        # by one, a quiet verse was pulled up to the balance of a full hook (heard by a user)
+        current = balance_against(levels[together[0].key] if len(together) == 1 else as_one[i], beat, fs)
+        if i == 0:
+            change = _level_change(current if len(clusters) == 1
+                                   else balance_against(all_leads, beat, fs),
+                                   LEAD_BALANCE, k, lead_reach)
         if len(together) == 1:
             v = together[0]
-            current = balance_against(levels[v.key], beat, fs)
-            set_level(v, _level_change(current, LEAD_BALANCE, k, MAX_LEAD_CHANGE_DB),
-                      f"voix {current:+.1f} dB par rapport à l'instru pendant qu'elle chante ; {target}")
+            set_level(v, change, f"voix {current:+.1f} dB par rapport à l'instru pendant qu'elle "
+                      f"chante{one_gain} ; {target}")
             # a static gain moves the balance by exactly that many dB
             still_off(f"« {v.label} »", False, "de l'instru pendant qu'elle chante",
                       current + results[v.key].level_change_db, LEAD_BALANCE,
                       ("monte la voix ou baisse l'instru dans FL Studio",
                        "baisse la voix ou monte l'instru dans FL Studio"))
             continue
-        # takes sung at the same moments add up: they are set as one, their balance kept; and every
-        # cluster gets the same change, the performance's own (measured on the carved beat, as it will be
-        # heard), so sections keep their distances
-        current = balance_against(as_one[i], beat, fs)
-        if i == 0:
-            change = _level_change(current if len(clusters) == 1
-                                   else balance_against(all_leads, beat, fs),
-                                   LEAD_BALANCE, k, MAX_LEAD_CHANGE_DB)
-        copied = copies_in(i) if change > 0 else {}
+        copied = copies_in(i) if performance > 0 else {}  # the same gate the carve was planned with
         kept = [f"« {v.label} »" for v in together if v.key in copied]
         s = "s" if len(kept) > 1 else ""
         names = " + ".join(f"« {v.label} »" for v in together)
         what = (names + f", qui chantent ensemble : {current:+.1f} dB "
                 "par rapport à l'instru pendant qu'elles chantent, réglées d'un même gain"
                 + (f" sauf {', '.join(kept)} (copie{s}, jamais montée{s})" if kept else "")
-                + (" ; un seul gain pour toutes les voix principales, mesuré sur leur somme : tes sections "
-                   "gardent leurs écarts" if len(clusters) > 1 else "") + f" ; {target}")
+                + one_gain + f" ; {target}")
         for v in together:
             if v.key in copied:
                 label, corr = copied[v.key]
@@ -632,9 +638,13 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
         staged[v.key] = (processed, fl_wet, sings)
     # ONE gain for the whole vocal performance, read on the leads together: every voice follows it, so
     # stacks (doubles, backs over the lead) keep the balance the artist gave them — ridden one by one,
-    # two takes of one hook could drift apart and their sum jump out or clip (heard by a user)
-    r = ride(ride_source, beat, fs, tempo_bpm, k) if reference is not None else ride(ride_source, beat, fs,
-                                                                                     tempo_bpm, 0.0)
+    # two takes of one hook could drift apart and their sum jump out or clip (heard by a user).
+    # A PRINTED performance is not ridden at all: the artist set each phrase's level on purpose —
+    # evened out, a soft verse came back loud and a pushed line came back tame (heard by a user)
+    r = ride(ride_source, beat, fs, tempo_bpm,
+             k if reference is not None and not all_printed else 0.0)
+    if all_printed and reference is not None:
+        tell("Suivi phrase par phrase : rien à faire, tes prises portent déjà leurs niveaux (prises produites)")
     del ride_source
     shared = sum(1 for *_, sings in staged.values() if sings) + len(others) > 1
     for v in leads:
@@ -775,7 +785,10 @@ def mix(parts: Parts, intensity: float, tempo_bpm: float | None, fl_space: dict[
     final = beat + voices_sum + returns_sum
     staging = 0.0
     mix_lufs = integrated_loudness(final, fs)
-    if math.isfinite(mix_lufs) and math.isfinite(premaster_lufs) and abs(premaster_lufs - mix_lufs) >= 0.01:
+    if math.isfinite(mix_lufs) and math.isfinite(premaster_lufs) and premaster_lufs - mix_lufs <= -0.01:
+        # a mix that came out LOUDER goes back to the level it came in at; one that came out quieter
+        # (voices lowered) stays there — raised back, the untouched beat's peaks would drive the master
+        # hotter than FL ever played them (heard as saturation, different at each version)
         staging = premaster_lufs - mix_lufs
         final = _gain(final, staging)
     ordered = [results[p.key] for p in [*parts.voices, *parts.groups, parts.residual] if p.key in results]

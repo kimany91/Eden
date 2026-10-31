@@ -23,12 +23,13 @@ phrases around it:
    further than ``TOLERANCE_DB`` from it gets the gain that brings it back,
    clamped to ±``MAX_RIDE_DB`` times the intensity. Every move needs its
    cause in the signal: a phrase is brought down only as far as the voice
-   itself got louder than its median phrase (a beat that got quieter is
-   never a reason to lower the voice), and brought up only as far as the
-   voice got quieter plus the beat got louder — except a phrase the artist
-   dropped by ``SOFT_DB`` or more: rapping softly is a performance choice,
-   never raised. A phrase more than ``FAINT_DB`` under the voice's median
-   phrase is no phrase at all (a breath, bleed) and is left alone;
+   itself got louder than its full phrases (their 75th percentile — a
+   median slides on a half-quiet song; a beat that got quieter is never a
+   reason to lower the voice), and brought up only as far as the voice got
+   quieter plus the beat got louder — except a phrase the artist dropped by
+   ``SOFT_DB`` or more under the full phrases: rapping softly is a
+   performance choice, never raised. A phrase more than ``FAINT_DB`` under
+   them is no phrase at all (a breath, bleed) and is left alone;
 5. each phrase keeps its gain through the rest that follows it (an FL echo
    tail stays at its phrase's level) and the next gain fades in during the
    end of that rest, never on a word.
@@ -45,7 +46,7 @@ from eden.mix import dsp
 from eden.mix.loudness import k_weighting
 
 MAX_RIDE_DB = 3.0  # far under a vocal rider's default ±6 dB: riding should never be heard working
-SOFT_DB = 6.0  # a phrase the artist dropped this far under their median phrase is a choice: never raised
+SOFT_DB = 6.0  # a phrase the artist dropped this far under their full phrases is a choice: never raised
 TOLERANCE_DB = 2.0  # phrases this close to the song's balance are left alone
 FAINT_DB = 10.0  # a "phrase" this far under the voice's median phrase is a breath or bleed: left alone
 MASKING_FROM_HZ = 200.0  # the beat is measured above this: the band that masks words
@@ -178,8 +179,10 @@ def ride(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None
     if heard.sum() < 2:
         return unity
     beat_median = float(np.median(beat_db[heard]))
-    voice_median = float(np.median(voice_db[np.isfinite(voice_db)]))
-    faint = ~np.isfinite(voice_db) | (voice_db < voice_median - FAINT_DB)
+    # the voice's anchor is its FULL phrases (75th percentile): a median slides on a half-quiet song
+    # and the soft/faint guards then fail exactly on the quiet-verse songs they protect
+    voice_anchor = float(np.percentile(voice_db[np.isfinite(voice_db)], 75))
+    faint = ~np.isfinite(voice_db) | (voice_db < voice_anchor - FAINT_DB)
     exposed = ~heard | (beat_db < beat_median - EXPOSED_DB) | faint
     compared = np.isfinite(diffs) & ~exposed
     if compared.sum() < 2:
@@ -194,10 +197,10 @@ def ride(voice: np.ndarray, beat: np.ndarray, fs: float, tempo_bpm: float | None
         g = 0.0
         if compared[i] and abs(d - reference) > TOLERANCE_DB:
             move = reference - d
-            if move < 0:  # down only as far as the voice itself got louder than its median phrase
-                move = max(move, -max(0.0, v - voice_median))
+            if move < 0:  # down only as far as the voice itself got louder than its full phrases
+                move = max(move, -max(0.0, v - voice_anchor))
             else:  # up only as far as the voice got quieter plus the beat got louder
-                drop = voice_median - v
+                drop = voice_anchor - v
                 if drop >= SOFT_DB:  # the artist dropped on purpose: never raised
                     move = 0.0
                 else:

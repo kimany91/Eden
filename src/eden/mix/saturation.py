@@ -33,8 +33,12 @@ def saturate(x: np.ndarray, fs: float, drive: float, mix: float = 1.0, asymmetry
 
 
 def clip_curve(u: np.ndarray, ceiling: float) -> np.ndarray:
-    """The soft clipper's curve: linear up to 70 % of ``ceiling``, then a tanh knee to it."""
-    knee = 0.7 * ceiling
+    """The soft clipper's curve: linear up to 85 % of ``ceiling``, then a tanh knee to it.
+
+    At 70 % the shaping started 3 dB under the ceiling: at a loud target almost everything loud
+    (vocal sustains, the 808's body) sat in the knee and was saturated all the time (heard as a
+    crunchy, robotic edge). At 85 % (−1.4 dB) only the peaks are rounded."""
+    knee = 0.85 * ceiling
     out = u.copy()
     over = np.abs(u) > knee
     excess = (np.abs(u[over]) - knee) / (ceiling - knee)

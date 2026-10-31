@@ -147,11 +147,11 @@ compressée pompe : retours d'écoute d'un utilisateur).
 
 | Étape | Mesure | Eden agit si… | Traitement à 100 % | Statut |
 |---|---|---|---|---|
-| Respirations | segments entre les phrases (lues sur la bande voisée 120 Hz – 3,5 kHz, à 60 ms au moins des phrases), 0,08 à 1,2 s, plus forts que le plancher (chant − 60 dB) et dont la bande de bruit (2–9 kHz) monte au niveau de la bande voisée (médiane ≥ −6 dB) : du souffle, pas une note ni un mot | une respiration détectée dépasse chant − 23 dB | ramenées à 22 dB sous le chant (P95), 15 dB de réduction max, fondus de 20 ms ; les plus douces ne bougent pas ; **avant toute compression**, qui les remonterait | pratique standard (Waves DeBreath, iZotope Breath Control mode Target : les fortes baissées, les douces laissées) ; seuils : choix d'Eden |
+| Respirations | segments entre les phrases (lues sur la bande voisée 120 Hz – 3,5 kHz, à 120 ms au moins des phrases : ni attaque ni fin de mot), 0,08 à 1,2 s, plus forts que le plancher (chant − 60 dB) mais **sous chant − 8 dB** (aussi fort que la voix, c'est une fricative de fin de mot ou un cri, pas une respiration), et dont la bande de bruit (2–9 kHz) monte au niveau de la bande voisée (médiane ≥ −6 dB) : du souffle, pas une note ni un mot | une respiration détectée dépasse chant − 23 dB | ramenées à 22 dB sous le chant (P95), 15 dB de réduction max, fondus de 20 ms ; les plus douces ne bougent pas ; **avant toute compression**, qui les remonterait | pratique standard (Waves DeBreath, iZotope Breath Control mode Target : les fortes baissées, les douces laissées) ; seuils : choix d'Eden |
 | Coupe-bas | pendant le chant : énergie **une octave sous la coupe prévue**, là où le filtre retire 12 dB ou plus (spectre au hertz près) ; dans les **silences entre les phrases** (au moins 250 ms où la bande de la voix entre 100 et 500 Hz reste à 35 dB sous ses passages forts, silence numérique écarté ; lus par tranches de 250 ms, spectre tous les 4 Hz) : puissance **sous la coupe prévue** par rapport à la voix chantée ; note la plus grave (5ᵉ centile du F0) | > −32 dB de l'énergie de la voix pendant le chant, **ou** > −40 dB dans les silences | 80 Hz lead, 130 Hz doublages / ad-libs, 160 Hz chœurs, **jamais au-dessus de 0,9 × la note la plus grave** | fréquences non vérifiées (Jaycen Joshua ~50 Hz, Lil Baby ~70 Hz) ; « coupe-bas partout » est une idée fausse (Pestana & Reiss 2014) : d'où le déclencheur ; règle du F0, mesures et seuils : choix d'Eden (juste sous la coupe, la voix elle-même sonne encore pendant le chant : notes sous le 5ᵉ centile, attaques des syllabes ; dans les silences, elle se tait. Voix de test : propres, −33,9 dB au plus pendant le chant, et rien dans leurs silences (silence numérique) ; avec un grondement à −54 dBFS RMS, −31,5 dB au moins. Un grondement plus faible ne se distingue pas, pendant le chant, des attaques d'une voix grave : dans les silences (graines 1 à 8, voix normale et grave, lead, doublage et chœur), un grondement à −60 dBFS RMS lit −37,2 à −35,1 dB, coupé ; à −66 dBFS RMS, −43,2 à −41,2 dB, gardé ; un bruit de fond rose à −70 dBFS, −53,1 à −50,9 dB, et à −60 dBFS, −43,1 à −40,9 dB, gardés ; les queues d'une reverb FL de 1,5 s à −12 dB, −58,2 dB au plus) |
 | Résonances fixes | 150–2000 Hz : chaque harmonique du chant comparée à la droite (dB contre log f) de ses voisines au même instant, jusqu'à une octave de chaque côté, en moyenne sur le chant (une fondamentale n'a pas de voisine en dessous : les notes ne sont jamais jugées) ; 2–8 kHz : enveloppe LPC moyenne | 150–2000 Hz : ≥ 4,5 dB sur 1/8 d'octave **et** 4,5 dB au-dessus des bandes à 1/6–1/3 d'octave (un formant de voyelle bouge et s'étale) ; 2–8 kHz : ≥ 4,5 dB au-dessus de la moyenne sur une octave ; pas sur une note tenue | coupes étroites (Q 6), −4 dB max, 3 au plus, à 1/3 d'octave l'une de l'autre au moins | atténuer les résonances saillantes : sourcé (Pestana & Reiss 2014) ; méthode et seuils : choix d'Eden |
 | Bas-médiums | même mesure des harmoniques, moyennée sur un tiers d'octave, entre 150 et 500 Hz, seulement là où des harmoniques ont été mesurées (à 1/16 d'octave près), toutes notes confondues **et note par note** : les trames où la voix a une hauteur nette sont groupées en notes (l'étendue d'un demi-ton qui en réunit le plus forme une note, mise de côté avant de chercher la suivante : une note chantée entre deux demi-tons reste une seule note, avec son vibrato tant qu'il tient dans un demi-ton ; au-delà, elle compte pour deux) ; et 200–500 Hz vs 1–4 kHz (spectre moyen) | bosse ≥ 2,5 dB toutes notes confondues, **vue sur deux notes au moins** : chacune, sur ses propres harmoniques du tiers d'octave (20 au moins), les lève d'au moins 1,5 dB en moyenne et les place au-dessus de la droite de leurs voisines dans 90 % des cas au moins ; et écart > 6 dB ; pas sur une note tenue, ni à moins d'1/3 d'octave d'une coupe de résonance | −2,9 à −4 dB, Q 1,2, à la fréquence de la bosse | une coupe aveugle des bas-médiums n'est **pas** une pratique d'expert (Pestana & Reiss 2014, sourcé) : seulement sur une vraie bosse ; règle des deux notes et seuils : choix d'Eden. Une bosse fixe (effet de proximité, son de boîte) lève les harmoniques de chaque note, à chaque fois ; le premier formant des voyelles bouge d'une syllabe à l'autre. Voix de test, graines 1 à 20 : une bosse de +6 dB à 200, 300 ou 400 Hz lit 2,94 dB au moins, vue sur 2 à 6 notes, dont deux au moins au-dessus de la droite dans 100 % des cas (à 200 Hz, seules les notes de 98 et 110 Hz ont des harmoniques dans le tiers d'octave où elle est lue). Une voix propre dont les notes les plus graves sont entre 220 et 250 Hz, avec ou sans plateau de +1,4 à +3 dB sous 300 Hz, ne montre de bosse sur deux notes nulle part : la 2ᵉ harmonique de ses notes les plus graves tombe sur le premier formant des voyelles, juste sous 500 Hz, et lit jusqu'à 3,6 dB toutes notes confondues (sur la graine 11, huit de ces voix étaient coupées à tort avant cette règle), mais là où la bosse toutes notes confondues atteint 2,5 dB avec plus de 6 dB d'écart, une note n'est au-dessus de la droite que dans 85 % des cas au plus, et la deuxième dans 74 % au plus. Limites : une voix qui ne chante qu'une seule note dont les harmoniques tombent dans la bosse n'est pas corrigée (une coupe manquée coûte moins qu'une coupe à tort) ; sur la graine 11, la bosse de +6 dB à 400 Hz est lue à 456 Hz, où elle monte encore de 4,7 dB, et la coupe y garde 91 % de sa profondeur à 400 Hz ; la règle des 90 % n'est vérifiée que sur des voix de synthèse |
-| De-esser léger | niveau des « s » les plus forts (90ᵉ centile) **dans la bande du de-esser** vs voyelles (75ᵉ centile) : ce que le de-esser compare à son seuil ; pic spectral des « s » | « s » à moins de 1 dB sous les voyelles | seuil = voyelles − 2 dB, 3 dB max, bande dès 0,7 × le pic des « s » (3,5–8 kHz ; 4,5 kHz sans pic mesuré), anticipation 5 ms | deux de-essers (avant / après compression) : non vérifié (Senior) |
+| De-esser léger | niveau des « s » les plus forts (90ᵉ centile) **dans la bande du de-esser** vs voyelles (75ᵉ centile) : ce que le de-esser compare à son seuil ; pic spectral des « s » | « s » à moins de 1 dB sous les voyelles | seuil = voyelles − 2 dB, 3 dB max, bande dès 0,7 × le pic des « s » (3,5–8 kHz ; 4,5 kHz sans pic mesuré), anticipation 5 ms ; détecteur lissé 5 ms et attaque 3 ms (les deux de-essers) : lu sur les trames brutes de 1 ms, le gain ondulait au rythme de la hauteur de la voix — un son « crunchy », robotique (retour d'écoute) | deux de-essers (avant / après compression) : non vérifié (Senior) |
 | Compression de niveau | écart P90 − P10 des blocs de 400 ms **à l'intérieur des phrases** | > 4 dB | 1,5:1 (écart de 4 dB) à 3:1 (10 dB et plus), attaque 10 ms, relâchement 60 ms puis 800 ms après 200 ms de réduction (type opto), seuil pour 3 dB sur le P90 du chant | chiffres non vérifiés (SOS, LA-2A) ; choix d'Eden |
 | Compression des crêtes | facteur de crête | > 9 dB | 4:1, attaque 2 ms, relâchement 80 ms, 6 dB max, 3 dB sur le P97 | non vérifié (1176) ; choix d'Eden |
 | Parallèle | facteur de crête | > 12 dB, voix principale et ad-libs (jamais sur une voix prudente) | copie 8:1, 100 Hz – 5 kHz, mélangée à 20 % (ad-libs 10 %), alignée à l'échantillon | pratique non vérifiée (bus parallèle des sessions rap) |
@@ -159,7 +159,7 @@ compressée pompe : retours d'écoute d'un utilisateur).
 | Air | > 8 kHz vs 2–5 kHz sur les voyelles | < −25 dB | +1,5 dB au-dessus de 10 kHz | choix d'Eden |
 | Recul | — (doublages, chœurs, ad-libs) | toujours | −1,5 à −2 dB au-dessus de 7 kHz | choix d'Eden |
 | De-esser principal | « s » dans la bande du de-esser vs voyelles | « s » à moins de 5 dB sous les voyelles | seuil = voyelles − 6 dB, 2 à 6 dB (lead), jusqu'à 8 dB (autres), même bande | non vérifié (Pro-DS en fin de chaîne) |
-| Gain de compensation | volume BS.1770 avant / après la chaîne | dès qu'un compresseur ou un de-esser agit (s'ils restent tous inactifs, aucun gain : l'écart ne viendrait que des filtres, de la saturation ou de la compression parallèle) | rend à la voix le volume que la chaîne lui a pris | le niveau de la voix dans le mix est ensuite décidé sur une mesure, à un seul endroit |
+| Gain de compensation | volume BS.1770 **juste avant le premier compresseur ou de-esser** / après la chaîne | dès qu'un compresseur ou un de-esser agit (s'ils restent tous inactifs, aucun gain : l'écart ne viendrait que des filtres, de la saturation ou de la compression parallèle) | rend à la voix le volume que compresseurs et de-essers lui ont pris — pas ce que respirations et filtres ont retiré : mesuré depuis l'entrée de la chaîne, il rendait aussi ce volume-là et remontait les respirations à peine baissées | le niveau de la voix dans le mix est ensuite décidé sur une mesure, à un seul endroit |
 
 ## 3. Niveaux et suivi
 
@@ -179,6 +179,11 @@ choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Dou
   l'entend (Pestana & Reiss 2013, non vérifié en texte intégral). Le classement du rap
   parmi les genres « voix devant » (Gerdes & Siedenburg 2023) et la préférence des auditeurs
   pour une voix 3 à 6 dB plus forte (Knoll & Siedenburg 2022) n'ont pas pu être ouverts.
+  Quand **toutes les voix sont des prises déjà produites** (enregistrées à travers leur chaîne
+  FL : Auto-Tune, reverb imprimés — reconnues à l'oreille, voir § 4), leurs niveaux sont ceux
+  que l'artiste a validés en enregistrant : le changement statique est borné à **±4 dB** au
+  lieu de 10 (retour d'écoute d'un utilisateur : une voix posée basse exprès, remontée de
+  10 dB, saturait le master).
 - **Voix restée hors de sa fenêtre** : l'intensité règle la part du changement qu'Eden fait
   (à 50 %, la moitié). Si, ce changement fait, la voix reste hors de sa fenêtre (un gain
   statique déplace l'équilibre d'autant de dB), Eden le signale dans les avertissements avec
@@ -206,20 +211,24 @@ choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Dou
   ressenti, lues sur la **bande voisée** de la voix (120 Hz – 3,5 kHz, là où vivent les
   voyelles) : une respiration, la fuite du casque ou une queue d'effet n'y passent pas pour
   une phrase — la détection de respiration qu'ont les Vocal Riders du commerce, pour ne
-  jamais remonter une respiration (choix d'Eden) ; une « phrase » à plus de 10 dB sous la
-  phrase médiane de la voix n'en est pas une (respiration, fuite) : laissée telle quelle.
+  jamais remonter une respiration (choix d'Eden) ; une « phrase » à plus de 10 dB sous les
+  phrases pleines de la voix (leur 75e centile — une médiane glisse sur un morceau à moitié
+  posé et laissait passer les respirations) n'en est pas une (respiration, fuite) : laissée
+  telle quelle.
   L'instru est mesurée **au-dessus de 200 Hz**, la bande qui couvre les paroles (le sub d'un
   808 les masque à peine ; choix d'Eden) ; référence = l'équilibre médian de la voix sur tout
   le morceau (pas une valeur fixe) ; une phrase à plus de 2 dB de cette référence est
   ramenée, ±3 dB max (loin sous la plage par défaut ±6 dB d'un Vocal Rider : le suivi ne doit
   jamais s'entendre travailler ; choix d'Eden). **Chaque gain doit avoir sa cause dans le
-  signal** : une phrase n'est baissée que de ce dont la voix elle-même dépasse sa phrase
-  médiane (l'instru qui se retire n'est jamais une raison de baisser la voix), et n'est
-  montée que de ce dont la voix est sous sa médiane plus ce dont l'instru dépasse la sienne
-  (un écart sans cause mesurée — prises qui se chevauchent, mesure incertaine — ne bouge
-  pas). Une phrase que l'artiste a baissée de 6 dB ou plus sous sa médiane est un choix de
-  jeu (rapper doucement) : jamais remontée (retour d'écoute d'un utilisateur : « quand je rap
-  doucement, ça sonne ultra fort d'un coup »). **Un seul gain pour toutes les voix**, lu sur
+  signal** : une phrase n'est baissée que de ce dont la voix elle-même dépasse ses phrases
+  pleines (leur 75e centile ; l'instru qui se retire n'est jamais une raison de baisser la
+  voix), et n'est montée que de ce dont la voix est sous elles plus ce dont l'instru dépasse
+  sa phrase médiane (un écart sans cause mesurée — prises qui se chevauchent, mesure
+  incertaine — ne bouge pas). Une phrase que l'artiste a baissée de 6 dB ou plus sous ses
+  phrases pleines est un choix de jeu (rapper doucement) : jamais remontée (retour d'écoute
+  d'un utilisateur : « quand je rap doucement, ça sonne ultra fort d'un coup »). Quand toutes
+  les voix sont des prises déjà produites, le suivi est coupé : leurs variations de niveau
+  sont celles de la prise validée, pas un accident à corriger. **Un seul gain pour toutes les voix**, lu sur
   les voix principales réunies, suivi par les doublages, chœurs et ad-libs : suivis chacun de
   leur côté, deux prises d'un même refrain dérivaient l'une de l'autre et leur somme sortait
   du mix ou saturait (retour d'écoute). Une phrase où l'instru est à plus de 6 dB sous sa phrase médiane (break, filtre,
@@ -249,7 +258,7 @@ choisir son type dans Eden : renomme la piste dans FL Studio (« Lead », « Dou
 
 Rien n'est ajouté à une voix qui porte déjà une reverb ou un delay FL, ni à une prise qui
 **sonne déjà réverbérée** : si, après les fins de phrase suivies d'un silence, l'enregistrement
-lui-même continue de sonner à moins de 40 dB sous le chant (médiane sur au moins 3 fins de
+lui-même continue de sonner à moins de 48 dB sous le chant (médiane sur au moins 2 fins de
 phrase, fenêtre 80–300 ms après la phrase ; choix d'Eden), une reverb ou un delay a été
 enregistré dans la prise (FL enregistre la piste du Mixer avec ses effets) : Eden la traite
 comme une voix « prudente » et n'ajoute rien par-dessus. Pour les autres,
@@ -304,7 +313,11 @@ Le rap se tient sec : chaque retour reste loin sous la voix (niveaux revus à la
 - Seule la voix est placée : tes reverbs et delays FL gardent leur largeur. Ils suivent une
   voix posée d'un côté (balance, sans repasser en mono) et restent où FL les a mis sous un
   ad-lib qui change de côté.
-- Panoramique à puissance constante. Valeurs de placement : choix d'Eden.
+- Panoramique à puissance constante, **le canal fort jamais au-dessus de la source** : la
+  compensation de puissance est plafonnée à ce que le canal le plus fort reste au niveau du
+  fichier d'origine (sans ce plafond, une voix posée franchement d'un côté sortait jusqu'à
+  +3 dB au-dessus de sa prise et poussait des crêtes dans le master). Valeurs de placement :
+  choix d'Eden.
 
 ## 6. Place pour les paroles et basses
 
@@ -405,6 +418,12 @@ Le rap se tient sec : chaque retour reste loin sous la voix (niveaux revus à la
   reconstruise la note à partir des harmoniques 3 à 5 (fondamentale manquante) ; filtrées
   80–400 Hz, 14 dB sous la fondamentale (choix d'Eden), pour qu'un téléphone entende la note.
 
+À la fin du mix, son volume est comparé au morceau tel que FL le jouait (le prémaster) : un
+mix sorti **plus fort** est ramené à ce niveau avant le master ; un mix sorti plus bas (des
+voix baissées) y **reste** — remonté, les crêtes de l'instru, elle intouchée, entraient dans
+le master plus fort que FL ne les a jamais jouées (entendu comme une saturation, différente à
+chaque version).
+
 ## 7. Mastering Eden
 
 Chaîne (tout hors ligne, en float64) :
@@ -415,11 +434,14 @@ Chaîne (tout hors ligne, en float64) :
    chaque cycle et placeraient le seuil ailleurs), attaque 30 ms, relâchement sur le temps
    ressenti, ≤ 3 dB ; 1,5 dB de réduction au niveau des passages forts (sur la courbe du
    compresseur ; la réduction mesurée est affichée, voir plus bas) ;
-3. gain → clip doux suréchantillonné ×8 (arrondi à partir de 70 % du plafond du clip,
-   plafond du clip à −1 dBFS, ou −2 dBFS avec un plafond final à −3 dBTP) → limiteur
-   true-peak (sur la crête de l'onde continue, anticipation 1,5 ms : le gain descend en rampe
-   sur au moins 1,5 ms avant une crête, jamais d'un coup ; tenue 20 ms pour ne pas onduler
-   dans un cycle de 808) au plafond final.
+3. gain → clip doux suréchantillonné ×8 (arrondi à partir de 85 % du plafond du clip : à
+   70 %, tout le haut du mix vivait en permanence dans le genou et le master sonnait
+   granuleux ; plafond du clip 0,1 dB **sous** le plafond du limiteur : placé 1 dB au-dessus,
+   le limiteur reprenait chaque crête écrêtée d'un dB de plus, les deux étages travaillaient
+   en permanence) → limiteur true-peak (sur la crête de l'onde continue, anticipation 5 ms :
+   le gain descend en rampe avant une crête, jamais d'un coup ; tenue 20 ms et relâchement
+   250 ms pour ne pas onduler dans un cycle de 808 ni pomper entre deux kicks) au plafond
+   final.
 
 La tenue des notes du 808 ne se fait pas ici mais au mixage, sur les groupes 808 (§ 6) : sur
 le mix complet, les kicks gênent la lecture des notes.
@@ -428,36 +450,43 @@ Comme pour les voix (§ 2), une compression dont la réduction ne bouge pas d'au
 appliquée et n'apparaît pas dans le rapport ; celles qui agissent affichent la réduction
 mesurée (moyenne quand elles agissent, et maximum).
 
-- **Cible : −9 LUFS** intégrés (« fort, comme le rap commercial », ton choix). Les charts se
-  tiennent vers −8 LUFS (iZotope 2024, non vérifié). Au-delà, rien n'est gagné sur les
-  plateformes, qui baissent les morceaux forts, et la distorsion d'encodage augmente. Le gain
-  est visé sur une estimation rapide (le clip et la loi du limiteur sans suréchantillonnage) ;
-  une première passe réelle mesure l'écart entre l'estimation et la vraie chaîne, et le gain
-  est visé à nouveau avec cet écart. Deux passes réelles suffisent le plus souvent, trois au
-  plus ; une quatrième n'a lieu que si la troisième dépasse encore le budget.
+- **Cible : −9 LUFS ressentis** (« fort, comme le rap commercial », ton choix) : le volume
+  que **tiennent les passages forts** du morceau — le 95ᵉ centile du volume court terme
+  (fenêtres de 3 s) — pas la moyenne du morceau. Visée sur la moyenne, un couplet calme la
+  tirait vers le bas : le gain surcompensait, le refrain saturait et les couplets posés
+  sortaient trop fort (retour d'écoute d'un utilisateur : « quand le son est bas il le met
+  super fort, quand il est fort il le met super bas »). Les charts se tiennent vers −8 LUFS
+  (iZotope 2024, non vérifié). Au-delà, rien n'est gagné sur les plateformes, qui baissent
+  les morceaux forts, et la distorsion d'encodage augmente. Le gain est visé sur une
+  estimation rapide (le clip et la loi du limiteur sans suréchantillonnage) ; une première
+  passe réelle mesure l'écart entre l'estimation et la vraie chaîne, et le gain est visé à
+  nouveau avec cet écart. Deux passes réelles suffisent le plus souvent, trois au plus ; une
+  quatrième n'a lieu que si la troisième dépasse encore le budget.
 - **Budget de réduction** (choix d'Eden) : clip + limiteur ne baissent pas de plus de
-  **9 dB** les crêtes qui reviennent dans le morceau, mesurées par blocs de 50 ms (le 98,5ᵉ
+  **6 dB** les crêtes qui reviennent dans le morceau (à 9 dB d'abord essayés, les refrains
+  sortaient audiblement écrasés : retour d'écoute ; la limitation commerciale forte se tient
+  vers 3–6 dB), mesurées par blocs de 50 ms (le 98,5ᵉ
   centile des blocs réduits de plus de 0,5 dB, sans dépasser le 10ᵉ bloc le plus réduit :
   un clic, une plosive ou un seul impact au drop ne décident pas du volume de tout le
-  morceau). Un événement isolé peut aller jusqu'à **13 dB** sur 30 ms (trois blocs de 10 ms
+  morceau). Un événement isolé peut aller jusqu'à **10 dB** sur 30 ms (trois blocs de 10 ms
   de suite). Plus court, un clic écrêté reste un clic : sa réduction est affichée, pas
-  comptée. Au-delà du budget, Eden baisse le gain de l'excès et le dit : « les crêtes qui
-  reviennent » quand ce sont elles, ou le moment de l'événement isolé. Après une baisse, il
-  remonte une fois s'il reste au moins 0,3 dB de budget.
+  comptée. Au-delà du budget, Eden baisse le gain de l'excès **plus 0,5 dB** — jamais garé
+  exactement sur le bord — et le dit : « les crêtes qui reviennent » quand ce sont elles, ou
+  le moment de l'événement isolé. Une fois le budget touché, le gain ne remonte plus vers son
+  bord : il remontait, le master vivait en permanence à la limite et chaque passage dense
+  s'écrasait.
 - **Avec une instru complète**, déjà passée par le limiteur de son beatmaker, le budget sur
   les crêtes qui reviennent tombe à **5 dB** (choix d'Eden ; 9 dB pour un événement isolé) :
   le master reste un peu moins fort plutôt que d'écraser ses percussions une deuxième fois,
-  et le dit. Mesuré sur une instru de test limitée à −0,3 dBTP avec une voix de test : à
-  −8,2 LUFS, viser −9 LUFS demandait 5,8 dB, le master s'arrête à −9,4 LUFS ; à −10,8 LUFS,
-  7,6 dB, il s'arrête à −10,4 LUFS (avec 3 dB, les deux s'arrêtaient à −10,5 LUFS).
+  et le dit.
 - **Plafond** : −2 dBTP (Spotify demande ≤ −2 dBTP pour un master plus fort que −14 LUFS :
   non vérifié, cohérent avec AES TD1008). À −9 LUFS, −2 dBTP laisserait moins de 8 dB entre
   crête et volume. Sur un master aussi dense, Opus 96k et MP3 128k dépassent de 1,2 à 2,2 dB
   à l'encodage (sourcé : essais d'encodage reproduits deux fois indépendamment). Un master à
   −9 LUFS reçoit donc **−3 dBTP**, c'est le cas normal. Si le budget arrête le master plus
   bas, le plafond est choisi à nouveau sur le volume atteint : quand, à −2 dBTP, le même master
-  (1 dB plus haut, exactement : toute la chaîne suit le plafond) laisse encore au moins 8 dB
-  entre crête et volume, il passe à −2 dBTP.
+  (jusqu'à 1 dB plus haut, exactement — toute la chaîne suit le plafond — mais jamais remonté
+  au-delà de la cible) laisse encore au moins 8 dB entre crête et volume, il passe à −2 dBTP.
 - **Crête réelle** : lue deux fois. D'abord la crête de l'onde continue : reconstruction
   idéale à 8× (sans affinage, jusqu'à 0,17 dB sous-lus entre les points), affinée par une
   parabole autour du point le plus haut de chaque échantillon ; elle reste à 0,01 dB d'une

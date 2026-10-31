@@ -24,11 +24,12 @@ NOISE_BAND_HZ = (2000.0, 9000.0)  # where breath noise lives
 PHRASE_UNDER_P95_DB = 25.0  # a frame sings when its voiced band is within this of the loud frames
 PHRASE_JOIN_S = 0.15  # rests shorter than this stay inside a phrase (a 16th at most tempos)
 MIN_PHRASE_S = 0.25
-EDGE_S = 0.06  # a breath keeps this distance from the phrases: word onsets and tails are never touched
+EDGE_S = 0.12  # a breath keeps this distance from the phrases: word onsets and tails are never touched
 MIN_BREATH_S = 0.08
 MAX_BREATH_S = 1.2
 NOISY_DB = -6.0  # a segment is noise when its noise band comes within this of its voiced band
 BREATH_UNDER_DB = 22.0  # where breaths are sent: under the sung voice (iZotope's Target mode idea)
+BREATH_BELOW_SUNG_DB = 8.0  # a segment within this of the sung voice is a word's fricative or a shout, not a breath
 MAX_REDUCTION_DB = 15.0
 FADE_S = 0.02
 
@@ -90,6 +91,8 @@ def find_breaths(x: np.ndarray, fs: float, max_reduction_db: float = MAX_REDUCTI
         if float(np.median(noise_level[s:e][heard] - voiced_level[s:e][heard])) < NOISY_DB:
             continue
         peak = float(np.percentile(seg_level[heard], 95))
+        if peak > sung_db - BREATH_BELOW_SUNG_DB:
+            continue  # as loud as the voice: a trailing fricative or a shout outside the voiced band
         reduction = min(max_reduction_db, max(0.0, peak - (sung_db - BREATH_UNDER_DB)))
         if reduction < 1.0:
             continue  # a soft breath is left alone

@@ -308,7 +308,7 @@ def returns_scale(fl_wet: np.ndarray, eden_wet: np.ndarray, dry: np.ndarray, fs:
     return lo, rrl(lo)
 
 
-RECORDED_RING_DB = -40.0  # a take whose rests ring this close to its phrases carries a printed reverb
+RECORDED_RING_DB = -48.0  # a take whose rests ring this close to its phrases carries a printed reverb
 RING_WINDOW_S = (0.08, 0.30)  # read just after the phrase ends: late enough for the room, before the next breath
 
 
@@ -317,8 +317,9 @@ def recorded_space(x: np.ndarray, fs: float) -> float | None:
     it cannot be read (too few phrases followed by a rest).
 
     A dry mic take falls to the room's noise right after a word; a take recorded through a reverb
-    or delay (printed into the file) keeps ringing. Median over the phrase ends followed by a rest,
-    so open phrase ends or one echo do not decide alone."""
+    or delay (printed into the file) keeps ringing. Median over the phrase ends followed by a rest
+    (two at least), so one open phrase end does not decide alone; the threshold errs towards
+    "printed" — adding reverb on a printed one hurts, withholding it from a dry one does not."""
     from eden.mix.breath import sung_activity
 
     sung, level, _ = sung_activity(x, fs)
@@ -333,5 +334,5 @@ def recorded_space(x: np.ndarray, fs: float) -> float | None:
         window = level[e + lo:e + hi]
         if window.size:
             rings.append(float(np.median(window)) - sung_db)
-    return float(np.median(rings)) if len(rings) >= 3 else None
+    return float(np.median(rings)) if len(rings) >= 2 else None
 

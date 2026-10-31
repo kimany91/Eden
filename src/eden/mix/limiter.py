@@ -29,6 +29,8 @@ from eden.mix.oversampling import meter_envelope, peak_envelope
 
 OVERSAMPLE = 8
 HOLD_MS = 20.0  # a 40 Hz half-cycle is 12.5 ms: shorter, the gain would ripple inside each cycle
+# look-ahead 5 ms and release 250 ms: at 1.5 / 80 ms the gain swung several dB between syllables and
+# moved up to its full depth in 1.5 ms before each kick — pumping and AM crunch (audit find)
 AIM_DB = 0.04  # the gain aims this far under the ceiling, so one pass is usually enough
 READ_DB = 0.01  # the output stays this far under it: the most the continuous-peak reading can miss
 
@@ -61,8 +63,8 @@ def _peaks(x: np.ndarray, fs: float) -> np.ndarray:
     return np.maximum(peak_envelope(x, OVERSAMPLE), meter_envelope(x, fs))
 
 
-def gain_for(peak: np.ndarray, fs: float, aim: float, lookahead_ms: float = 1.5,
-             release_ms: float = 80.0) -> np.ndarray:
+def gain_for(peak: np.ndarray, fs: float, aim: float, lookahead_ms: float = 5.0,
+             release_ms: float = 250.0) -> np.ndarray:
     """Per-sample gain that brings ``peak`` (per-sample peak envelope) under ``aim`` (linear)."""
     window = max(1, int(round(lookahead_ms / 1000 * fs)))
     size = max(1, int(round(HOLD_MS / 1000 * fs))) + window + 1
@@ -77,8 +79,8 @@ def gain_for(peak: np.ndarray, fs: float, aim: float, lookahead_ms: float = 1.5,
     return uniform_filter1d(gain, size=window, origin=(window - 1) // 2, mode="nearest")
 
 
-def limit(x: np.ndarray, fs: float, ceiling_dbtp: float = -1.0, lookahead_ms: float = 1.5,
-          release_ms: float = 80.0) -> LimiterResult:
+def limit(x: np.ndarray, fs: float, ceiling_dbtp: float = -1.0, lookahead_ms: float = 5.0,
+          release_ms: float = 250.0) -> LimiterResult:
     out = x if x.ndim == 2 else x[:, None]  # never written to: each pass makes a new array
     highest = 10 ** ((ceiling_dbtp - READ_DB) / 20)  # the highest reading accepted
     aim = 10 ** ((ceiling_dbtp - AIM_DB) / 20)

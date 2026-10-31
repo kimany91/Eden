@@ -242,9 +242,14 @@ def band_levels_db(x: np.ndarray, fs: float) -> tuple[np.ndarray, int]:
 def deess_gain_db(x: np.ndarray, fs: float, threshold_db: float, max_reduction_db: float,
                   ratio: float = 4.0, low_hz: float = 4500.0, lookahead_ms: float = 5.0
                   ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-    """(sibilance band, rest, gain reduction per 1 ms frame in dB, frame size) of a de-esser."""
+    """(sibilance band, rest, gain reduction per 1 ms frame in dB, frame size) of a de-esser.
+
+    The band is read through the detector smoothing (5 ms), not on raw 1 ms frames: those ripple
+    several dB within each pitch period, and a gain following them modulates the band at the
+    voice's pitch — heard as a crunchy, robotic edge."""
     high, rest = split_band(x, fs, low_hz, None)
-    level, size = band_levels_db(high, fs)
+    power, size = detector_power(high, fs)
+    level = 10 * np.log10(np.maximum(power, 1e-20))
     return high, rest, deess_reduction_db(level, threshold_db, max_reduction_db, ratio, lookahead_ms), size
 
 
@@ -253,7 +258,7 @@ def deess_reduction_db(level: np.ndarray, threshold_db: float, max_reduction_db:
     """Gain reduction in dB per 1 ms frame of a de-esser whose sibilance band reads ``level`` (dB per
     frame): the band is lowered only when it exceeds ``threshold_db``."""
     gr = np.clip(-(level - threshold_db) * (1 - 1 / ratio), -max_reduction_db, 0.0)
-    gr = _smooth(gr, 1.0, 60.0)
+    gr = _smooth(gr, 3.0, 60.0)  # 3 ms attack: the gain never chases the ripple inside a pitch period
     ahead = int(round(lookahead_ms / (FRAME_S * 1000)))
     if ahead:  # the gain is already down when the 's' starts
         gr = np.minimum(gr, np.concatenate([gr[ahead:], np.zeros(ahead)]))

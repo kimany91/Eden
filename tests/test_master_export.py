@@ -15,7 +15,7 @@ from eden.mix import dsp
 from eden.mix import master as M
 from eden.mix.export import export_wav
 from eden.mix.limiter import gain_for, limit
-from eden.mix.loudness import integrated_loudness
+from eden.mix.loudness import felt_loudness
 from eden.mix.oversampling import PEAK_CONTEXT, PEAK_CORE, _continuous_max, peak_envelope, true_peak
 from eden.mix.treatments import Treatment
 from synth_voice import FS, beat, voice
@@ -124,22 +124,23 @@ def test_limiter_gain_never_jumps(g):
 # -- peak-reduction budget ------------------------------------------------------------------
 
 def test_budget_statistic_ignores_short_events():
-    before = np.ones(3000)  # 30 s of 10 ms blocks, every peak reduced by 7 dB
-    after = before / 10 ** (7 / 20)
+    before = np.ones(3000)  # 30 s of 10 ms blocks, every peak reduced by 5 dB: under the 6 dB budget
+    after = before / 10 ** (5 / 20)
     click = before.copy()
-    click[1500] *= 10 ** (8 / 20)  # one 10 ms block taken 15 dB down
+    click[1500] *= 10 ** (8 / 20)  # one 10 ms block taken 13 dB down
     red = M._peak_reduction(click, after, 0.0, 0.0)
-    assert red.recurring_db == pytest.approx(7.0) and red.single_db == pytest.approx(7.0)
+    assert red.recurring_db == pytest.approx(5.0) and red.single_db == pytest.approx(5.0)
     assert red.over_db(M.MAX_PEAK_REDUCTION_DB) < 0
     hit = before.copy()
-    hit[1500:1503] *= 10 ** (8 / 20)  # 30 ms taken 15 dB down: an isolated event, over its limit
+    hit[1500:1503] *= 10 ** (8 / 20)  # 30 ms taken 13 dB down: an isolated event, over its limit
     red = M._peak_reduction(hit, after, 0.0, 0.0)
-    assert red.recurring_db == pytest.approx(7.0) and red.single_db == pytest.approx(15.0)
-    assert red.isolated and red.over_db(M.MAX_PEAK_REDUCTION_DB) == pytest.approx(15.0 - 13.0) and red.single_at_s == pytest.approx(15.0)
+    assert red.recurring_db == pytest.approx(5.0) and red.single_db == pytest.approx(13.0)
+    # the isolated limit is budget (6) + margin (4): 13 dB kept over 30 ms exceeds it by 3
+    assert red.isolated and red.over_db(M.MAX_PEAK_REDUCTION_DB) == pytest.approx(13.0 - 10.0) and red.single_at_s == pytest.approx(15.0)
     recurring = before.copy()
-    recurring[::50] *= 10 ** (4 / 20)  # a hit every 0.5 s, 11 dB down: the drums' job
+    recurring[::50] *= 10 ** (4 / 20)  # a hit every 0.5 s, 9 dB down: the budget (6 dB) holds these
     red = M._peak_reduction(recurring, after, 0.0, 0.0)
-    assert red.recurring_db == pytest.approx(11.0) and not red.isolated and red.over_db(M.MAX_PEAK_REDUCTION_DB) == pytest.approx(2.0)
+    assert red.recurring_db == pytest.approx(9.0) and not red.isolated and red.over_db(M.MAX_PEAK_REDUCTION_DB) == pytest.approx(3.0)
 
 
 def _impact(x, ms, rel_db, kind, rng):
@@ -152,6 +153,10 @@ def _impact(x, ms, rel_db, kind, rng):
     y = x.copy()
     y[8 * FS:8 * FS + n] += np.abs(x).max() * 10 ** (rel_db / 20) * (hit / np.abs(hit).max())[:, None]
     return y
+
+
+OUTLIER_TARGET = -10.0  # a target the synthetic song reaches without spending the 6 dB budget:
+# what one outlier does is then measured alone, not mixed with the budget capping the song itself
 
 
 @pytest.fixture(scope="module")
@@ -169,7 +174,7 @@ def plain_and_outliers():
         calls = []
         M._loud_stage = lambda *a, _calls=calls: _calls.append(a[2]) or real(*a)
         try:
-            out[name] = (M.master(y, FS, 1.0, tempo_bpm=140), len(calls))
+            out[name] = (M.master(y, FS, 1.0, tempo_bpm=140, target_lufs=OUTLIER_TARGET), len(calls))
         finally:
             M._loud_stage = real
     return out
@@ -177,7 +182,8 @@ def plain_and_outliers():
 
 def test_one_short_event_does_not_set_the_loudness_of_the_song(plain_and_outliers):
     plain, _ = plain_and_outliers["plain"]
-    assert plain.checks.integrated_lufs == pytest.approx(M.TARGET_LUFS, abs=0.2) and not plain.warnings
+    # the master aims the FELT loudness (the loud sections) on the target, not the average
+    assert felt_loudness(plain.audio, FS) == pytest.approx(OUTLIER_TARGET, abs=0.2) and not plain.warnings
     for name, (r, passes) in plain_and_outliers.items():
         ceiling = r.treatments[-1].measured["ceiling_dbtp"]
         assert r.checks.integrated_lufs == pytest.approx(plain.checks.integrated_lufs, abs=0.5), name
@@ -192,10 +198,11 @@ def test_one_short_event_does_not_set_the_loudness_of_the_song(plain_and_outlier
 
 
 def test_gain_search_reaims_on_the_proxy_after_one_pass(monkeypatch):
-    # a stand-in chain: loudness follows the gain exactly, the proxy reads 0.5 LU too low, and the
-    # recurring peaks are reduced by (gain − 3) dB, so the budget stops the gain at 12 dB
+    # a stand-in chain: felt loudness follows the gain exactly, the proxy reads 0.5 LU too low, and
+    # the recurring peaks are reduced by (gain − 3) dB, so the budget (6) stops the gain at 9 dB,
+    # backed off half a dB under the edge
     x = beat(4) * 0.1
-    before = integrated_loudness(x, FS)
+    before = felt_loudness(x, FS)
     stages = []
 
     def stage(y, fs, gain, ceiling):
@@ -204,12 +211,12 @@ def test_gain_search_reaims_on_the_proxy_after_one_pass(monkeypatch):
 
     monkeypatch.setattr(M, "_loud_stage", stage)
     monkeypatch.setattr(M, "_proxy_loudness", lambda y, fs, gain, c: before + gain - 0.5)
-    out, gain, red, reached, capped = M._loudest(x, FS, before + 10.0, -3.0)
-    assert len(stages) == 2 and reached == pytest.approx(before + 10.0, abs=0.15) and not capped
+    out, gain, red, reached, capped = M._loudest(x, FS, before + 6.0, -3.0)
+    assert len(stages) == 2 and reached == pytest.approx(before + 6.0, abs=0.15) and not capped
     stages.clear()
     out, gain, red, reached, capped = M._loudest(x, FS, before + 14.0, -3.0)  # needs 14 dB: over budget
-    assert stages[1] == pytest.approx(12.0, abs=0.06) and len(stages) <= M.REAL_PASSES
-    assert capped and red.over_db(M.MAX_PEAK_REDUCTION_DB) <= 0.1 and reached == pytest.approx(before + 12.0, abs=0.1)
+    assert stages[1] == pytest.approx(8.5, abs=0.06) and len(stages) <= M.REAL_PASSES
+    assert capped and red.over_db(M.MAX_PEAK_REDUCTION_DB) <= 0.1 and reached == pytest.approx(before + 8.5, abs=0.1)
 
 
 def _hits(seconds=12, every_s=0.5):
@@ -223,28 +230,30 @@ def _hits(seconds=12, every_s=0.5):
     return np.stack([x, x], 1) * 0.5
 
 
-@pytest.mark.parametrize("song, ceiling", [
-    (beat(16, level=0.5) * 0.05, M.DENSE_CEILING_DBTP),  # stopped near −10.5 LUFS: −2 dBTP would be dense
-    (_hits(), M.CEILING_DBTP),  # stopped far under: −2 dBTP leaves 8 dB or more
+@pytest.mark.parametrize("song, target, ceiling", [
+    (mix(6.0), -8.0, M.DENSE_CEILING_DBTP),  # stopped near −9 LUFS: −2 dBTP would be dense
+    (_hits(), M.TARGET_LUFS, M.CEILING_DBTP),  # stopped far under: −2 dBTP leaves 8 dB or more
 ])
-def test_a_capped_master_chooses_its_ceiling_on_the_loudness_reached(song, ceiling):
-    r = M.master(song, FS, 1.0, tempo_bpm=140)
+def test_a_capped_master_chooses_its_ceiling_on_the_loudness_reached(song, target, ceiling):
+    r = M.master(song, FS, 1.0, tempo_bpm=140, target_lufs=target)
     loud = r.treatments[-1].measured
-    reached = r.checks.integrated_lufs
-    assert reached < M.TARGET_LUFS - 0.2
+    reached = felt_loudness(r.audio, FS)  # the texts report the FELT loudness reached
+    assert reached < target - 0.2
     assert loud["peak_reduction_db"] <= M.MAX_PEAK_REDUCTION_DB + 0.1
     assert loud["single_peak_reduction_db"] <= M.MAX_PEAK_REDUCTION_DB + M.SINGLE_PEAK_MARGIN_DB + 0.1
     warning = next(w for w in r.warnings if "au lieu de" in w)
     assert f"masterisé à {reached:.1f} LUFS" in warning and "crêtes qui reviennent" in warning
     assert loud["ceiling_dbtp"] == ceiling and r.checks.true_peak_dbtp <= ceiling
-    shift = M.CEILING_DBTP - M.DENSE_CEILING_DBTP  # at −2 dBTP the same master is 1 dB louder
     if ceiling == M.CEILING_DBTP:
         assert M.CEILING_DBTP - reached >= M.DENSE_PLR_DB
         assert f"laisse {M.CEILING_DBTP - reached:.1f} dB entre crête et volume : pas assez dense" in \
             r.treatments[-1].reason
     else:
-        assert M.CEILING_DBTP - (reached + shift) < M.DENSE_PLR_DB
-        assert f"ce master monterait à {reached + shift:.1f} LUFS" in r.treatments[-1].reason
+        # what −2 dBTP would give is shifted at most to the goal, never past it
+        shift = min(M.CEILING_DBTP - M.DENSE_CEILING_DBTP, max(0.0, target - reached))
+        higher = min(target, reached + shift)
+        assert M.CEILING_DBTP - higher < M.DENSE_PLR_DB
+        assert f"ce master monterait à {higher:.1f} LUFS" in r.treatments[-1].reason
 
 
 def test_a_master_capped_just_under_its_goal_keeps_the_dense_ceiling_and_says_why(monkeypatch):
@@ -257,7 +266,7 @@ def test_a_master_capped_just_under_its_goal_keeps_the_dense_ceiling_and_says_wh
     loud = r.treatments[-1]
     assert loud.measured["ceiling_dbtp"] == M.DENSE_CEILING_DBTP
     assert "ce master monterait à -9.0 LUFS et laisserait au plus 7.0 dB entre crête et volume" in loud.reason
-    assert "plus forte baisse tenue sur 30 ms de suite est de 13.2 dB (13 dB au plus" in loud.reason
+    assert "plus forte baisse tenue sur 30 ms de suite est de 13.2 dB (10 dB au plus" in loud.reason
     assert any("masterisé à -9.3 LUFS" in w and "crête isolée vers 0:03" in w for w in r.warnings)
 
 

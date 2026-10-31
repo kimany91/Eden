@@ -103,7 +103,8 @@ def test_the_master_does_not_squash_a_mastered_beat_a_second_time():
     normal = M.master(song, FS, 1.0, 95.0)
     finished = M.master(song, FS, 1.0, 95.0, finished_beat=True)
     squash = lambda r: r.treatments[-1].measured["peak_reduction_db"]  # noqa: E731
-    assert squash(normal) > M.FINISHED_BEAT_PEAK_REDUCTION_DB + 0.5  # what −9 LUFS would take
+    # both masters are stopped by their budgets (6 dB normal, 5 dB finished): the finished one takes less
+    assert squash(normal) > squash(finished) + 0.2
     assert squash(finished) <= M.FINISHED_BEAT_PEAK_REDUCTION_DB + 0.1
     assert finished.checks.integrated_lufs < normal.checks.integrated_lufs
     assert any("ton instru est déjà mixée et masterisée" in w for w in finished.warnings)

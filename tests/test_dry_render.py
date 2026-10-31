@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from eden.mix.parts import Part, Parts, dry_render_problem, split
+from eden.mix.parts import Part, Parts, _dry_check, split
 from eden.mix.session import fl_space_status
 from eden.project.classify import RoleGuess
 from eden.project.inspector import SourceAnalysis, _effects_on, _signal_path, inspect_project
@@ -211,6 +211,11 @@ def test_an_unknown_plugin_on_the_voices_own_insert_does_not_count():
 
 
 # -- checking FL's dry render ------------------------------------------------------------
+
+def dry_render_problem(full, dry, fs):
+    """The check's verdict alone (the product uses ``_dry_check``, which also returns the lag)."""
+    return _dry_check(full, dry, fs)[0]
+
 
 @pytest.mark.parametrize("shift,problem", [
     (64, "décalée de 1.5 ms"), (512, "décalée de 11.6 ms"), (2048, "décalée de 46.4 ms"),

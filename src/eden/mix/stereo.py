@@ -40,18 +40,27 @@ def from_mid_side(mid: np.ndarray, side: np.ndarray) -> np.ndarray:
     return np.stack([mid + side, mid - side], axis=1)
 
 
+def _pan_gains(position: float) -> tuple[float, float]:
+    """Constant-power left/right gains, compensated so the centre stays at unity — but the louder
+    channel is never pushed over its source (the plain √2 compensation put one channel up to +3 dB
+    over it: single-channel peaks drove the master's limiter, heard as pumping on wide doubles)."""
+    angle = (position + 1) * math.pi / 4
+    left, right = math.cos(angle), math.sin(angle)
+    scale = min(math.sqrt(2), 1 / max(abs(left), abs(right), 1e-9))
+    return left * scale, right * scale
+
+
 def pan(x: np.ndarray, position: float) -> np.ndarray:
     """Constant-power pan of a (mono-summed) signal; position −1 (left) … +1 (right)."""
     mono = x.mean(axis=1) if x.ndim == 2 else x
-    angle = (position + 1) * math.pi / 4
-    return np.stack([mono * math.cos(angle), mono * math.sin(angle)], axis=1) * math.sqrt(2)
+    left, right = _pan_gains(position)
+    return np.stack([mono * left, mono * right], axis=1)
 
 
 def balance(x: np.ndarray, position: float) -> np.ndarray:
     """Move a stereo signal towards one side without collapsing its own width."""
     x = to_stereo(x)
-    left = math.sqrt(2) * math.cos((position + 1) * math.pi / 4)
-    right = math.sqrt(2) * math.sin((position + 1) * math.pi / 4)
+    left, right = _pan_gains(position)
     return np.stack([x[:, 0] * left, x[:, 1] * right], axis=1)
 
 
@@ -158,7 +167,9 @@ def alternate_pan(x: np.ndarray, fs: float, position: float, gap_s: float = 0.25
     pos = np.interp(np.arange(x.shape[0]), centers, side) * position
     mono = x.mean(axis=1) if x.ndim == 2 else x
     angle = (pos + 1) * math.pi / 4
-    return np.stack([mono * np.cos(angle), mono * np.sin(angle)], axis=1) * math.sqrt(2)
+    left, right = np.cos(angle), np.sin(angle)
+    scale = np.minimum(math.sqrt(2), 1 / np.maximum(np.maximum(np.abs(left), np.abs(right)), 1e-9))
+    return np.stack([mono * left * scale, mono * right * scale], axis=1)
 
 
 def together(a: np.ndarray, b: np.ndarray) -> float:

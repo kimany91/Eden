@@ -83,20 +83,20 @@ def _vowel_level(y: np.ndarray, fs: float) -> float:
     return vowel_level(y, fs, level, active)
 
 
-def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarray | None = None,
-          input_lufs: float | None = None) -> np.ndarray:
+def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarray | None = None) -> np.ndarray:
     """``hold``: 1 ms frames of the rests between phrases (effect tails), where tail-safe
-    compressors freeze their gain at the phrase's mean reduction (see ``dsp._smooth``);
-    ``input_lufs``: the integrated loudness of ``x``, when the caller has already measured it.
+    compressors freeze their gain at the phrase's mean reduction (see ``dsp._smooth``).
 
     Dynamic stages read the level of the signal as it reaches them (after the
     stages before), so a chain of compressors stays as planned. A dynamic
     stage whose reduction does not move by ``IDLE_DB`` (see ``_moves``) is not
-    applied and is marked ``applied = False``. ``makeup`` gives back the
-    loudness the chain took (BS.1770, the voice as it came in vs. as it goes out),
-    only when a compressor or a de-esser before it was applied.
+    applied and is marked ``applied = False``. ``makeup`` gives back what the
+    compressors and de-essers took (BS.1770, the voice as it reached the first of
+    them vs. as it goes out), never what the breath stage, a high-pass or an EQ
+    cut removed: giving those back over-boosted the voice into the stages after.
     """
     y = x
+    dynamics_in: float | None = None  # loudness just before the first compressor / de-esser
     for i, t in enumerate(treatments):
         p = t.params
         if t.kind == "breath":
@@ -113,6 +113,8 @@ def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarra
         elif t.kind == "shelf":
             y = dsp.apply_sos(y, dsp.shelf_sos(fs, p["freq_hz"], p["gain_db"], high=p.get("high", True)))
         elif t.kind == "deesser":
+            if dynamics_in is None:
+                dynamics_in = integrated_loudness(y, fs)
             threshold = _vowel_level(y, fs) - p["below_vowels_db"]
             high, rest, gr, size = dsp.deess_gain_db(y, fs, threshold, p["max_reduction_db"],
                                                      low_hz=p.get("low_hz", 4500.0))
@@ -121,6 +123,8 @@ def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarra
             if t.applied:
                 y = rest + dsp._apply_gain(high, dsp._to_samples(gr, size, y.shape[0]))
         elif t.kind == "compressor":
+            if dynamics_in is None:
+                dynamics_in = integrated_loudness(y, fs)
             gr, size = dsp.compressor_gain_db(
                 y, fs, _threshold(y, fs, p), p["ratio"], attack_ms=p["attack_ms"],
                 release_ms=p["release_ms"], slow_release_ms=p.get("slow_release_ms"),
@@ -133,7 +137,7 @@ def apply(x: np.ndarray, fs: float, treatments: list[Treatment], hold: np.ndarra
             if not any(o.kind in ("compressor", "deesser") and o.applied for o in treatments[:i]):
                 t.applied = False  # no compressor or de-esser took level: there is nothing to give back
                 continue
-            before = integrated_loudness(x, fs) if input_lufs is None else input_lufs
+            before = dynamics_in if dynamics_in is not None else integrated_loudness(x, fs)
             after = integrated_loudness(y, fs)
             change = before - after if math.isfinite(before) and math.isfinite(after) else 0.0
             t.params = {"gain_db": change}
